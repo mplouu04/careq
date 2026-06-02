@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const auth = await requireStaff(["admin"]);
   if ("error" in auth) {
@@ -22,7 +24,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const body = await request.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: Record<string, any>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const supabase = createAdminClient();
 
   // ── Add ──────────────────────────────────────────────────────────────────

@@ -86,40 +86,52 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [recallRoomId, setRecallRoomId] = useState("");
 
   const loadQueue = useCallback(async () => {
-    const res = await fetch("/api/queue");
-    const data = await res.json();
-    if (data.appointment) {
-      setWaiting(data.appointment.waiting ?? []);
-      setInProgress(data.appointment.inProgress ?? []);
-      setCompleted(data.appointment.completed ?? []);
-      setAvgServiceTime(data.appointment.avg_service_time ?? 10);
+    try {
+      const res = await fetch("/api/queue");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.appointment) {
+        setWaiting(data.appointment.waiting ?? []);
+        setInProgress(data.appointment.inProgress ?? []);
+        setCompleted(data.appointment.completed ?? []);
+        setAvgServiceTime(data.appointment.avg_service_time ?? 10);
+      }
+    } catch {
+      // Silently retry on next poll interval
     }
   }, []);
 
   const loadStats = useCallback(async () => {
-    const res = await fetch("/api/queue/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "get_report" }),
-    });
-    const data = await res.json();
-    setStats({
-      served: data.served_today ?? 0,
-      waiting: data.waiting_count ?? 0,
-      avg: data.avg_service_time ?? 10,
-    });
-    setChartData(data.history ?? []);
+    try {
+      const res = await fetch("/api/queue/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "get_report" }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setStats({
+        served: data.served_today ?? 0,
+        waiting: data.waiting_count ?? 0,
+        avg: data.avg_service_time ?? 10,
+      });
+      setChartData(data.history ?? []);
+    } catch {
+      // Silently retry on next poll interval
+    }
   }, []);
 
   useEffect(() => {
     loadQueue();
     loadStats();
     fetch("/api/doctors")
-      .then((r) => r.json())
-      .then((d) => setDoctors(d.doctors ?? []));
+      .then((r) => r.ok ? r.json() : { doctors: [] })
+      .then((d) => setDoctors(d.doctors ?? []))
+      .catch(() => {});
     fetch("/api/rooms")
-      .then((r) => r.json())
-      .then((d) => setRooms(d.rooms ?? []));
+      .then((r) => r.ok ? r.json() : { rooms: [] })
+      .then((d) => setRooms(d.rooms ?? []))
+      .catch(() => {});
 
     const supabase = createClient();
     const channel = supabase
@@ -161,8 +173,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     loadQueue(); loadStats();
   }
 
+  const [today, setToday] = useState("");
+  useEffect(() => {
+    setToday(new Date().toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
+  }, []);
+
   const nextWaiting = waiting[0];
-  const today = new Date().toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   const reversed = [...chartData].reverse();
   const barChartData = {

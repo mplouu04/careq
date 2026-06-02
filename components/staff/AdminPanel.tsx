@@ -84,18 +84,20 @@ export function AdminPanel() {
   const [editTypeDesc, setEditTypeDesc] = useState("");
 
   const load = useCallback(async () => {
-    const [s, t, set, a] = await Promise.all([
-      fetch("/api/admin/staff").then((r) => r.json()),
-      fetch("/api/appointment-types", {
-        headers: { authorization: "Bearer staff" },
-      }).then((r) => r.json()),
-      fetch("/api/admin/settings").then((r) => r.json()),
-      fetch("/api/appointments").then((r) => r.json()),
-    ]);
-    setStaffList(s.staff ?? []);
-    setTypes(t.types ?? []);
-    setSettings(set.screens ?? []);
-    setAppointments(a.appointments ?? []);
+    try {
+      const [s, t, set, a] = await Promise.all([
+        fetch("/api/admin/staff").then((r) => r.ok ? r.json() : { staff: [] }),
+        fetch("/api/appointment-types").then((r) => r.ok ? r.json() : { types: [] }),
+        fetch("/api/admin/settings").then((r) => r.ok ? r.json() : { screens: [] }),
+        fetch("/api/appointments").then((r) => r.ok ? r.json() : { appointments: [] }),
+      ]);
+      setStaffList(s.staff ?? []);
+      setTypes(t.types ?? []);
+      setSettings(set.screens ?? []);
+      setAppointments(a.appointments ?? []);
+    } catch {
+      toast.error("Failed to load admin data. Please refresh.");
+    }
   }, []);
 
   useEffect(() => {

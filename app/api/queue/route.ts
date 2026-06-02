@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
 import { format } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Calculate today's average service time in minutes.
  * Default = 10 when no completed records exist.

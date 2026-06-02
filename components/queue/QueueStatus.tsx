@@ -36,19 +36,29 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [doctor, setDoctor] = useState<string>("");
   const [room, setRoom] = useState<string>("");
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/queue?ref=${encodeURIComponent(refNumber)}`);
-    const data = await res.json();
-    if (!data.success) {
-      setNotFound(true);
-      return;
+    try {
+      const res = await fetch(`/api/queue?ref=${encodeURIComponent(refNumber)}`);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      if (!data.success) {
+        setNotFound(true);
+        return;
+      }
+      setLoadError(false);
+      setQueue(data.queue);
+      setPosition(data.position ?? null);
+      setEstWait(data.est_wait_minutes ?? null);
+      setDoctor(data.doctor ?? "");
+      setRoom(data.room ?? "");
+    } catch {
+      setLoadError(true);
     }
-    setQueue(data.queue);
-    setPosition(data.position ?? null);
-    setEstWait(data.est_wait_minutes ?? null);
-    setDoctor(data.doctor ?? "");
-    setRoom(data.room ?? "");
   }, [refNumber]);
 
   useEffect(() => {
@@ -65,6 +75,21 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refNumber]);
+
+  if (loadError) {
+    return (
+      <div className="max-w-md mx-auto">
+        <div className="careq-card p-6 text-center">
+          <svg className="w-12 h-12 text-red-500 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <p className="font-medium text-gray-700 mb-1">Connection error</p>
+          <p className="text-sm text-gray-500 mb-4">Unable to load queue status. Retrying automatically.</p>
+          <Link href="/status" className="text-[#0d6efd] hover:underline text-sm">Check another number</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (notFound) {
     return (

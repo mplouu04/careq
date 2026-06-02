@@ -11,7 +11,11 @@ import { createClient } from "@/lib/supabase/client";
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") ?? "/dashboard";
+  const redirectRaw = searchParams.get("redirect") ?? "/dashboard";
+  const ALLOWED_PREFIXES = ["/dashboard", "/admin"];
+  const redirect = ALLOWED_PREFIXES.some((p) => redirectRaw.startsWith(p))
+    ? redirectRaw
+    : "/dashboard";
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);

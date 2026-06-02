@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { normalizePhone } from "@/lib/phone";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Resolve an existing patient by priority:
  * 1. phone (normalized) match
@@ -109,7 +111,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  const body = await request.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: Record<string, any>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   const required = ["firstName", "lastName", "dob", "gender", "phone", "address", "consent"];
   for (const f of required) {

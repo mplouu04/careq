@@ -9,8 +9,12 @@ export function StaffHeader({ staff }: { staff: StaffProfile }) {
   const router = useRouter();
 
   async function logout() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch {
+      // Proceed to login regardless of signOut error
+    }
     router.push("/login");
     router.refresh();
   }

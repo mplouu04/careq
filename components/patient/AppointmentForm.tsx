@@ -27,8 +27,8 @@ export function AppointmentForm() {
   const params = useSearchParams();
   const patientId = params.get("patientId");
 
-  const today = format(new Date(), "yyyy-MM-dd");
-  const maxDate = format(addDays(new Date(), 30), "yyyy-MM-dd");
+  const [today, setToday] = useState("");
+  const [maxDate, setMaxDate] = useState("");
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [types, setTypes] = useState<ApptType[]>([]);
@@ -47,19 +47,24 @@ export function AppointmentForm() {
   } | null>(null);
 
   useEffect(() => {
+    setToday(format(new Date(), "yyyy-MM-dd"));
+    setMaxDate(format(addDays(new Date(), 30), "yyyy-MM-dd"));
     fetch("/api/doctors")
-      .then((r) => r.json())
-      .then((d) => setDoctors(d.doctors ?? []));
+      .then((r) => r.ok ? r.json() : { doctors: [] })
+      .then((d) => setDoctors(d.doctors ?? []))
+      .catch(() => {});
     fetch("/api/appointment-types")
-      .then((r) => r.json())
-      .then((d) => setTypes(d.types ?? []));
+      .then((r) => r.ok ? r.json() : { types: [] })
+      .then((d) => setTypes(d.types ?? []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!doctorId || !date) { setSlots([]); setTime(""); return; }
     fetch(`/api/doctors/availability?doctorId=${doctorId}&date=${date}`)
-      .then((r) => r.json())
-      .then((d) => { setSlots(d.available_slots ?? d.slots ?? []); setTime(""); });
+      .then((r) => r.ok ? r.json() : { available_slots: [] })
+      .then((d) => { setSlots(d.available_slots ?? d.slots ?? []); setTime(""); })
+      .catch(() => { setSlots([]); });
   }, [doctorId, date]);
 
   function handleDateChange(val: string) {

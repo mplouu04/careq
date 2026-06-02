@@ -14,45 +14,54 @@ export async function checkRateLimit(
   max = 10,
   windowSeconds = 60
 ): Promise<boolean> {
-  const supabase = createAdminClient();
-  const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString();
+  try {
+    const supabase = createAdminClient();
+    const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString();
 
-  const { data: existing } = await supabase
-    .from("rate_limits")
-    .select("id, request_count, window_start")
-    .eq("action", action)
-    .eq("ip_address", ip)
-    .gte("window_start", windowStart)
-    .order("window_start", { ascending: false })
-    .maybeSingle();
-
-  if (!existing) {
-    await supabase.from("rate_limits").insert({
-      action,
-      ip_address: ip,
-      request_count: 1,
-      window_start: new Date().toISOString(),
-    });
-    // Clean up old rows for this action+ip
-    await supabase
+    const { data: existing, error: selectError } = await supabase
       .from("rate_limits")
-      .delete()
+      .select("id, request_count, window_start")
       .eq("action", action)
       .eq("ip_address", ip)
-      .lt("window_start", windowStart);
+      .gte("window_start", windowStart)
+      .order("window_start", { ascending: false })
+      .maybeSingle();
+
+    if (selectError) {
+      console.error("[rate-limit] DB select error:", selectError.message);
+      return true; // fail open on DB error
+    }
+
+    if (!existing) {
+      await supabase.from("rate_limits").insert({
+        action,
+        ip_address: ip,
+        request_count: 1,
+        window_start: new Date().toISOString(),
+      });
+      await supabase
+        .from("rate_limits")
+        .delete()
+        .eq("action", action)
+        .eq("ip_address", ip)
+        .lt("window_start", windowStart);
+      return true;
+    }
+
+    if (existing.request_count >= max) {
+      return false;
+    }
+
+    await supabase
+      .from("rate_limits")
+      .update({ request_count: existing.request_count + 1 })
+      .eq("id", existing.id);
+
     return true;
+  } catch (err) {
+    console.error("[rate-limit] Unexpected error:", err);
+    return true; // fail open to avoid blocking requests on infra issues
   }
-
-  if (existing.request_count >= max) {
-    return false;
-  }
-
-  await supabase
-    .from("rate_limits")
-    .update({ request_count: existing.request_count + 1 })
-    .eq("id", existing.id);
-
-  return true;
 }
 
 export function getClientIp(request: Request): string {

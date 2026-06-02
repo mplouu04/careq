@@ -36,13 +36,18 @@ export function PatientSearch() {
     if (term.trim().length < 2) return;
     setLoading(true);
     setSearched(false);
-    const params = new URLSearchParams({ term: term.trim() });
-    if (dob) params.set("dob", dob);
-    const res = await fetch(`/api/patients?${params}`);
-    const data = await res.json();
-    setPatients(data.patients ?? []);
-    setLoading(false);
-    setSearched(true);
+    try {
+      const params = new URLSearchParams({ term: term.trim() });
+      if (dob) params.set("dob", dob);
+      const res = await fetch(`/api/patients?${params}`);
+      const data = res.ok ? await res.json() : { patients: [] };
+      setPatients(data.patients ?? []);
+    } catch {
+      setPatients([]);
+    } finally {
+      setLoading(false);
+      setSearched(true);
+    }
   }
 
   function navigate(patient: Patient, destination: "appointments" | "checkin") {

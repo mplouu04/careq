@@ -3,11 +3,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE } from "@/lib/constants";
 import { addDays, format } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  // Fail closed: if CRON_SECRET is not configured, block all access
+  if (!cronSecret) {
+    return NextResponse.json({ error: "Cron not configured" }, { status: 503 });
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

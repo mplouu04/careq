@@ -44,14 +44,20 @@ export function MyAppointments() {
       return;
     }
     setLoading(true);
-    const res = await fetch(
-      `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${dob}`
-    );
-    const data = await res.json();
-    setAppointments(data.appointments ?? []);
-    setPatientName(data.patientName ?? "");
-    setLoading(false);
-    setSearched(true);
+    try {
+      const res = await fetch(
+        `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${dob}`
+      );
+      const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
+      setAppointments(data.appointments ?? []);
+      setPatientName(data.patientName ?? "");
+    } catch {
+      toast.error("Unable to load appointments. Please check your connection.");
+      setAppointments([]);
+    } finally {
+      setLoading(false);
+      setSearched(true);
+    }
   }
 
   async function confirmCancel(ref: string) {

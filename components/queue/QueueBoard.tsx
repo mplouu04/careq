@@ -35,18 +35,28 @@ export function QueueBoard() {
   const [nowServing, setNowServing] = useState<NowServingItem[]>([]);
   const [waiting, setWaiting] = useState<WaitingItem[]>([]);
   const [avgServiceTime, setAvgServiceTime] = useState(10);
-  const [now, setNow] = useState(new Date());
+  const [now, setNow] = useState<Date | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    const res = await fetch("/api/queue/public");
-    if (!res.ok) return;
-    const data = await res.json();
-    setNowServing(data.nowServing ?? []);
-    setWaiting((data.waiting ?? []).slice(0, 8));
-    setAvgServiceTime(data.avg_service_time ?? 10);
+    try {
+      const res = await fetch("/api/queue/public");
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setLoadError(false);
+      setNowServing(data.nowServing ?? []);
+      setWaiting((data.waiting ?? []).slice(0, 8));
+      setAvgServiceTime(data.avg_service_time ?? 10);
+    } catch {
+      setLoadError(true);
+    }
   }, []);
 
   useEffect(() => {
+    setNow(new Date());
     load();
 
     const supabase = createClient();
@@ -65,16 +75,19 @@ export function QueueBoard() {
     };
   }, [load]);
 
-  const timeStr = now.toLocaleTimeString("en-PH", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+  const timeStr = now
+    ? now.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : "--:--:--";
 
   const current = nowServing[0] ?? null;
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: "#f8f9fa" }}>
+      {loadError && (
+        <div className="absolute top-0 left-0 right-0 z-10 bg-red-600 text-white text-center text-sm py-2">
+          Unable to load queue data. Retrying...
+        </div>
+      )}
       {/* Left panel — NOW SERVING (blue) */}
       <div className="current-patient-section w-2/3 flex flex-col p-6">
         {/* Header */}

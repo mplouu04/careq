@@ -2,19 +2,18 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/appointment-types
  * - Public (no auth): returns only active types
- * - Staff (Authorization header present): returns all types (for admin management)
+ * - Staff (valid session): returns all types including inactive (for admin management)
  */
-export async function GET(request: Request) {
+export async function GET() {
   const supabase = createAdminClient();
 
-  // Check if staff auth header is present to decide whether to return inactive too
-  const authHeader =
-    request.headers.get("authorization") ||
-    request.headers.get("cookie");
-  const staffMode = !!authHeader;
+  const staffAuth = await requireStaff();
+  const staffMode = !("error" in staffAuth);
 
   let query = supabase
     .from("appointment_types")
@@ -39,7 +38,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const body = await request.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: Record<string, any>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const supabase = createAdminClient();
 
   // ── Add ──────────────────────────────────────────────────────────────────

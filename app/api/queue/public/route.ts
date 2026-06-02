@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireStaff } from "@/lib/auth";
 import { format } from "date-fns";
+
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/queue/public
@@ -106,9 +109,14 @@ export async function GET() {
 /**
  * POST /api/queue/public  (body: { auto: true })
  * Auto-completes in_progress queue entries that have been calling for > 20 minutes.
- * Mirrors legacy api_register_patient.php POST auto branch.
+ * Staff-only: requires valid session to prevent unauthenticated state mutations.
  */
 export async function POST(request: Request) {
+  const auth = await requireStaff();
+  if ("error" in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
   const body = await request.json().catch(() => ({}));
   if (!body.auto) {
     return NextResponse.json({ error: "Missing auto flag" }, { status: 400 });

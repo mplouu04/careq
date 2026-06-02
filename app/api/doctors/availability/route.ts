@@ -4,6 +4,8 @@ import { generateTimeSlots, filterSameDaySlots } from "@/lib/slots";
 import { getDay } from "date-fns";
 import { CHECKIN_TYPE } from "@/lib/constants";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/doctors/availability?date=YYYY-MM-DD&doctorId=
  *

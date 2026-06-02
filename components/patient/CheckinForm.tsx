@@ -38,8 +38,9 @@ export function CheckinForm() {
 
   useEffect(() => {
     fetch("/api/appointment-types")
-      .then((r) => r.json())
-      .then((d) => setTypes(d.types ?? []));
+      .then((r) => r.ok ? r.json() : { types: [] })
+      .then((d) => setTypes(d.types ?? []))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -50,15 +51,21 @@ export function CheckinForm() {
     }
     const t = setTimeout(async () => {
       setLookingUp(true);
-      const res = await fetch(`/api/checkin?appointmentID=${encodeURIComponent(ref.toUpperCase())}`);
-      const data = await res.json();
-      setLookingUp(false);
-      if (data.success && data.appointment?.[0]) {
-        setRefLookup(data.appointment[0]);
-        setRefLookupError("");
-      } else {
+      try {
+        const res = await fetch(`/api/checkin?appointmentID=${encodeURIComponent(ref.toUpperCase())}`);
+        const data = await res.json();
+        if (data.success && data.appointment?.[0]) {
+          setRefLookup(data.appointment[0]);
+          setRefLookupError("");
+        } else {
+          setRefLookup(null);
+          setRefLookupError("No appointment record found. Please check your reference number.");
+        }
+      } catch {
         setRefLookup(null);
-        setRefLookupError("No appointment record found. Please check your reference number.");
+        setRefLookupError("Unable to look up appointment. Please try again.");
+      } finally {
+        setLookingUp(false);
       }
     }, 500);
     return () => clearTimeout(t);

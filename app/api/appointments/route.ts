@@ -9,6 +9,8 @@ import { format } from "date-fns";
 import { generateTimeSlots, filterSameDaySlots } from "@/lib/slots";
 import { getDay } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Resolve existing patient — priority: phone → email → name+DOB
  */
@@ -257,7 +259,13 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const ip = getClientIp(request);
-  const body = await request.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: Record<string, any>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
 
   // ── Patient-initiated cancel ─────────────────────────────────────────────
   if (body.action === "cancel") {

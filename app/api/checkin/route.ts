@@ -4,6 +4,8 @@ import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { CHECKIN_TYPE } from "@/lib/constants";
 import { format } from "date-fns";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Queue number counter:  count all queue rows today + 1
  * Format matches legacy: APPT-{N} or WALK-{N}
@@ -93,7 +95,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  const body = await request.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let body: Record<string, any>;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const supabase = createAdminClient();
 
   // ── Appointment check-in ───────────────────────────────────────────────────
