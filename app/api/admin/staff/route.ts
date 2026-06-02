@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/rate-limit";
+import { STAFF_ROLES } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
@@ -47,39 +48,65 @@ export async function POST(request: Request) {
       }
     }
 
+    const emailNorm = String(body.email).trim().toLowerCase();
+    const role = String(body.role).trim().toLowerCase();
+
+    if (!(STAFF_ROLES as readonly string[]).includes(role)) {
+      return NextResponse.json(
+        { error: `Invalid role. Must be one of: ${STAFF_ROLES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     // Check email uniqueness
     const { data: existing } = await supabase
       .from("staff")
       .select("id")
-      .eq("email", body.email)
+      .eq("email", emailNorm)
       .maybeSingle();
     if (existing) {
       return NextResponse.json({ error: "Email already registered" }, { status: 409 });
     }
 
-    const { data: authUser, error } = await supabase.auth.admin.createUser({
-      email: body.email,
+    // Create auth user WITHOUT role in metadata to avoid the trigger path —
+    // the staff row is inserted explicitly below using the service-role client
+    // which bypasses RLS, making it more reliable than the trigger.
+    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+      email: emailNorm,
       password: body.password,
       email_confirm: true,
       user_metadata: {
-        role: body.role,
         first_name: body.firstName,
         last_name: body.lastName,
       },
     });
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (authError) {
+      const msg = authError.message.toLowerCase();
+      if (msg.includes("already registered") || msg.includes("already been registered")) {
+        return NextResponse.json({ error: "A user with this email already exists." }, { status: 409 });
+      }
+      return NextResponse.json({ error: authError.message }, { status: 500 });
     }
 
-    await supabase.from("staff").upsert({
+    // Explicitly insert the staff row using service role (bypasses RLS, always works)
+    const { error: staffError } = await supabase.from("staff").upsert({
       id: authUser.user.id,
-      first_name: body.firstName,
-      last_name: body.lastName,
-      email: body.email,
-      role: body.role,
+      first_name: String(body.firstName).trim(),
+      last_name: String(body.lastName).trim(),
+      email: emailNorm,
+      role,
       is_active: true,
     });
+
+    if (staffError) {
+      // Auth user was created but staff row failed — roll back the auth user
+      await supabase.auth.admin.deleteUser(authUser.user.id);
+      return NextResponse.json(
+        { error: "Failed to create staff profile. Please try again." },
+        { status: 500 }
+      );
+    }
 
     await logAudit({
       userId: requestingUserId,
