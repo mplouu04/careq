@@ -1,7 +1,7 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 /** Service-role client for API routes (bypasses RLS). Never expose to the browser. */
-export function createAdminClient(): SupabaseClient {
+export function createAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {

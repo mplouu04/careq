@@ -6,9 +6,9 @@ export default function PublicLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
+    <div className="min-h-screen" style={{ backgroundColor: "#f8f9fa" }}>
       <PublicHeader />
-      <main className="container mx-auto px-4 py-8">{children}</main>
-    </>
+      <main>{children}</main>
+    </div>
   );
 }

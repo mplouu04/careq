@@ -7,8 +7,7 @@ export default function StatusRefPage({
 }) {
   const ref = decodeURIComponent(params.ref);
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-center">Queue Status</h1>
+    <div className="max-w-7xl mx-auto px-4 py-10">
       <QueueStatus refNumber={ref} />
     </div>
   );

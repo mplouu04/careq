@@ -18,10 +18,12 @@ export async function POST(request: Request) {
   const userId = auth.session.userId;
 
   switch (action) {
+
+    // ── call_next ──────────────────────────────────────────────────────────
     case "call_next": {
       const { queueId, doctorId, roomNumber } = body;
       if (!queueId || !doctorId || !roomNumber) {
-        return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+        return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
       }
       const { data, error } = await supabase
         .from("queue")
@@ -49,13 +51,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
+    // ── skip ──────────────────────────────────────────────────────────────
     case "skip": {
       const { queueId } = body;
-      const { data } = await supabase
+      if (!queueId) {
+        return NextResponse.json({ error: "Missing queueId" }, { status: 400 });
+      }
+      const { data: current } = await supabase
         .from("queue")
         .select("skip_count")
         .eq("id", queueId)
+        .eq("status", "in_progress")
         .single();
+
+      if (!current) {
+        return NextResponse.json({ error: "Queue entry not in_progress" }, { status: 400 });
+      }
 
       const { error } = await supabase
         .from("queue")
@@ -64,7 +75,7 @@ export async function POST(request: Request) {
           called_by: null,
           room_id: null,
           called_at: null,
-          skip_count: (data?.skip_count ?? 0) + 1,
+          skip_count: (current.skip_count ?? 0) + 1,
         })
         .eq("id", queueId)
         .eq("status", "in_progress");
@@ -72,11 +83,22 @@ export async function POST(request: Request) {
       if (error) {
         return NextResponse.json({ error: "Failed to skip" }, { status: 500 });
       }
+      await logAudit({
+        userId,
+        action: "queue_skip",
+        tableName: "queue",
+        recordId: queueId,
+        ipAddress: ip,
+      });
       return NextResponse.json({ success: true });
     }
 
+    // ── recall ────────────────────────────────────────────────────────────
     case "recall": {
       const { queueId, doctorId, roomNumber } = body;
+      if (!queueId || !doctorId || !roomNumber) {
+        return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+      }
       const { error } = await supabase
         .from("queue")
         .update({
@@ -91,21 +113,28 @@ export async function POST(request: Request) {
       if (error) {
         return NextResponse.json({ error: "Failed to recall" }, { status: 500 });
       }
+      // No audit on recall (matches legacy behaviour)
       return NextResponse.json({ success: true });
     }
 
+    // ── mark_done ─────────────────────────────────────────────────────────
     case "mark_done": {
       const { queueId } = body;
-      const { error } = await supabase
+      if (!queueId) {
+        return NextResponse.json({ error: "Missing queueId" }, { status: 400 });
+      }
+      const { data, error } = await supabase
         .from("queue")
         .update({
           status: "completed",
           completed_at: new Date().toISOString(),
         })
         .eq("id", queueId)
-        .eq("status", "in_progress");
+        .eq("status", "in_progress")
+        .select("id")
+        .maybeSingle();
 
-      if (error) {
+      if (error || !data) {
         return NextResponse.json({ error: "Failed to mark done" }, { status: 500 });
       }
       await logAudit({
@@ -118,6 +147,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
+    // ── get_analytics ─────────────────────────────────────────────────────
     case "get_analytics": {
       const today = format(new Date(), "yyyy-MM-dd");
       const { data: completed } = await supabase
@@ -134,7 +164,7 @@ export async function POST(request: Request) {
           const end = new Date(row.completed_at!).getTime();
           return sum + (end - start) / 60000;
         }, 0);
-        avgMinutes = Math.round(total / completed.length);
+        avgMinutes = Math.round(total / completed.length) || 10;
       }
 
       const { count: waiting } = await supabase
@@ -143,12 +173,47 @@ export async function POST(request: Request) {
         .eq("status", "waiting")
         .gte("created_at", `${today}T00:00:00`);
 
+      return NextResponse.json({
+        success: true,
+        avg_service_time: avgMinutes,
+        served_today: completed?.length ?? 0,
+        waiting_count: waiting ?? 0,
+      });
+    }
+
+    // ── get_report ────────────────────────────────────────────────────────
+    case "get_report": {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const { data: completed } = await supabase
+        .from("queue")
+        .select("called_at, completed_at")
+        .eq("status", "completed")
+        .gte("called_at", `${today}T00:00:00`)
+        .not("completed_at", "is", null);
+
+      let avgMinutes = 10;
+      if (completed?.length) {
+        const total = completed.reduce((sum, row) => {
+          const start = new Date(row.called_at!).getTime();
+          const end = new Date(row.completed_at!).getTime();
+          return sum + (end - start) / 60000;
+        }, 0);
+        avgMinutes = Math.round(total / completed.length) || 10;
+      }
+
+      const { count: waiting } = await supabase
+        .from("queue")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "waiting")
+        .gte("created_at", `${today}T00:00:00`);
+
+      // 7-day history
       const chartDays = Array.from({ length: 7 }, (_, i) => {
         const d = subDays(new Date(), 6 - i);
         return format(d, "yyyy-MM-dd");
       });
 
-      const chartData = await Promise.all(
+      const history = await Promise.all(
         chartDays.map(async (day) => {
           const { count } = await supabase
             .from("queue")
@@ -165,10 +230,11 @@ export async function POST(request: Request) {
         avg_service_time: avgMinutes,
         served_today: completed?.length ?? 0,
         waiting_count: waiting ?? 0,
-        chart: chartData,
+        history,
       });
     }
 
+    // ── reset_daily ───────────────────────────────────────────────────────
     case "reset_daily": {
       if (auth.session.staff.role !== "admin") {
         return NextResponse.json({ error: "Admin only" }, { status: 403 });
@@ -180,10 +246,79 @@ export async function POST(request: Request) {
         .eq("status", "waiting")
         .gte("created_at", `${today}T00:00:00`)
         .select("id");
+      await logAudit({
+        userId,
+        action: "queue_reset_daily",
+        tableName: "queue",
+        recordId: null,
+        ipAddress: ip,
+      });
       return NextResponse.json({ success: true, cancelled: data?.length ?? 0 });
     }
 
+    // ── purge_history ─────────────────────────────────────────────────────
+    case "purge_history": {
+      if (auth.session.staff.role !== "admin") {
+        return NextResponse.json({ error: "Admin only" }, { status: 403 });
+      }
+      const today = format(new Date(), "yyyy-MM-dd");
+
+      // Delete completed/cancelled queue rows from prior days
+      const { data: deletedQueue } = await supabase
+        .from("queue")
+        .delete()
+        .in("status", ["completed", "cancelled"])
+        .lt("created_at", `${today}T00:00:00`)
+        .select("id");
+
+      const queueDeleted = deletedQueue?.length ?? 0;
+
+      // Delete orphan checkin rows (no linked queue row) from prior days
+      // that are completed/cancelled
+      const { data: orphanCheckins } = await supabase
+        .from("checkins")
+        .select("checkin_id")
+        .in("status", ["completed", "cancelled"])
+        .lt("created_at", `${today}T00:00:00`);
+
+      let checkinsDeleted = 0;
+      if (orphanCheckins?.length) {
+        const checkinIds = orphanCheckins.map((c) => c.checkin_id);
+        // Only delete checkins that have no associated queue rows
+        const { data: queueLinked } = await supabase
+          .from("queue")
+          .select("checkin_id")
+          .in("checkin_id", checkinIds);
+
+        const linkedIds = new Set(queueLinked?.map((q) => q.checkin_id));
+        const toDelete = checkinIds.filter((id) => !linkedIds.has(id));
+
+        if (toDelete.length) {
+          const { data: deleted } = await supabase
+            .from("checkins")
+            .delete()
+            .in("checkin_id", toDelete)
+            .select("checkin_id");
+          checkinsDeleted = deleted?.length ?? 0;
+        }
+      }
+
+      await logAudit({
+        userId,
+        action: "purge_history",
+        tableName: "queue",
+        recordId: null,
+        ipAddress: ip,
+      });
+
+      return NextResponse.json({
+        success: true,
+        queue_deleted: queueDeleted,
+        checkins_deleted: checkinsDeleted,
+      });
+    }
+
     default:
-      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid or missing action" }, { status: 400 });
   }
 }

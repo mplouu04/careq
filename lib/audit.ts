@@ -4,7 +4,7 @@ export async function logAudit(params: {
   userId?: string | null;
   action: string;
   tableName: string;
-  recordId?: number | null;
+  recordId?: string | number | null;
   oldValues?: unknown;
   newValues?: unknown;
   ipAddress?: string | null;

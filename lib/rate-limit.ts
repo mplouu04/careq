@@ -1,14 +1,21 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const WINDOW_MS = 60_000;
-const MAX_REQUESTS = 10;
-
+/**
+ * Rate-limit check matching legacy pqms_rate_limit() behaviour.
+ * @param action  action key (e.g. "patient_register")
+ * @param ip      client IP
+ * @param max     maximum requests in window (default 10)
+ * @param windowSeconds  sliding window in seconds (default 60)
+ * @returns true if within limit, false if exceeded
+ */
 export async function checkRateLimit(
   action: string,
-  ip: string
+  ip: string,
+  max = 10,
+  windowSeconds = 60
 ): Promise<boolean> {
   const supabase = createAdminClient();
-  const windowStart = new Date(Date.now() - WINDOW_MS).toISOString();
+  const windowStart = new Date(Date.now() - windowSeconds * 1000).toISOString();
 
   const { data: existing } = await supabase
     .from("rate_limits")
@@ -16,6 +23,7 @@ export async function checkRateLimit(
     .eq("action", action)
     .eq("ip_address", ip)
     .gte("window_start", windowStart)
+    .order("window_start", { ascending: false })
     .maybeSingle();
 
   if (!existing) {
@@ -25,10 +33,17 @@ export async function checkRateLimit(
       request_count: 1,
       window_start: new Date().toISOString(),
     });
+    // Clean up old rows for this action+ip
+    await supabase
+      .from("rate_limits")
+      .delete()
+      .eq("action", action)
+      .eq("ip_address", ip)
+      .lt("window_start", windowStart);
     return true;
   }
 
-  if (existing.request_count >= MAX_REQUESTS) {
+  if (existing.request_count >= max) {
     return false;
   }
 
