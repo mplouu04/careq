@@ -20,23 +20,29 @@ export function LoginForm() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const fd = new FormData(e.currentTarget);
-    const supabase = createClient();
-    const { error: authError } = await supabase.auth.signInWithPassword({
-      email: fd.get("email") as string,
-      password: fd.get("password") as string,
-    });
-    setLoading(false);
-    if (authError) {
-      if (authError.message.toLowerCase().includes("invalid")) {
-        setError("Password is incorrect or user not found.");
-      } else {
-        setError(authError.message);
+    try {
+      const fd = new FormData(e.currentTarget);
+      const supabase = createClient();
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: fd.get("email") as string,
+        password: fd.get("password") as string,
+      });
+      if (authError) {
+        if (authError.message.toLowerCase().includes("invalid")) {
+          setError("Password is incorrect or user not found.");
+        } else {
+          setError(authError.message);
+        }
+        return;
       }
-      return;
+      router.push(redirect);
+      router.refresh();
+    } catch (err) {
+      setError("Unable to connect. Please check your connection and try again.");
+      console.error("Login error:", err);
+    } finally {
+      setLoading(false);
     }
-    router.push(redirect);
-    router.refresh();
   }
 
   return (
