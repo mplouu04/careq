@@ -41,6 +41,15 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
 
+    const dobRaw = String(fd.get("dob") ?? "");
+    const dobYear = parseInt(dobRaw.slice(0, 4), 10);
+    const currentYear = new Date().getFullYear();
+    if (!dobRaw || isNaN(dobYear) || dobYear < 1900 || dobYear > currentYear) {
+      setError(`Date of birth must be a valid date between 1900 and ${currentYear}.`);
+      setLoading(false);
+      return;
+    }
+
     const res = await fetch("/api/patients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -127,7 +136,15 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                 <label htmlFor="dob" className={labelCls}>
                   Date of Birth <span className="text-red-500">*</span>
                 </label>
-                <input id="dob" name="dob" type="date" required className={inputCls} />
+                <input
+                  id="dob"
+                  name="dob"
+                  type="date"
+                  required
+                  min="1900-01-01"
+                  max={new Date().toISOString().slice(0, 10)}
+                  className={inputCls}
+                />
               </div>
               <div>
                 <label htmlFor="gender" className={labelCls}>

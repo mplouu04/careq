@@ -146,6 +146,17 @@ export async function POST(request: Request) {
     );
   }
 
+  // DOB: must be YYYY-MM-DD with year between 1900 and current year
+  const dob = sanitize(body.dob, 10);
+  const dobYear = parseInt(dob.slice(0, 4), 10);
+  const currentYear = new Date().getFullYear();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dobYear < 1900 || dobYear > currentYear) {
+    return NextResponse.json(
+      { success: false, error: "Invalid date of birth." },
+      { status: 400 }
+    );
+  }
+
   // Sanitize name/address fields
   const firstName = sanitize(body.firstName, 100);
   const lastName = sanitize(body.lastName, 100);
@@ -162,7 +173,7 @@ export async function POST(request: Request) {
   const existing = await resolveExistingPatient({
     firstName,
     lastName,
-    dob: body.dob,
+    dob,
     phoneNorm: phoneDigits,
     emailNorm,
   });
@@ -184,7 +195,7 @@ export async function POST(request: Request) {
     .insert({
       first_name: firstName,
       last_name: lastName,
-      date_of_birth: body.dob,
+      date_of_birth: dob,
       gender: body.gender,
       phone: phoneDigits,
       phone_normalized: phoneDigits,
