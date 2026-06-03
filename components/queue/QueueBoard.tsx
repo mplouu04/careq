@@ -63,9 +63,13 @@ export function QueueBoard() {
     const channel = supabase
       .channel("queue-board")
       .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => load())
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          // Realtime unavailable — 3s polling continues as fallback
+        }
+      });
 
-    const interval = setInterval(load, 5000);
+    const interval = setInterval(load, 3000);
     const clock = setInterval(() => setNow(new Date()), 1000);
 
     return () => {

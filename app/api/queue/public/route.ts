@@ -20,6 +20,7 @@ export async function GET() {
     .from("queue")
     .select(
       `id, queue_number, status, room_id, skip_count, called_at,
+       called_by_staff:called_by(first_name, last_name),
        checkins!inner(
          checkin_id,
          patients(first_name, last_name),
@@ -72,18 +73,29 @@ export async function GET() {
       | null
       | undefined;
 
-    const doctorRaw = checkin?.staff;
-    const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
+    // For in_progress entries use the doctor who actually called the patient (called_by).
+    // For waiting entries fall back to the appointment-assigned doctor from the checkin.
+    const calledByRaw = (item as Record<string, unknown>).called_by_staff;
+    const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
       | { first_name: string; last_name: string }
       | null
       | undefined;
+
+    const checkinDoctorRaw = checkin?.staff;
+    const checkinDoctor = (Array.isArray(checkinDoctorRaw) ? checkinDoctorRaw[0] : checkinDoctorRaw) as
+      | { first_name: string; last_name: string }
+      | null
+      | undefined;
+
+    const doctorSource =
+      item.status === "in_progress" && calledBy ? calledBy : checkinDoctor;
 
     return {
       id: item.queue_number,
       queueId: item.id,
       name: patient ? `${patient.first_name} ${patient.last_name}` : "",
-      doctor: doctor
-        ? `Dr. ${doctor.first_name} ${doctor.last_name}`
+      doctor: doctorSource
+        ? `Dr. ${doctorSource.first_name} ${doctorSource.last_name}`
         : "",
       room: item.room_id ?? "",
       reason: apptType?.name ?? "",

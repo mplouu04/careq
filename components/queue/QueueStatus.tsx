@@ -67,8 +67,12 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     const channel = supabase
       .channel("queue-status-" + refNumber)
       .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => load())
-      .subscribe();
-    const interval = setInterval(load, 5000);
+      .subscribe((status) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          // Realtime unavailable — 3s polling continues as fallback
+        }
+      });
+    const interval = setInterval(load, 3000);
     return () => {
       supabase.removeChannel(channel);
       clearInterval(interval);

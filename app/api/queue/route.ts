@@ -47,6 +47,7 @@ export async function GET(request: Request) {
   // ── Public single-entry lookup ─────────────────────────────────────────────
   if (ref) {
     const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+         called_by_staff:called_by(first_name, last_name),
          checkins!inner(
            checkin_id, reference_number, reason, type_id,
            patients(first_name, last_name),
@@ -107,11 +108,20 @@ export async function GET(request: Request) {
       }
     }
 
+    // Resolve calling doctor and room from queue.called_by / queue.room_id
+    const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
+    const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
+      | { first_name: string; last_name: string }
+      | null
+      | undefined;
+
     return NextResponse.json({
       success: true,
       queue: entry,
       position,
       est_wait_minutes: estWaitMinutes,
+      doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
+      room: entry.room_id ? String(entry.room_id) : "",
     });
   }
 
