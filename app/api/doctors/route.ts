@@ -9,13 +9,13 @@ export async function GET() {
     .from("staff")
     .select("id, first_name, last_name")
     .eq("role", "doctor")
-    .eq("is_active", true)
+    .neq("is_active", false)
     .order("last_name");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   return NextResponse.json({ success: true, doctors: data ?? [] }, {
-    headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=300" },
+    headers: { "Cache-Control": "no-store" },
   });
 }
