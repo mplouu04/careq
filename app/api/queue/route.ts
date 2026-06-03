@@ -46,20 +46,40 @@ export async function GET(request: Request) {
 
   // ── Public single-entry lookup ─────────────────────────────────────────────
   if (ref) {
-    const { data: entry } = await supabase
-      .from("queue")
-      .select(
-        `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+    const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
          checkins!inner(
            checkin_id, reference_number, reason, type_id,
            patients(first_name, last_name),
            appointment_types(name),
            staff:doctor_id(first_name, last_name)
-         )`
-      )
-      .or(`queue_number.eq.${ref},checkins.reference_number.eq.${ref}`)
+         )`;
+
+    // First try direct queue_number match (covers WALK-N / APPT-N from check-in redirects)
+    let { data: entry } = await supabase
+      .from("queue")
+      .select(queueSelect)
+      .eq("queue_number", ref)
       .gte("created_at", `${today}T00:00:00`)
       .maybeSingle();
+
+    // Fallback: look up by the checkin reference_number (covers appointment slip refs)
+    if (!entry) {
+      const { data: checkin } = await supabase
+        .from("checkins")
+        .select("checkin_id")
+        .eq("reference_number", ref)
+        .maybeSingle();
+
+      if (checkin) {
+        const { data: entryByCheckin } = await supabase
+          .from("queue")
+          .select(queueSelect)
+          .eq("checkin_id", checkin.checkin_id)
+          .gte("created_at", `${today}T00:00:00`)
+          .maybeSingle();
+        entry = entryByCheckin;
+      }
+    }
 
     if (!entry) {
       return NextResponse.json({ success: false, error: "Queue entry not found" });
