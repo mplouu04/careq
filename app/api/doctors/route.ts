@@ -15,5 +15,7 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ success: true, doctors: data ?? [] });
+  return NextResponse.json({ success: true, doctors: data ?? [] }, {
+    headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=300" },
+  });
 }

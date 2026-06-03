@@ -8,7 +8,7 @@ export default function HomePage() {
         <div className="flex items-center min-h-[calc(100vh-3.5rem)]">
           {/* Left column */}
           <div className="w-full md:w-1/2 py-12 text-center md:text-left">
-            <h1 className="text-5xl font-bold mb-3 text-gray-800">CAREQ</h1>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 text-gray-800">CAREQ</h1>
             <p className="text-lg text-gray-600 mb-8 max-w-lg mx-auto md:mx-0">
               Streamline patient flow, reduce wait times, and improve clinic
               efficiency with our digital queue management solution.

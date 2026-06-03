@@ -95,7 +95,7 @@ export function MyAppointments() {
           <p className="text-gray-500 text-sm mt-0.5">Enter your phone and date of birth</p>
         </div>
         <div className="px-6 py-5">
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
               <input

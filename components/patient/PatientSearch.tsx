@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
 type Patient = {
   id: string;
@@ -30,6 +31,7 @@ export function PatientSearch() {
   } | null>(null);
   const [verifyInput, setVerifyInput] = useState("");
   const [verifyError, setVerifyError] = useState("");
+  const verifyModalRef = useFocusTrap(!!verifyModal, () => setVerifyModal(null));
 
   async function search(e?: React.FormEvent) {
     if (e) e.preventDefault();
@@ -91,7 +93,7 @@ export function PatientSearch() {
 
         <div className="px-6 py-5">
           <form onSubmit={search}>
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Search Term</label>
                 <input
@@ -153,8 +155,8 @@ export function PatientSearch() {
               ) : (
                 <div className="space-y-3">
                   {patients.map((p) => (
-                    <div key={p.id} className="careq-card border border-gray-100 p-4 flex items-center justify-between gap-4">
-                      <div className="min-w-0">
+                    <div key={p.id} className="careq-card border border-gray-100 p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
                         <p className="font-semibold text-gray-800">
                           {p.first_name} {p.last_name}
                         </p>
@@ -165,16 +167,16 @@ export function PatientSearch() {
                           {p.phone} &nbsp;·&nbsp; {p.address}
                         </p>
                       </div>
-                      <div className="flex gap-2 flex-shrink-0">
+                      <div className="flex gap-2 flex-shrink-0 w-full sm:w-auto">
                         <button
                           onClick={() => navigate(p, "appointments")}
-                          className="text-sm border border-[#0d6efd] text-[#0d6efd] hover:bg-[#0d6efd] hover:text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+                          className="flex-1 sm:flex-none text-sm border border-[#0d6efd] text-[#0d6efd] hover:bg-[#0d6efd] hover:text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                         >
                           Book Appointment
                         </button>
                         <button
                           onClick={() => navigate(p, "checkin")}
-                          className="text-sm bg-[#0d6efd] hover:bg-[#0b5ed7] text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+                          className="flex-1 sm:flex-none text-sm bg-[#0d6efd] hover:bg-[#0b5ed7] text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                         >
                           Check In
                         </button>
@@ -198,8 +200,8 @@ export function PatientSearch() {
       {/* Phone verification modal */}
       {verifyModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h5 className="font-bold text-gray-800 mb-3">Verify Identity</h5>
+          <div ref={verifyModalRef} role="dialog" aria-modal="true" aria-labelledby="verify-modal-title" className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <h5 id="verify-modal-title" className="font-bold text-gray-800 mb-3">Verify Identity</h5>
             <p className="text-sm text-gray-600 mb-4">
               Multiple matches found. Enter the last <strong>4 digits</strong> of{" "}
               <strong>{verifyModal.patient.first_name} {verifyModal.patient.last_name}&apos;s</strong> phone number to confirm.

@@ -82,14 +82,14 @@ export function QueueBoard() {
   const current = nowServing[0] ?? null;
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: "#f8f9fa" }}>
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden" style={{ backgroundColor: "#f8f9fa" }}>
       {loadError && (
         <div className="absolute top-0 left-0 right-0 z-10 bg-red-600 text-white text-center text-sm py-2">
           Unable to load queue data. Retrying...
         </div>
       )}
       {/* Left panel — NOW SERVING (blue) */}
-      <div className="current-patient-section w-2/3 flex flex-col p-6">
+      <div className="current-patient-section w-full lg:w-2/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto">
         {/* Header */}
         <div className="text-center mb-6 flex items-center justify-between">
           <div>
@@ -135,7 +135,7 @@ export function QueueBoard() {
       </div>
 
       {/* Right panel — UPCOMING PATIENTS (white) */}
-      <div className="upcoming-queue-section w-1/3 flex flex-col p-6">
+      <div className="upcoming-queue-section w-full lg:w-1/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto">
         <h4 className="text-xl font-bold text-center text-gray-800 mb-6 tracking-wide">
           UPCOMING PATIENTS
         </h4>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,6 +71,7 @@ export function AdminPanel() {
   const [types, setTypes] = useState<ApptType[]>([]);
   const [settings, setSettings] = useState<DisplayScreen[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Edit staff modal
   const [editStaff, setEditStaff] = useState<StaffRow | null>(null);
@@ -76,12 +79,14 @@ export function AdminPanel() {
   const [editLastName, setEditLastName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
+  const editStaffModalRef = useFocusTrap(!!editStaff, () => setEditStaff(null));
 
   // Edit type modal
   const [editType, setEditType] = useState<ApptType | null>(null);
   const [editTypeName, setEditTypeName] = useState("");
   const [editTypeDuration, setEditTypeDuration] = useState("");
   const [editTypeDesc, setEditTypeDesc] = useState("");
+  const editTypeModalRef = useFocusTrap(!!editType, () => setEditType(null));
 
   const load = useCallback(async () => {
     try {
@@ -97,6 +102,8 @@ export function AdminPanel() {
       setAppointments(a.appointments ?? []);
     } catch {
       toast.error("Failed to load admin data. Please refresh.");
+    } finally {
+      setInitialLoading(false);
     }
   }, []);
 
@@ -292,6 +299,19 @@ export function AdminPanel() {
     const data = await res.json();
     if (!res.ok) { toast.error(data.error ?? "Failed"); return; }
     toast.success(`Purged: ${data.queue_deleted} queue rows, ${data.checkins_deleted} orphan checkins`);
+  }
+
+  if (initialLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-10 w-full max-w-lg" />
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -685,9 +705,9 @@ export function AdminPanel() {
       {/* ── Edit Staff Modal ─────────────────────────────────────────────── */}
       {editStaff && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-            <h2 className="text-lg font-semibold">Edit Staff</h2>
-            <div className="grid grid-cols-2 gap-4">
+          <div ref={editStaffModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-staff-title" className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+            <h2 id="edit-staff-title" className="text-lg font-semibold">Edit Staff</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label>First Name</Label>
                 <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
@@ -729,8 +749,8 @@ export function AdminPanel() {
       {/* ── Edit Appointment Type Modal ─────────────────────────────────── */}
       {editType && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full space-y-4">
-            <h2 className="text-lg font-semibold">Edit Appointment Type</h2>
+          <div ref={editTypeModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-type-title" className="bg-white rounded-lg p-6 max-w-sm w-full space-y-4">
+            <h2 id="edit-type-title" className="text-lg font-semibold">Edit Appointment Type</h2>
             <div>
               <Label>Name</Label>
               <Input value={editTypeName} onChange={(e) => setEditTypeName(e.target.value)} />

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { normalizePhone } from "@/lib/phone";
+import { sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -145,10 +146,22 @@ export async function POST(request: Request) {
     );
   }
 
+  // Sanitize name/address fields
+  const firstName = sanitize(body.firstName, 100);
+  const lastName = sanitize(body.lastName, 100);
+  const address = sanitize(body.address, 255);
+
+  if (!firstName || !lastName) {
+    return NextResponse.json(
+      { success: false, error: "First and last name are required." },
+      { status: 400 }
+    );
+  }
+
   // Duplicate patient detection
   const existing = await resolveExistingPatient({
-    firstName: body.firstName,
-    lastName: body.lastName,
+    firstName,
+    lastName,
     dob: body.dob,
     phoneNorm: phoneDigits,
     emailNorm,
@@ -169,14 +182,14 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("patients")
     .insert({
-      first_name: body.firstName,
-      last_name: body.lastName,
+      first_name: firstName,
+      last_name: lastName,
       date_of_birth: body.dob,
       gender: body.gender,
       phone: phoneDigits,
       phone_normalized: phoneDigits,
       email: emailNorm,
-      address: body.address,
+      address,
       consent: Boolean(body.consent),
     })
     .select("id")

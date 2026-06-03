@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
+import { sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,10 @@ export async function GET() {
   }
 
   const { data } = await query;
-  return NextResponse.json({ success: true, types: data ?? [] });
+  const cacheHeader = staffMode
+    ? { "Cache-Control": "no-store" }
+    : { "Cache-Control": "s-maxage=60, stale-while-revalidate=300" };
+  return NextResponse.json({ success: true, types: data ?? [] }, { headers: cacheHeader });
 }
 
 /**
@@ -49,7 +53,8 @@ export async function POST(request: Request) {
 
   // ── Add ──────────────────────────────────────────────────────────────────
   if (body.action === "add") {
-    if (!body.name || !body.duration || Number(body.duration) < 1) {
+    const name = sanitize(body.name, 100);
+    if (!name || !body.duration || Number(body.duration) < 1) {
       return NextResponse.json(
         { error: "name and duration (≥1) are required" },
         { status: 400 }
@@ -58,9 +63,9 @@ export async function POST(request: Request) {
     const { data, error } = await supabase
       .from("appointment_types")
       .insert({
-        name: body.name,
+        name,
         duration: Number(body.duration),
-        description: body.description ?? null,
+        description: sanitize(body.description, 500) || null,
         is_active: true,
       })
       .select("id")
@@ -92,7 +97,8 @@ export async function POST(request: Request) {
 
   // ── Update ────────────────────────────────────────────────────────────────
   if (body.action === "update") {
-    if (!body.id || !body.name || !body.duration || Number(body.duration) < 1) {
+    const updName = sanitize(body.name, 100);
+    if (!body.id || !updName || !body.duration || Number(body.duration) < 1) {
       return NextResponse.json(
         { error: "id, name and duration (≥1) are required" },
         { status: 400 }
@@ -101,9 +107,9 @@ export async function POST(request: Request) {
     const { error } = await supabase
       .from("appointment_types")
       .update({
-        name: body.name,
+        name: updName,
         duration: Number(body.duration),
-        description: body.description ?? null,
+        description: sanitize(body.description, 500) || null,
       })
       .eq("id", body.id);
     if (error) {

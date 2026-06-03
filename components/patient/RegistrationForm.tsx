@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
 
 export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const router = useRouter();
@@ -15,6 +16,8 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     message: string;
   } | null>(null);
   const [successModal, setSuccessModal] = useState<{ patientId: string } | null>(null);
+  const matchedModalRef = useFocusTrap(!!matchedModal, () => setMatchedModal(null));
+  const successModalRef = useFocusTrap(!!successModal, () => setSuccessModal(null));
 
   function navigateAfterRegister(patientId: string) {
     if (redirectTo) {
@@ -103,7 +106,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
 
           <form onSubmit={onSubmit}>
             {/* Name row */}
-            <div className="grid grid-cols-2 gap-4 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
               <div>
                 <label htmlFor="firstName" className={labelCls}>
                   First Name <span className="text-red-500">*</span>
@@ -119,7 +122,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
             </div>
 
             {/* DOB / Gender row */}
-            <div className="grid grid-cols-2 gap-4 mb-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
               <div>
                 <label htmlFor="dob" className={labelCls}>
                   Date of Birth <span className="text-red-500">*</span>
@@ -219,12 +222,12 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       {/* Profile match modal */}
       {matchedModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full shadow-xl overflow-hidden" style={{ border: "2px solid #0d6efd" }}>
+          <div ref={matchedModalRef} role="dialog" aria-modal="true" aria-labelledby="matched-modal-title" className="bg-white rounded-xl max-w-md w-full shadow-xl overflow-hidden" style={{ border: "2px solid #0d6efd" }}>
             <div className="px-5 py-4 flex items-center gap-2" style={{ backgroundColor: "rgba(13,110,253,0.08)" }}>
               <svg className="w-5 h-5 text-[#0d6efd]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-              <h5 className="font-bold text-gray-800">Profile already on file</h5>
+              <h5 id="matched-modal-title" className="font-bold text-gray-800">Profile already on file</h5>
             </div>
             <div className="px-5 py-4">
               <p className="text-sm text-gray-600 mb-2">{matchedModal.message}</p>
@@ -259,10 +262,10 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       {/* Registration success modal */}
       {successModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full shadow-xl overflow-hidden">
+          <div ref={successModalRef} role="dialog" aria-modal="true" aria-labelledby="success-modal-title" className="bg-white rounded-xl max-w-md w-full shadow-xl overflow-hidden">
             <div className="px-5 pt-4 pb-0 flex justify-end">
-              <button onClick={() => setSuccessModal(null)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <button onClick={() => setSuccessModal(null)} aria-label="Close" className="text-gray-400 hover:text-gray-600">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -273,7 +276,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <h4 className="text-xl font-bold text-gray-800 mb-1">Registration Complete!</h4>
+              <h4 id="success-modal-title" className="text-xl font-bold text-gray-800 mb-1">Registration Complete!</h4>
               <p className="text-gray-500 text-sm mb-4">Thank you for registering with our clinic.</p>
               <div className="text-left p-3 rounded-lg text-sm mb-2" style={{ backgroundColor: "#d1ecf1", color: "#0c5460", border: "1px solid #bee5eb" }}>
                 <p className="font-semibold mb-1">

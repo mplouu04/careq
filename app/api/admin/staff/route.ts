@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/rate-limit";
 import { STAFF_ROLES } from "@/lib/constants";
+import { sanitize, isValidEmail } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -121,16 +122,30 @@ export async function POST(request: Request) {
 
   // ── Update staff details ──────────────────────────────────────────────────
   if (body.action === "update") {
-    const { id, firstName, lastName, email, role } = body;
-    if (!id || !firstName || !lastName || !email || !role) {
+    const id = sanitize(body.id, 50);
+    const firstName = sanitize(body.firstName, 100);
+    const lastName = sanitize(body.lastName, 100);
+    const emailRaw = sanitize(body.email, 254).toLowerCase();
+    const role = sanitize(body.role, 30).toLowerCase();
+
+    if (!id || !firstName || !lastName || !emailRaw || !role) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+    if (!isValidEmail(emailRaw)) {
+      return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+    }
+    if (!(STAFF_ROLES as readonly string[]).includes(role)) {
+      return NextResponse.json(
+        { error: `Invalid role. Must be one of: ${STAFF_ROLES.join(", ")}` },
+        { status: 400 }
+      );
     }
 
     // Check email uniqueness (exclude current staff)
     const { data: dup } = await supabase
       .from("staff")
       .select("id")
-      .eq("email", email)
+      .eq("email", emailRaw)
       .neq("id", id)
       .maybeSingle();
     if (dup) {
@@ -145,7 +160,7 @@ export async function POST(request: Request) {
       .update({
         first_name: firstName,
         last_name: lastName,
-        email,
+        email: emailRaw,
         role,
       })
       .eq("id", id);

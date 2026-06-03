@@ -53,10 +53,12 @@ export function LoginForm() {
     <form onSubmit={login}>
       {error && (
         <div
+          id="login-error"
+          role="alert"
           className="mb-4 p-3 rounded text-sm flex items-center gap-2"
           style={{ backgroundColor: "#f8d7da", color: "#842029", border: "1px solid #f5c2c7" }}
         >
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg aria-hidden="true" className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           {error}
@@ -76,6 +78,7 @@ export function LoginForm() {
           autoComplete="email"
           className="careq-input"
           placeholder="you@example.com"
+          aria-describedby={error ? "login-error" : undefined}
         />
       </div>
 

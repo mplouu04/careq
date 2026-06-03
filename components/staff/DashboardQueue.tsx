@@ -1,19 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
-import { Bar } from "react-chartjs-2";
-// ChartJS type is used only for registration
+import dynamic from "next/dynamic";
+import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
+
+// Lazy-load Chart.js — keeps it out of the initial dashboard bundle (~200 KB saved)
+const Bar = dynamic(
+  () =>
+    import("react-chartjs-2").then(async (m) => {
+      const { Chart, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } =
+        await import("chart.js");
+      Chart.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+      return m.Bar;
+    }),
+  { ssr: false }
+);
 
 import {
   Select,
@@ -26,16 +27,6 @@ import { toast } from "sonner";
 import type { StaffProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/client";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend
-);
 
 type QueueWaiting = {
   id: number;
@@ -82,6 +73,8 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [chartData, setChartData] = useState<{ date: string; served: number; avg_time?: number }[]>([]);
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
+  const callModalRef = useFocusTrap(callModalOpen, () => setCallModalOpen(false));
+  const recallModalRef = useFocusTrap(!!recallModal, () => setRecallModal(null));
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
 
@@ -198,7 +191,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   return (
     <div>
       {/* Page header row */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Today&apos;s Queue</h2>
           <p className="text-gray-500 text-sm">{today}</p>
@@ -338,7 +331,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         </div>
         <div className="p-4">
           {/* Stats row */}
-          <div className="grid grid-cols-3 text-center mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 text-center mb-4">
             <div className="border-r border-gray-100">
               <div className="analytics-value">{stats.avg} min</div>
               <div className="analytics-label">Avg Service Time</div>
@@ -385,11 +378,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       {/* Call Next Patient Modal */}
       {callModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+          <div ref={callModalRef} role="dialog" aria-modal="true" aria-labelledby="call-modal-title" className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h5 className="font-bold text-gray-800">Call Next Patient</h5>
-              <button onClick={() => setCallModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h5 id="call-modal-title" className="font-bold text-gray-800">Call Next Patient</h5>
+              <button onClick={() => setCallModalOpen(false)} aria-label="Close" className="text-gray-400 hover:text-gray-600">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -460,11 +453,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       {/* Recall Modal */}
       {recallModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+          <div ref={recallModalRef} role="dialog" aria-modal="true" aria-labelledby="recall-modal-title" className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
             <div className="flex items-center justify-between mb-4">
-              <h5 className="font-bold text-gray-800">Recall Patient</h5>
-              <button onClick={() => setRecallModal(null)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <h5 id="recall-modal-title" className="font-bold text-gray-800">Recall Patient</h5>
+              <button onClick={() => setRecallModal(null)} aria-label="Close" className="text-gray-400 hover:text-gray-600">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>

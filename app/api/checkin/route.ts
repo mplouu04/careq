@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { CHECKIN_TYPE } from "@/lib/constants";
+import { sanitize, isValidRef } from "@/lib/utils";
 import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +27,17 @@ async function nextQueueNumber(prefix: "APPT" | "WALK"): Promise<string> {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   // Accept both "appointmentID" (legacy) and "reference" param names
-  const ref =
-    searchParams.get("appointmentID") ?? searchParams.get("reference");
+  const ref = sanitize(
+    searchParams.get("appointmentID") ?? searchParams.get("reference"),
+    50
+  );
 
   if (!ref) {
     return NextResponse.json({ error: "Missing appointmentID" }, { status: 400 });
+  }
+
+  if (!isValidRef(ref)) {
+    return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
   }
 
   const supabase = createAdminClient();
@@ -161,13 +168,14 @@ export async function POST(request: Request) {
     const ref = `WALK${format(new Date(), "yyyyMMdd")}${idnumber}`;
     const consent =
       body.termsAgreement === "on" || Boolean(body.termsAgreement) ? true : false;
+    const additionalInfo = sanitize(body.additionalinfo, 500);
 
     const { data: checkin, error: cErr } = await supabase
       .from("checkins")
       .insert({
         patient_id: body.patientId,
         app_type_id: body.appointmentType,
-        reason: body.additionalinfo,
+        reason: additionalInfo,
         consent,
         reference_number: ref,
         type_id: CHECKIN_TYPE.WALK_IN,
