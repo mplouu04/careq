@@ -144,14 +144,14 @@ export function MyAppointments() {
                   <div className="flex justify-between items-start gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-foreground truncate">{a.reference}</p>
-                      <p className="text-body-sm text-muted-foreground">
+                      <p className="text-body-sm text-on-surface-variant">
                         {a.doctor} — {a.type}
                       </p>
                       <p className="text-body-sm text-foreground">
                         {a.date} at {a.time}
                       </p>
                       {a.reason && (
-                        <p className="text-body-sm text-muted-foreground">Reason: {a.reason}</p>
+                        <p className="text-body-sm text-on-surface-variant">Reason: {a.reason}</p>
                       )}
                     </div>
                     <StatusBadge

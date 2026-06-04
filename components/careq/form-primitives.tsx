@@ -4,7 +4,8 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Info } from "lucide-react";
 
-export const formInputClass = "h-11";
+export const formInputClass =
+  "h-11 min-h-11 px-4 text-body-md rounded-lg bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function FormLabel({
   htmlFor,
@@ -16,7 +17,7 @@ export function FormLabel({
   required?: boolean;
 }) {
   return (
-    <Label htmlFor={htmlFor} className="text-body-sm font-medium text-foreground mb-1.5 block">
+    <Label htmlFor={htmlFor} className="text-body-sm font-medium text-on-surface mb-1.5 block">
       {children}
       {required && <span className="text-destructive ml-0.5">*</span>}
     </Label>
@@ -31,7 +32,7 @@ export function FormInput({
 }
 
 const selectClass =
-  "flex h-11 w-full rounded-lg border border-input bg-background px-3 py-2 text-body-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-11 min-h-11 w-full rounded-lg border border-input bg-background px-4 py-2 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function FormSelect({
   className,
@@ -82,9 +83,9 @@ export function CareqCardHeader({
 }) {
   return (
     <div className={cn("px-6 py-4 border-b border-border", className)}>
-      <h3 className="text-headline-sm text-foreground">{title}</h3>
+      <h3 className="text-headline-sm text-on-surface">{title}</h3>
       {description && (
-        <p className="text-body-sm text-muted-foreground mt-0.5">{description}</p>
+        <p className="text-body-sm text-on-surface-variant mt-0.5">{description}</p>
       )}
       {children}
     </div>

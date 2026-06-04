@@ -168,10 +168,10 @@ export function PatientSearch() {
                         <p className="font-semibold text-foreground">
                           {p.first_name} {p.last_name}
                         </p>
-                        <p className="text-body-sm text-muted-foreground">
+                        <p className="text-body-sm text-on-surface-variant">
                           DOB: {p.dob} · {p.gender}
                         </p>
-                        <p className="text-body-sm text-muted-foreground">
+                        <p className="text-body-sm text-on-surface-variant">
                           {p.phone} · {p.address}
                         </p>
                       </div>
@@ -201,7 +201,7 @@ export function PatientSearch() {
         </div>
       </CareqCard>
 
-      <p className="mt-4 text-body-sm text-muted-foreground">
+      <p className="mt-4 text-body-sm text-on-surface-variant">
         New patient?{" "}
         <Link href="/registration" className="text-primary hover:underline font-medium">
           Register here

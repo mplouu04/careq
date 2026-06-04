@@ -9,7 +9,23 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
+      },
       colors: {
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          "container-lowest": "hsl(var(--surface-container-lowest))",
+          "container-low": "hsl(var(--surface-container-low))",
+          container: "hsl(var(--surface-container))",
+          "container-high": "hsl(var(--surface-container-high))",
+          variant: "hsl(var(--surface-variant))",
+        },
+        "on-surface": {
+          DEFAULT: "hsl(var(--on-surface))",
+          variant: "hsl(var(--on-surface-variant))",
+        },
+        "outline-variant": "hsl(var(--outline-variant))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         card: {
@@ -65,6 +81,12 @@ const config: Config = {
         "label-sm": ["12px", { lineHeight: "1.2", fontWeight: "500" }],
       },
       spacing: {
+        xs: "4px",
+        sm: "8px",
+        md: "16px",
+        lg: "24px",
+        xl: "32px",
+        xxl: "48px",
         "margin-mobile": "16px",
         "margin-desktop": "40px",
         gutter: "24px",

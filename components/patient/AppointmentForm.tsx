@@ -139,7 +139,7 @@ export function AppointmentForm() {
             <CheckCircle2 className="w-8 h-8" />
           </div>
           <h4 className="text-headline-sm text-foreground mb-1">Appointment Confirmed!</h4>
-          <p className="text-body-sm text-muted-foreground">
+          <p className="text-body-sm text-on-surface-variant">
             Your appointment has been successfully booked.
           </p>
         </div>
@@ -222,7 +222,7 @@ export function AppointmentForm() {
               min={today}
               max={maxDate}
             />
-            <p className="text-body-sm text-muted-foreground mt-1">
+            <p className="text-body-sm text-on-surface-variant mt-1">
               Weekdays only · Up to 30 days in advance
             </p>
           </div>
@@ -289,7 +289,7 @@ function DetailRow({
 }) {
   return (
     <div className="flex justify-between border-b border-border pb-2 last:border-0">
-      <span className="text-muted-foreground">{label}:</span>
+      <span className="text-on-surface-variant">{label}:</span>
       <strong className={mono ? "font-mono text-foreground" : "text-foreground"}>{value}</strong>
     </div>
   );

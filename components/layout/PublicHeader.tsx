@@ -21,20 +21,20 @@ export function PublicHeader() {
 
   const navLinkClass = (href: string) =>
     cn(
-      "text-body-md font-medium transition-colors pb-0.5",
+      "text-body-md font-medium transition-colors pb-1",
       pathname === href || (href === "/visit" && pathname.startsWith("/checkin"))
         ? "text-primary font-bold border-b-2 border-primary"
-        : "text-muted-foreground hover:text-primary"
+        : "text-on-surface-variant hover:text-primary"
     );
 
   return (
     <header className="careq-navbar sticky top-0 z-50">
       <div className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop flex items-center justify-between h-16">
-        <div className="flex items-center gap-8">
+        <div className="flex items-center gap-xl">
           <Link href="/" className="text-headline-md font-bold text-primary">
             CAREQ
           </Link>
-          <nav className="hidden md:flex items-center gap-6" aria-label="Main">
+          <nav className="hidden md:flex items-center gap-lg" aria-label="Main">
             {NAV_LINKS.map(({ href, label }) => (
               <Link key={href} href={href} className={navLinkClass(href)}>
                 {label}
@@ -43,18 +43,10 @@ export function PublicHeader() {
           </nav>
         </div>
 
-        <div className="hidden sm:flex items-center gap-4">
-          <Link
-            href="/queue"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-body-sm text-muted-foreground hover:text-primary transition-colors"
-          >
-            Queue Board
-          </Link>
+        <div className="hidden sm:flex items-center gap-md">
           <Link
             href="/login"
-            className="text-body-md text-muted-foreground hover:text-primary transition-colors"
+            className="text-body-md text-on-surface-variant hover:text-primary transition-colors"
           >
             Staff Login
           </Link>

@@ -114,7 +114,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
   const themeColor = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-muted/30">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-surface">
       {loadError && (
         <div className="absolute top-0 left-0 right-0 z-10 bg-destructive text-destructive-foreground text-center text-body-sm py-2">
           Unable to load queue data. Retrying...
@@ -147,34 +147,34 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                 <div className="queue-number-lg mb-3" style={{ color: themeColor }}>
                   {current.queue_number ?? current.id}
                 </div>
-                <h3 className="patient-name text-foreground">{current.name || "—"}</h3>
+                <h3 className="patient-name text-on-surface">{current.name || "—"}</h3>
                 <div className="patient-info">
-                  <div className="info-item text-muted-foreground">
+                  <div className="info-item text-on-surface-variant">
                     <User className="w-4 h-4" aria-hidden />
                     <span>{current.doctor || "—"}</span>
                   </div>
-                  <div className="info-item text-muted-foreground">
+                  <div className="info-item text-on-surface-variant">
                     <Home className="w-4 h-4" aria-hidden />
                     <span>{current.room || "—"}</span>
                   </div>
                 </div>
               </>
             ) : (
-              <h3 className="patient-name text-muted-foreground">No Patient Currently Serving</h3>
+              <h3 className="patient-name text-on-surface-variant">No Patient Currently Serving</h3>
             )}
           </div>
         </div>
       </div>
 
-      <div className="upcoming-queue-section w-full lg:w-1/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto bg-card">
-        <h4 className="text-headline-sm font-bold text-center text-foreground mb-6 tracking-wide">
+      <div className="upcoming-queue-section w-full lg:w-1/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto bg-surface-container-lowest">
+        <h4 className="text-headline-sm font-bold text-center text-on-surface mb-6 tracking-wide">
           UPCOMING PATIENTS
         </h4>
         <ul className="upcoming-list">
           {waiting.length === 0 ? (
             <li className="upcoming-item">
               <div className="patient-details">
-                <div className="text-muted-foreground text-body-md">No upcoming patients</div>
+                <div className="text-on-surface-variant text-body-md">No upcoming patients</div>
               </div>
             </li>
           ) : (
@@ -188,7 +188,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                     {q.queue_number ?? q.id}
                   </div>
                   <div className="patient-details">
-                    <div className="font-medium text-foreground">{q.name}</div>
+                    <div className="font-medium text-on-surface">{q.name}</div>
                     <div className="appointment-time mt-1 flex flex-wrap gap-1 items-center">
                       <span className="position-badge">{ordinal(pos)} in line</span>
                       {display.show_wait_time && (
@@ -200,7 +200,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                             "text-label-sm font-semibold px-2 py-0.5 rounded-full uppercase",
                             q.priority === "emergency" && "bg-destructive text-white",
                             q.priority === "high" && "bg-amber-500 text-white",
-                            q.priority === "low" && "bg-muted text-muted-foreground"
+                            q.priority === "low" && "bg-surface-container text-on-surface-variant"
                           )}
                         >
                           {pri}

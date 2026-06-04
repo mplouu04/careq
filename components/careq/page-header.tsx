@@ -22,15 +22,15 @@ export function PageHeader({
       {backHref && (
         <Link
           href={backHref}
-          className="inline-flex items-center gap-1 text-body-sm text-muted-foreground hover:text-primary transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-body-sm text-on-surface-variant hover:text-primary transition-colors mb-4"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
           {backLabel}
         </Link>
       )}
-      <h1 className="text-headline-md text-foreground">{title}</h1>
+      <h1 className="text-headline-md text-on-surface">{title}</h1>
       {subtitle && (
-        <p className="text-body-md text-muted-foreground mt-2 max-w-2xl">{subtitle}</p>
+        <p className="text-body-md text-on-surface-variant mt-2 max-w-2xl">{subtitle}</p>
       )}
     </header>
   );

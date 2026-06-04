@@ -102,7 +102,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
           title="Patient Information"
           description="Please fill out all required fields."
         >
-          <p className="text-body-sm text-muted-foreground mt-2">
+          <p className="text-body-sm text-on-surface-variant mt-2">
             Been here before?{" "}
             <Link href="/patient-search" className="text-primary hover:underline font-medium">
               Find Patient
@@ -187,7 +187,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
 
             <div>
               <FormLabel htmlFor="email">
-                Email <span className="text-muted-foreground font-normal">(optional)</span>
+                Email <span className="text-on-surface-variant font-normal">(optional)</span>
               </FormLabel>
               <FormInput
                 id="email"
@@ -252,7 +252,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
         }
       >
         {matchedModal && (
-          <div className="flex items-start gap-3 rounded-lg bg-primary/5 p-3 text-body-sm text-muted-foreground">
+          <div className="flex items-start gap-3 rounded-lg bg-primary/5 p-3 text-body-sm text-on-surface-variant">
             <User className="h-5 w-5 text-primary shrink-0" />
             <p>
               <strong className="text-foreground">Patient ID:</strong> {matchedModal.patientId}{" "}

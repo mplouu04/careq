@@ -42,16 +42,16 @@ export function StaffHeader({ staff }: { staff: StaffProfile }) {
 
   const linkClass = (href: string) =>
     cn(
-      "text-body-sm font-medium transition-colors px-3 py-1.5 rounded-md",
+      "text-body-md font-medium transition-colors px-3 py-1.5 rounded-lg",
       pathname === href || (href === "/dashboard" && pathname.startsWith("/dashboard"))
-        ? "text-primary bg-primary/10"
-        : "text-muted-foreground hover:text-primary hover:bg-muted/50"
+        ? "text-primary font-semibold bg-primary/10"
+        : "text-on-surface-variant hover:text-primary hover:bg-surface-container-low"
     );
 
   return (
     <header className="careq-navbar sticky top-0 z-50">
       <div className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop flex items-center justify-between h-16">
-        <div className="flex items-center gap-6 flex-1 min-w-0">
+        <div className="flex items-center gap-lg flex-1 min-w-0">
           <Link href="/dashboard" className="text-headline-md font-bold text-primary shrink-0">
             CAREQ
           </Link>
@@ -71,7 +71,7 @@ export function StaffHeader({ staff }: { staff: StaffProfile }) {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-body-sm text-muted-foreground hidden md:inline truncate max-w-[160px]">
+          <span className="text-body-sm text-on-surface-variant hidden md:inline truncate max-w-[160px]">
             {displayName}
           </span>
           <Button

@@ -8,7 +8,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
       <Link
         href="/"
-        className="fixed top-5 left-5 flex items-center gap-1 text-muted-foreground hover:text-primary text-body-sm font-medium transition-colors"
+        className="fixed top-5 left-5 flex items-center gap-1 text-on-surface-variant hover:text-primary text-body-sm font-medium transition-colors"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
         Back to Home

@@ -112,7 +112,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         <CareqCard className="p-6 text-center">
           <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-3" />
           <p className="font-medium text-foreground mb-1">Connection error</p>
-          <p className="text-body-sm text-muted-foreground mb-4">
+          <p className="text-body-sm text-on-surface-variant mb-4">
             Unable to load queue status. Retrying automatically.
           </p>
           <Link href="/status" className="text-primary hover:underline text-body-sm">
@@ -129,7 +129,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         <CareqCard className="p-6 text-center">
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-3" />
           <p className="font-medium text-foreground mb-1">Queue entry not found</p>
-          <p className="text-body-sm text-muted-foreground mb-4">
+          <p className="text-body-sm text-on-surface-variant mb-4">
             <strong>{refNumber}</strong> was not found in today&apos;s queue.
           </p>
           <Link href="/status" className="text-primary hover:underline text-body-sm">
@@ -145,7 +145,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       <div className="max-w-md mx-auto">
         <CareqCard className="p-8 text-center">
           <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3" />
-          <p className="text-muted-foreground">Loading queue status...</p>
+          <p className="text-on-surface-variant">Loading queue status...</p>
         </CareqCard>
       </div>
     );
@@ -241,7 +241,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
             <div className="text-center py-4">
               <CheckCircle2 className="w-16 h-16 text-status-called mx-auto mb-3" />
               <h5 className="text-headline-sm text-foreground mb-1">Visit Completed</h5>
-              <p className="text-body-sm text-muted-foreground mb-4">
+              <p className="text-body-sm text-on-surface-variant mb-4">
                 Your visit has been marked as done. Thank you for coming!
               </p>
               <CareqButton variant="outline" asChild>
@@ -254,7 +254,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
             <div className="text-center py-4">
               <XCircle className="w-16 h-16 text-destructive mx-auto mb-3" />
               <h5 className="text-headline-sm text-foreground mb-1">Queue Entry Cancelled</h5>
-              <p className="text-body-sm text-muted-foreground mb-4">
+              <p className="text-body-sm text-on-surface-variant mb-4">
                 Please approach the front desk if you need assistance.
               </p>
               <CareqButton variant="outline" asChild>
@@ -265,7 +265,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         </div>
 
         {!TERMINAL.includes(queue.status) && (
-          <div className="px-4 pb-3 text-center text-label-sm text-muted-foreground">
+          <div className="px-4 pb-3 text-center text-label-sm text-on-surface-variant">
             Live updates active ·{" "}
             {new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
           </div>

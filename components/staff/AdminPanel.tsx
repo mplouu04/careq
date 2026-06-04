@@ -326,7 +326,7 @@ export function AdminPanel() {
   return (
     <>
       <Tabs defaultValue="staff">
-        <TabsList className="flex flex-wrap h-auto gap-1">
+        <TabsList className="flex flex-wrap h-auto gap-1 bg-surface-container-low p-1 rounded-xl border border-outline-variant">
           <TabsTrigger value="staff">Staff</TabsTrigger>
           <TabsTrigger value="types">Appointment Types</TabsTrigger>
           <TabsTrigger value="display">Display Screens</TabsTrigger>
@@ -336,9 +336,9 @@ export function AdminPanel() {
 
         {/* ── Staff tab ─────────────────────────────────────────────────── */}
         <TabsContent value="staff" className="space-y-6">
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
-              <CardTitle>Staff Accounts</CardTitle>
+              <CardTitle className="text-headline-sm text-on-surface">Staff Accounts</CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <Table>
@@ -397,7 +397,7 @@ export function AdminPanel() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
               <CardTitle>Add New Staff</CardTitle>
             </CardHeader>
@@ -440,7 +440,7 @@ export function AdminPanel() {
 
         {/* ── Appointment Types tab ──────────────────────────────────────── */}
         <TabsContent value="types" className="space-y-6">
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
               <CardTitle>Appointment Types</CardTitle>
             </CardHeader>
@@ -460,7 +460,7 @@ export function AdminPanel() {
                     <TableRow key={t.id}>
                       <TableCell>{t.name}</TableCell>
                       <TableCell>{t.duration} min</TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-on-surface-variant">
                         {t.description ?? "—"}
                       </TableCell>
                       <TableCell>
@@ -498,7 +498,7 @@ export function AdminPanel() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
               <CardTitle>Add Appointment Type</CardTitle>
             </CardHeader>
@@ -534,7 +534,7 @@ export function AdminPanel() {
                       {s.is_active ? "Active" : "Inactive"}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{s.location}</p>
+                  <p className="text-sm text-on-surface-variant">{s.location}</p>
                   <div className="flex items-center gap-2 mt-2">
                     <span
                       className="inline-block w-4 h-4 rounded"
@@ -565,7 +565,7 @@ export function AdminPanel() {
               </Card>
             ))}
           </div>
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
               <CardTitle>Add Display Screen</CardTitle>
             </CardHeader>
@@ -596,7 +596,7 @@ export function AdminPanel() {
 
         {/* ── Appointments tab ───────────────────────────────────────────── */}
         <TabsContent value="appointments">
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
               <CardTitle>Upcoming Appointments</CardTitle>
             </CardHeader>
@@ -685,7 +685,7 @@ export function AdminPanel() {
                     <TableRow>
                       <TableCell
                         colSpan={6}
-                        className="text-center text-muted-foreground"
+                        className="text-center text-on-surface-variant"
                       >
                         No upcoming appointments
                       </TableCell>
@@ -699,12 +699,12 @@ export function AdminPanel() {
 
         {/* ── Data Cleanup tab ───────────────────────────────────────────── */}
         <TabsContent value="data">
-          <Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
             <CardHeader>
               <CardTitle>Data Cleanup</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-on-surface-variant">
                 Purge old completed and cancelled queue records from previous days. This
                 also removes orphaned check-in records with no linked queue entry.
               </p>

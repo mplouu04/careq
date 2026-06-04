@@ -106,7 +106,7 @@ export function LoginForm() {
         )}
       </CareqButton>
 
-      <p className="text-center text-body-sm text-muted-foreground">
+      <p className="text-center text-body-sm text-on-surface-variant">
         New staff account?{" "}
         <span className="font-medium text-foreground">Contact your clinic administrator.</span>
       </p>

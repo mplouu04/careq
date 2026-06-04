@@ -237,8 +237,8 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-headline-md text-foreground">Today&apos;s Queue</h2>
-          <p className="text-body-sm text-muted-foreground">{today}</p>
+          <h2 className="text-headline-md text-on-surface">Today&apos;s Queue</h2>
+          <p className="text-body-sm text-on-surface-variant">{today}</p>
         </div>
         <CareqButton onClick={() => setCallModalOpen(true)} className="gap-2">
           <UserPlus className="h-4 w-4" />
@@ -249,7 +249,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       <div className="grid md:grid-cols-3 gap-5 mb-5">
         <QueueColumn
           title="Waiting Room"
-          headerClass="bg-sky-500 text-white"
+          headerClass="bg-primary text-primary-foreground"
           footer={`Total waiting: ${waiting.length} patients`}
           empty={
             waiting.length === 0 ? (
@@ -276,9 +276,9 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
                       </span>
                     )}
                   </div>
-                  <p className="text-body-sm font-medium text-foreground mt-0.5">{q.name}</p>
+                  <p className="text-body-sm font-medium text-on-surface mt-0.5">{q.name}</p>
                   {q.reason && (
-                    <p className="text-label-sm text-muted-foreground truncate">{q.reason}</p>
+                    <p className="text-label-sm text-on-surface-variant truncate">{q.reason}</p>
                   )}
                 </div>
                 <Button
@@ -297,11 +297,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
 
         <QueueColumn
           title="In Progress"
-          headerClass="bg-amber-400 text-foreground"
+          headerClass="bg-amber-500 text-white"
           footer={`Total in progress: ${inProgress.length} patients`}
           empty={
             inProgress.length === 0 ? (
-              <p className="px-4 py-6 text-body-sm text-muted-foreground text-center">
+              <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
                 No patients in progress
               </p>
             ) : null
@@ -311,9 +311,9 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             <li key={q.queueId} className="px-4 py-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="font-bold text-primary">{q.queue_number ?? q.id}</span>
-                <span className="text-body-sm font-medium text-foreground">{q.name}</span>
+                <span className="text-body-sm font-medium text-on-surface">{q.name}</span>
               </div>
-              <p className="text-label-sm text-muted-foreground mb-2">
+              <p className="text-label-sm text-on-surface-variant mb-2">
                 {q.doctor} · {q.room}
               </p>
               <div className="flex gap-2">
@@ -340,7 +340,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           listClass="max-h-72 overflow-y-auto"
           empty={
             completed.length === 0 ? (
-              <p className="px-4 py-6 text-body-sm text-muted-foreground text-center">
+              <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
                 No completions yet today
               </p>
             ) : null
@@ -351,8 +351,8 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
               key={q.queueId ?? i}
               className="px-4 py-2 flex items-center justify-between gap-2"
             >
-              <span className="font-medium text-foreground">{q.id}</span>
-              <span className="text-body-sm text-muted-foreground truncate">{q.name}</span>
+              <span className="font-medium text-on-surface">{q.id}</span>
+              <span className="text-body-sm text-on-surface-variant truncate">{q.name}</span>
             </li>
           ))}
         </QueueColumn>
@@ -378,7 +378,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           )}
         </div>
         <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 text-center mb-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+          <div className="grid grid-cols-1 sm:grid-cols-3 text-center mb-4 divide-y sm:divide-y-0 sm:divide-x divide-outline-variant">
             <div className="py-3 sm:py-0">
               <div className="analytics-value">{stats.avg} min</div>
               <div className="analytics-label">Avg Service Time</div>
@@ -392,9 +392,9 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
               <div className="analytics-label">Still Waiting</div>
             </div>
           </div>
-          <hr className="mb-3 border-border" />
+          <hr className="mb-3 border-outline-variant" />
           <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-label-sm text-muted-foreground font-semibold uppercase tracking-wide">
+            <span className="text-label-sm text-on-surface-variant font-semibold uppercase tracking-wide">
               Patients Served — Last 7 Days
             </span>
             <Button type="button" variant="outline" size="sm" onClick={loadStats}>
@@ -480,8 +480,8 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             </Select>
           </div>
           {nextWaiting ? (
-            <p className="text-body-sm text-muted-foreground">
-              Next patient: <strong className="text-foreground">{nextWaiting.name}</strong> (
+            <p className="text-body-sm text-on-surface-variant">
+              Next patient: <strong className="text-on-surface">{nextWaiting.name}</strong> (
               {nextWaiting.queue_number ?? nextWaiting.id})
             </p>
           ) : (
@@ -596,11 +596,11 @@ function QueueColumn({
       <div className={cn("px-4 py-3", headerClass)}>
         <h5 className="font-semibold m-0 text-body-md">{title}</h5>
       </div>
-      <ul className={cn("divide-y divide-border flex-1", listClass)}>
+      <ul className={cn("divide-y divide-outline-variant flex-1", listClass)}>
         {empty || children}
       </ul>
-      <div className="px-4 py-2 bg-muted/40 border-t border-border">
-        <small className="text-muted-foreground text-label-sm">{footer}</small>
+      <div className="px-4 py-2 bg-surface-container-low border-t border-outline-variant">
+        <small className="text-on-surface-variant text-label-sm">{footer}</small>
       </div>
     </CareqCard>
   );

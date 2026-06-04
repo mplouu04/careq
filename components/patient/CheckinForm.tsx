@@ -141,14 +141,14 @@ export function CheckinForm() {
       "flex-1 py-3 text-body-sm font-medium transition-colors border-b-2",
       activeTab === tab
         ? "border-primary text-primary bg-card"
-        : "border-transparent text-muted-foreground hover:text-foreground bg-muted/40"
+        : "border-transparent text-on-surface-variant hover:text-foreground bg-muted/40"
     );
 
   return (
     <CareqCard className="overflow-hidden max-w-lg">
       <div className="px-6 py-4 border-b border-border text-center">
         <h3 className="text-headline-sm text-foreground">Welcome to Our Clinic</h3>
-        <p className="text-body-sm text-muted-foreground mt-0.5">
+        <p className="text-body-sm text-on-surface-variant mt-0.5">
           Please complete your check-in process
         </p>
       </div>
@@ -163,7 +163,7 @@ export function CheckinForm() {
           onClick={() => patientId && setActiveTab("walk-in")}
           className={cn(
             tabClass("walk-in"),
-            !patientId && "text-muted-foreground/50 cursor-not-allowed"
+            !patientId && "text-on-surface-variant/50 cursor-not-allowed"
           )}
           title={!patientId ? "Search for your patient record first" : undefined}
         >
@@ -195,7 +195,7 @@ export function CheckinForm() {
                 placeholder="e.g. APT20250630001"
                 className="uppercase"
               />
-              <p className="text-body-sm text-muted-foreground mt-1">
+              <p className="text-body-sm text-on-surface-variant mt-1">
                 Find this on your appointment confirmation slip (it starts with{" "}
                 <strong>APT</strong>). No slip?{" "}
                 <Link href="/visit" className="text-primary hover:underline">
@@ -203,7 +203,7 @@ export function CheckinForm() {
                 </Link>
               </p>
               {lookingUp && (
-                <p className="text-body-sm text-muted-foreground mt-1">Looking up...</p>
+                <p className="text-body-sm text-on-surface-variant mt-1">Looking up...</p>
               )}
               {refLookupError && !lookingUp && (
                 <p className="text-body-sm text-destructive mt-1">{refLookupError}</p>
@@ -294,7 +294,7 @@ export function CheckinForm() {
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground">{label}:</span>
+      <span className="text-on-surface-variant">{label}:</span>
       <strong className="text-foreground text-right">{value}</strong>
     </div>
   );
