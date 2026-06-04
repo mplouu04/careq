@@ -63,8 +63,9 @@ type QueueInProgress = {
 };
 
 type QueueCompleted = {
-  id: number;
+  id: number | string;
   queueId?: number;
+  queue_number?: string;
   name: string;
   time: string;
 };
@@ -78,6 +79,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [waiting, setWaiting] = useState<QueueWaiting[]>([]);
   const [inProgress, setInProgress] = useState<QueueInProgress[]>([]);
   const [completed, setCompleted] = useState<QueueCompleted[]>([]);
+  const [noShow, setNoShow] = useState<QueueCompleted[]>([]);
   const [, setAvgServiceTime] = useState(10);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -100,6 +102,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         setWaiting(data.appointment.waiting ?? []);
         setInProgress(data.appointment.inProgress ?? []);
         setCompleted(data.appointment.completed ?? []);
+        setNoShow(data.appointment.noShow ?? []);
         setAvgServiceTime(data.appointment.avg_service_time ?? 10);
       }
     } catch {
@@ -193,9 +196,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         ? "Patient called!"
         : name === "mark_done"
           ? "Marked as done"
-          : name === "skip"
-            ? "Patient skipped"
-            : "Updated"
+          : name === "mark_no_show"
+            ? data.message ?? "Marked as no-show"
+            : name === "skip"
+              ? "Patient skipped"
+              : "Updated"
     );
     loadQueue();
     loadStats();
@@ -246,7 +251,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         </CareqButton>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-5 mb-5">
+      <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-5 mb-5">
         <QueueColumn
           title="Waiting Room"
           headerClass="bg-primary text-primary-foreground"
@@ -316,7 +321,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
               <p className="text-label-sm text-on-surface-variant mb-2">
                 {q.doctor} · {q.room}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
@@ -324,6 +329,15 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
                   onClick={() => performAction("skip", q.queueId)}
                 >
                   Skip
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-500 text-amber-700 hover:bg-amber-50"
+                  onClick={() => performAction("mark_no_show", q.queueId)}
+                >
+                  No Show
                 </Button>
                 <CareqButton size="sm" onClick={() => performAction("mark_done", q.queueId)}>
                   Mark Done
@@ -353,6 +367,30 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             >
               <span className="font-medium text-on-surface">{q.id}</span>
               <span className="text-body-sm text-on-surface-variant truncate">{q.name}</span>
+            </li>
+          ))}
+        </QueueColumn>
+
+        <QueueColumn
+          title="No Show"
+          headerClass="bg-amber-600 text-white"
+          footer={`No show today: ${noShow.length}`}
+          listClass="max-h-48 overflow-y-auto"
+          empty={
+            noShow.length === 0 ? (
+              <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
+                No no-shows today
+              </p>
+            ) : null
+          }
+        >
+          {noShow.map((q, i) => (
+            <li
+              key={q.queueId ?? i}
+              className="px-4 py-2 flex items-center justify-between gap-2"
+            >
+              <span className="font-bold text-primary">{q.queue_number ?? q.id}</span>
+              <span className="text-body-sm text-on-surface truncate">{q.name}</span>
             </li>
           ))}
         </QueueColumn>

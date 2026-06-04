@@ -1,8 +1,9 @@
 import { APPOINTMENT_LEAD_MINUTES } from "@/lib/constants";
-import { format, parse, isAfter, addMinutes } from "date-fns";
+import { getClinicTodayYmd } from "@/lib/datetime";
+import { parse, isAfter, addMinutes } from "date-fns";
 
 export function filterSameDaySlots(slots: string[], dateYmd: string): string[] {
-  const today = format(new Date(), "yyyy-MM-dd");
+  const today = getClinicTodayYmd();
   if (dateYmd !== today || slots.length === 0) return slots;
 
   const cutoff = addMinutes(new Date(), APPOINTMENT_LEAD_MINUTES);

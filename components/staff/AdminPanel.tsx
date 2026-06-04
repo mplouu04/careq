@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { getClinicTodayYmd } from "@/lib/datetime";
 
 type StaffRow = {
   id: string;
@@ -60,6 +61,23 @@ type Appointment = {
   appointment_types?: { name: string } | null;
 };
 
+type RoomRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+};
+
+type DoctorRow = { id: string; first_name: string; last_name: string };
+
+type ScheduleDay = {
+  day_of_week: number;
+  day_name: string;
+  is_active: boolean;
+  start_time: string;
+  end_time: string;
+};
+
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   checked_in: "Confirmed",
@@ -73,7 +91,7 @@ const APPT_STATUS_VARIANT: Record<string, QueueStatusVariant> = {
   pending: "waiting",
   checked_in: "confirmed",
   cancelled: "cancelled",
-  no_show: "completed",
+  no_show: "no_show",
   in_progress: "called",
   completed: "completed",
 };
@@ -83,6 +101,13 @@ export function AdminPanel() {
   const [types, setTypes] = useState<ApptType[]>([]);
   const [settings, setSettings] = useState<DisplayScreen[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [apptFilter, setApptFilter] = useState<
+    "upcoming" | "no_show" | "cancelled" | "all"
+  >("upcoming");
+  const [roomsList, setRoomsList] = useState<RoomRow[]>([]);
+  const [adminDoctors, setAdminDoctors] = useState<DoctorRow[]>([]);
+  const [scheduleDoctorId, setScheduleDoctorId] = useState("");
+  const [schedules, setSchedules] = useState<ScheduleDay[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
 
   // Edit staff modal
@@ -99,22 +124,28 @@ export function AdminPanel() {
 
   const load = useCallback(async () => {
     try {
-      const [s, t, set, a] = await Promise.all([
-        fetch("/api/admin/staff").then((r) => r.ok ? r.json() : { staff: [] }),
-        fetch("/api/appointment-types").then((r) => r.ok ? r.json() : { types: [] }),
-        fetch("/api/admin/settings").then((r) => r.ok ? r.json() : { screens: [] }),
-        fetch("/api/appointments").then((r) => r.ok ? r.json() : { appointments: [] }),
+      const [s, t, set, a, roomsRes, doctorsRes] = await Promise.all([
+        fetch("/api/admin/staff").then((r) => (r.ok ? r.json() : { staff: [] })),
+        fetch("/api/appointment-types").then((r) => (r.ok ? r.json() : { types: [] })),
+        fetch("/api/admin/settings").then((r) => (r.ok ? r.json() : { screens: [] })),
+        fetch(`/api/appointments?filter=${apptFilter}`).then((r) =>
+          r.ok ? r.json() : { appointments: [] }
+        ),
+        fetch("/api/rooms").then((r) => (r.ok ? r.json() : { rooms: [] })),
+        fetch("/api/admin/doctors").then((r) => (r.ok ? r.json() : { doctors: [] })),
       ]);
       setStaffList(s.staff ?? []);
       setTypes(t.types ?? []);
       setSettings(set.screens ?? []);
       setAppointments(a.appointments ?? []);
+      setRoomsList(roomsRes.rooms ?? []);
+      setAdminDoctors(doctorsRes.doctors ?? []);
     } catch {
       toast.error("Failed to load admin data. Please refresh.");
     } finally {
       setInitialLoading(false);
     }
-  }, []);
+  }, [apptFilter]);
 
   useEffect(() => {
     load();
@@ -298,6 +329,95 @@ export function AdminPanel() {
     load();
   }
 
+  async function addRoom(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const name = String(fd.get("name") ?? "").trim();
+    if (!name) {
+      toast.error("Room name is required");
+      return;
+    }
+    const res = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        description: String(fd.get("description") ?? "") || null,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error ?? "Failed to add room");
+      return;
+    }
+    toast.success("Room added");
+    (e.target as HTMLFormElement).reset();
+    load();
+  }
+
+  async function toggleRoom(room: RoomRow) {
+    const res = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "update",
+        id: room.id,
+        name: room.name,
+        description: room.description,
+        is_active: !room.is_active,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error ?? "Failed to update room");
+      return;
+    }
+    toast.success(room.is_active ? "Room deactivated" : "Room activated");
+    load();
+  }
+
+  async function loadDoctorSchedule(doctorId: string) {
+    setScheduleDoctorId(doctorId);
+    if (!doctorId) {
+      setSchedules([]);
+      return;
+    }
+    const res = await fetch(`/api/admin/doctors?doctorId=${doctorId}`);
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error ?? "Failed to load schedule");
+      return;
+    }
+    setSchedules(data.schedules ?? []);
+  }
+
+  async function saveDoctorSchedule() {
+    if (!scheduleDoctorId) {
+      toast.error("Select a doctor first");
+      return;
+    }
+    const res = await fetch("/api/admin/doctors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "schedule",
+        doctorId: scheduleDoctorId,
+        schedules: schedules.map((s) => ({
+          day_of_week: s.day_of_week,
+          is_active: s.is_active,
+          start_time: s.start_time,
+          end_time: s.end_time,
+        })),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      toast.error(data.error ?? "Failed to save schedule");
+      return;
+    }
+    toast.success("Clinic hours saved");
+  }
+
   async function purgeHistory() {
     if (!confirm("Purge old completed/cancelled queue records? This cannot be undone.")) return;
     const res = await fetch("/api/queue/actions", {
@@ -331,6 +451,8 @@ export function AdminPanel() {
           <TabsTrigger value="types">Appointment Types</TabsTrigger>
           <TabsTrigger value="display">Display Screens</TabsTrigger>
           <TabsTrigger value="appointments">Appointments</TabsTrigger>
+          <TabsTrigger value="rooms">Rooms</TabsTrigger>
+          <TabsTrigger value="hours">Clinic Hours</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
         </TabsList>
 
@@ -597,8 +719,28 @@ export function AdminPanel() {
         {/* ── Appointments tab ───────────────────────────────────────────── */}
         <TabsContent value="appointments">
           <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Upcoming Appointments</CardTitle>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <CardTitle>Appointments</CardTitle>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["upcoming", "Upcoming"],
+                    ["no_show", "No Show"],
+                    ["cancelled", "Cancelled"],
+                    ["all", "All"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    size="sm"
+                    variant={apptFilter === value ? "default" : "outline"}
+                    onClick={() => setApptFilter(value)}
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
             </CardHeader>
             <CardContent className="overflow-x-auto">
               <Table>
@@ -622,8 +764,12 @@ export function AdminPanel() {
                       | { first_name: string; last_name: string }
                       | null
                       | undefined;
+                    const apptYmd = a.appointment_date?.slice(0, 10) ?? "";
+                    const clinicToday = getClinicTodayYmd();
                     const canConfirm = a.status === "pending";
-                    const canNoShow = a.status === "checked_in";
+                    const canNoShow =
+                      a.status === "checked_in" ||
+                      (a.status === "pending" && apptYmd < clinicToday);
                     const canCancel = !["cancelled", "completed", "no_show"].includes(
                       a.status
                     );
@@ -687,12 +833,152 @@ export function AdminPanel() {
                         colSpan={6}
                         className="text-center text-on-surface-variant"
                       >
-                        No upcoming appointments
+                        No appointments in this view
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Rooms tab ──────────────────────────────────────────────────── */}
+        <TabsContent value="rooms" className="space-y-6">
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
+            <CardHeader>
+              <CardTitle>Exam Rooms</CardTitle>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Active</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {roomsList.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium">{r.name}</TableCell>
+                      <TableCell className="text-sm text-on-surface-variant">
+                        {r.description ?? "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={r.is_active ? "default" : "secondary"}>
+                          {r.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button size="sm" variant="outline" onClick={() => toggleRoom(r)}>
+                          {r.is_active ? "Deactivate" : "Activate"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {roomsList.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-on-surface-variant">
+                        No rooms configured
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
+            <CardHeader>
+              <CardTitle>Add Room</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={addRoom} className="flex flex-wrap gap-4 items-end">
+                <div>
+                  <Label>Name</Label>
+                  <Input name="name" required />
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Input name="description" />
+                </div>
+                <Button type="submit">Add Room</Button>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Clinic hours tab ───────────────────────────────────────────── */}
+        <TabsContent value="hours" className="space-y-6">
+          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
+            <CardHeader>
+              <CardTitle>Doctor Clinic Hours</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="max-w-sm">
+                <Label>Doctor</Label>
+                <FormSelect
+                  value={scheduleDoctorId}
+                  onChange={(e) => loadDoctorSchedule(e.target.value)}
+                >
+                  <option value="">Select doctor…</option>
+                  {adminDoctors.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      Dr. {d.first_name} {d.last_name}
+                    </option>
+                  ))}
+                </FormSelect>
+              </div>
+              {schedules.length > 0 && (
+                <div className="space-y-2">
+                  {schedules.map((s, idx) => (
+                    <div
+                      key={s.day_of_week}
+                      className="flex flex-wrap items-center gap-3 border border-outline-variant rounded-lg p-3"
+                    >
+                      <label className="flex items-center gap-2 min-w-[120px]">
+                        <input
+                          type="checkbox"
+                          checked={s.is_active}
+                          onChange={(e) => {
+                            const next = [...schedules];
+                            next[idx] = { ...s, is_active: e.target.checked };
+                            setSchedules(next);
+                          }}
+                        />
+                        <span className="text-sm font-medium">{s.day_name}</span>
+                      </label>
+                      <Input
+                        type="time"
+                        className="w-32"
+                        value={s.start_time}
+                        disabled={!s.is_active}
+                        onChange={(e) => {
+                          const next = [...schedules];
+                          next[idx] = { ...s, start_time: e.target.value };
+                          setSchedules(next);
+                        }}
+                      />
+                      <span className="text-on-surface-variant">to</span>
+                      <Input
+                        type="time"
+                        className="w-32"
+                        value={s.end_time}
+                        disabled={!s.is_active}
+                        onChange={(e) => {
+                          const next = [...schedules];
+                          next[idx] = { ...s, end_time: e.target.value };
+                          setSchedules(next);
+                        }}
+                      />
+                    </div>
+                  ))}
+                  <Button type="button" onClick={saveDoctorSchedule}>
+                    Save Schedule
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

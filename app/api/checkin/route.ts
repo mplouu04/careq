@@ -3,20 +3,34 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { CHECKIN_TYPE } from "@/lib/constants";
 import { sanitize, isValidRef } from "@/lib/utils";
-import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
+import { TIMEZONE } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
+const TERMINAL_CHECKIN = ["cancelled", "completed", "no_show"];
+
 /**
- * Queue number counter:  count all queue rows today + 1
- * Format matches legacy: APPT-{N} or WALK-{N}
+ * Queue number counter for clinic day only. Format: APPT-{N} or WALK-{N}
  */
 async function nextQueueNumber(prefix: "APPT" | "WALK"): Promise<string> {
   const supabase = createAdminClient();
-  const { count } = await supabase
+  const start = getClinicDayStartIso();
+  const end = getClinicDayEndIso();
+  const { data } = await supabase
     .from("queue")
-    .select("*", { count: "exact", head: true });
-  return `${prefix}-${(count ?? 0) + 1}`;
+    .select("queue_number")
+    .gte("created_at", start)
+    .lte("created_at", end)
+    .like("queue_number", `${prefix}-%`);
+
+  const nums = (data ?? [])
+    .map((r) => parseInt(String(r.queue_number).split("-")[1] ?? "", 10))
+    .filter((n) => !Number.isNaN(n));
+
+  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `${prefix}-${next}`;
 }
 
 /**
@@ -142,6 +156,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Appointment not found" }, { status: 404 });
     }
 
+    const { data: checkinRow } = await supabase
+      .from("checkins")
+      .select("status")
+      .eq("checkin_id", checkin.checkin_id)
+      .maybeSingle();
+
+    if (checkinRow?.status && TERMINAL_CHECKIN.includes(checkinRow.status)) {
+      return NextResponse.json(
+        { error: `Cannot check in: appointment is ${checkinRow.status.replace("_", " ")}.` },
+        { status: 409 }
+      );
+    }
+
     const queueNumber = await nextQueueNumber("APPT");
     const { error } = await supabase.from("queue").insert({
       checkin_id: checkin.checkin_id,
@@ -165,7 +192,7 @@ export async function POST(request: Request) {
     }
 
     const idnumber = Date.now() % 10000;
-    const ref = `WALK${format(new Date(), "yyyyMMdd")}${idnumber}`;
+    const ref = `WALK${formatInTimeZone(new Date(), TIMEZONE, "yyyyMMdd")}${idnumber}`;
     const consent =
       body.termsAgreement === "on" || Boolean(body.termsAgreement) ? true : false;
     const additionalInfo = sanitize(body.additionalinfo, 500);

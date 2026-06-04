@@ -4,6 +4,7 @@ import { requireStaff } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { getClientIp } from "@/lib/rate-limit";
 import { format, subDays } from "date-fns";
+import { getClinicDayStartIso } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,65 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true });
     }
 
+    // ── mark_no_show ──────────────────────────────────────────────────────
+    case "mark_no_show": {
+      const { queueId } = body;
+      if (!queueId) {
+        return NextResponse.json({ error: "Missing queueId" }, { status: 400 });
+      }
+
+      const { data: row } = await supabase
+        .from("queue")
+        .select("id, status, checkin_id")
+        .eq("id", queueId)
+        .maybeSingle();
+
+      if (!row) {
+        return NextResponse.json({ error: "Queue entry not found" }, { status: 404 });
+      }
+
+      if (!["waiting", "in_progress"].includes(row.status ?? "")) {
+        return NextResponse.json(
+          { error: "Only waiting or in-progress patients can be marked no-show" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabase
+        .from("queue")
+        .update({
+          status: "no_show",
+          called_by: null,
+          room_id: null,
+          called_at: null,
+        })
+        .eq("id", queueId);
+
+      if (error) {
+        return NextResponse.json({ error: "Failed to mark no-show" }, { status: 500 });
+      }
+
+      if (row.checkin_id) {
+        await supabase
+          .from("checkins")
+          .update({ status: "no_show" })
+          .eq("checkin_id", row.checkin_id);
+      }
+
+      await logAudit({
+        userId,
+        action: "queue_no_show",
+        tableName: "queue",
+        recordId: queueId,
+        ipAddress: ip,
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: "Patient marked as no-show. Room is available — call the next patient when ready.",
+      });
+    }
+
     // ── mark_done ─────────────────────────────────────────────────────────
     case "mark_done": {
       const { queueId } = body;
@@ -157,12 +217,12 @@ export async function POST(request: Request) {
 
     // ── get_analytics ─────────────────────────────────────────────────────
     case "get_analytics": {
-      const today = format(new Date(), "yyyy-MM-dd");
+      const dayStart = getClinicDayStartIso();
       const { data: completed } = await supabase
         .from("queue")
         .select("called_at, completed_at")
         .eq("status", "completed")
-        .gte("called_at", `${today}T00:00:00`)
+        .gte("called_at", dayStart)
         .not("completed_at", "is", null);
 
       let avgMinutes = 10;
@@ -179,7 +239,7 @@ export async function POST(request: Request) {
         .from("queue")
         .select("*", { count: "exact", head: true })
         .eq("status", "waiting")
-        .gte("created_at", `${today}T00:00:00`);
+        .gte("created_at", dayStart);
 
       return NextResponse.json({
         success: true,
@@ -191,12 +251,12 @@ export async function POST(request: Request) {
 
     // ── get_report ────────────────────────────────────────────────────────
     case "get_report": {
-      const today = format(new Date(), "yyyy-MM-dd");
+      const dayStart = getClinicDayStartIso();
       const { data: completed } = await supabase
         .from("queue")
         .select("called_at, completed_at")
         .eq("status", "completed")
-        .gte("called_at", `${today}T00:00:00`)
+        .gte("called_at", dayStart)
         .not("completed_at", "is", null);
 
       let avgMinutes = 10;
@@ -213,7 +273,7 @@ export async function POST(request: Request) {
         .from("queue")
         .select("*", { count: "exact", head: true })
         .eq("status", "waiting")
-        .gte("created_at", `${today}T00:00:00`);
+        .gte("created_at", dayStart);
 
       // 7-day history
       const chartDays = Array.from({ length: 7 }, (_, i) => {
@@ -247,12 +307,12 @@ export async function POST(request: Request) {
       if (auth.session.staff.role !== "admin") {
         return NextResponse.json({ error: "Admin only" }, { status: 403 });
       }
-      const today = format(new Date(), "yyyy-MM-dd");
+      const dayStart = getClinicDayStartIso();
       const { data } = await supabase
         .from("queue")
         .update({ status: "cancelled" })
         .eq("status", "waiting")
-        .gte("created_at", `${today}T00:00:00`)
+        .gte("created_at", dayStart)
         .select("id");
       await logAudit({
         userId,
@@ -269,14 +329,14 @@ export async function POST(request: Request) {
       if (auth.session.staff.role !== "admin") {
         return NextResponse.json({ error: "Admin only" }, { status: 403 });
       }
-      const today = format(new Date(), "yyyy-MM-dd");
+      const dayStart = getClinicDayStartIso();
 
       // Delete completed/cancelled queue rows from prior days
       const { data: deletedQueue } = await supabase
         .from("queue")
         .delete()
         .in("status", ["completed", "cancelled"])
-        .lt("created_at", `${today}T00:00:00`)
+        .lt("created_at", dayStart)
         .select("id");
 
       const queueDeleted = deletedQueue?.length ?? 0;
@@ -287,7 +347,7 @@ export async function POST(request: Request) {
         .from("checkins")
         .select("checkin_id")
         .in("status", ["completed", "cancelled"])
-        .lt("created_at", `${today}T00:00:00`);
+        .lt("created_at", dayStart);
 
       let checkinsDeleted = 0;
       if (orphanCheckins?.length) {

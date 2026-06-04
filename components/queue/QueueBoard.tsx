@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { User, Home } from "lucide-react";
+import { User } from "lucide-react";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 
@@ -14,16 +14,15 @@ type DisplayConfig = {
   show_priority: boolean;
 };
 
-type NowServingItem = {
-  id: string | number;
-  queueId?: number;
-  queue_number?: string;
+type RoomPanel = {
+  id: number;
   name: string;
-  doctor: string;
-  room: string;
-  status: string;
-  priority?: string;
-  called_at?: string | null;
+  description?: string;
+  current: {
+    queue_number: string;
+    name: string;
+    doctor: string;
+  } | null;
 };
 
 type WaitingItem = {
@@ -50,7 +49,7 @@ function priorityLabel(priority: string | undefined) {
 }
 
 export function QueueBoard({ screenId }: { screenId?: string }) {
-  const [nowServing, setNowServing] = useState<NowServingItem[]>([]);
+  const [rooms, setRooms] = useState<RoomPanel[]>([]);
   const [waiting, setWaiting] = useState<WaitingItem[]>([]);
   const [avgServiceTime, setAvgServiceTime] = useState(10);
   const [display, setDisplay] = useState<DisplayConfig>({
@@ -74,7 +73,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
       const data = await res.json();
       setLoadError(false);
       if (data.display) setDisplay(data.display);
-      setNowServing(data.nowServing ?? []);
+      setRooms(data.rooms ?? []);
       setWaiting((data.waiting ?? []).slice(0, 8));
       setAvgServiceTime(data.avg_service_time ?? 10);
     } catch {
@@ -83,16 +82,16 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
   }, [screenId]);
 
   useEffect(() => {
-    setNow(new Date());
     load();
-
     const supabase = createClient();
     const channel = supabase
       .channel(`queue-board-${screenId ?? "default"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => load())
+      .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () =>
+        load()
+      )
       .subscribe();
 
-    const interval = setInterval(load, 3000);
+    const interval = setInterval(load, 15000);
     const clock = setInterval(() => setNow(new Date()), 1000);
 
     return () => {
@@ -110,7 +109,6 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
       })
     : "--:--:--";
 
-  const current = nowServing[0] ?? null;
   const themeColor = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
 
   return (
@@ -122,51 +120,66 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
       )}
 
       <div
-        className="w-full lg:w-2/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto text-primary-foreground"
+        className="w-full lg:w-2/3 flex flex-col p-6 overflow-y-auto text-primary-foreground min-h-[50vh] lg:min-h-0"
         style={{ backgroundColor: themeColor }}
       >
-        <div className="text-center mb-6 flex items-center justify-between gap-4">
-          <div className="text-left min-w-0">
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <div className="min-w-0">
             <h1 className="text-headline-sm font-bold truncate">{display.display_name}</h1>
             {display.location && (
               <p className="text-body-sm opacity-80 truncate">{display.location}</p>
             )}
           </div>
-          <div className="text-center flex-1 shrink-0">
-            <h2 className="text-headline-sm font-bold tracking-widest">NOW SERVING</h2>
-          </div>
-          <div className="text-right text-body-sm opacity-90 shrink-0">
-            <div className="text-xl font-mono">{timeStr}</div>
-          </div>
+          <div className="text-xl font-mono shrink-0">{timeStr}</div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center">
-          <div className="current-patient-card text-center py-10 px-8 w-full">
-            {current ? (
-              <>
-                <div className="queue-number-lg mb-3" style={{ color: themeColor }}>
-                  {current.queue_number ?? current.id}
-                </div>
-                <h3 className="patient-name text-on-surface">{current.name || "—"}</h3>
-                <div className="patient-info">
-                  <div className="info-item text-on-surface-variant">
-                    <User className="w-4 h-4" aria-hidden />
-                    <span>{current.doctor || "—"}</span>
+        <h2 className="text-label-md uppercase tracking-widest text-center mb-4 opacity-90">
+          Now Serving by Room
+        </h2>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 flex-1">
+          {rooms.map((room) => (
+            <div
+              key={room.id}
+              className="current-patient-card text-center py-6 px-4 flex flex-col justify-center min-h-[140px]"
+            >
+              <p className="text-label-md font-bold text-on-surface-variant uppercase mb-2">
+                {room.name}
+              </p>
+              {room.current ? (
+                <>
+                  <div
+                    className="text-4xl font-bold mb-1"
+                    style={{ color: themeColor }}
+                  >
+                    {room.current.queue_number}
                   </div>
-                  <div className="info-item text-on-surface-variant">
-                    <Home className="w-4 h-4" aria-hidden />
-                    <span>{current.room || "—"}</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <h3 className="patient-name text-on-surface-variant">No Patient Currently Serving</h3>
-            )}
-          </div>
+                  <p className="text-headline-sm text-on-surface font-medium truncate">
+                    {room.current.name || "—"}
+                  </p>
+                  {room.current.doctor && (
+                    <p className="text-body-sm text-on-surface-variant mt-1 flex items-center justify-center gap-1">
+                      <User className="w-3.5 h-3.5" aria-hidden />
+                      {room.current.doctor}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <p className="text-body-md text-on-surface-variant py-4">
+                  No patient in this room
+                </p>
+              )}
+            </div>
+          ))}
+          {rooms.length === 0 && (
+            <p className="col-span-full text-center text-body-md opacity-80 py-8">
+              No active rooms configured
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="upcoming-queue-section w-full lg:w-1/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto bg-surface-container-lowest">
+      <div className="upcoming-queue-section w-full lg:w-1/3 flex flex-col p-6 overflow-y-auto bg-surface-container-lowest min-h-[40vh] lg:min-h-0">
         <h4 className="text-headline-sm font-bold text-center text-on-surface mb-6 tracking-wide">
           UPCOMING PATIENTS
         </h4>
@@ -179,7 +192,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
             </li>
           ) : (
             waiting.map((q, i) => {
-              const pos = i + 1;
+              const pos = q.position ?? i + 1;
               const estWait = q.est_wait_minutes ?? pos * avgServiceTime;
               const pri = priorityLabel(q.priority);
               return (

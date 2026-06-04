@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { format, addDays, getDay } from "date-fns";
+import { getClinicTodayYmd } from "@/lib/datetime";
 import { CheckCircle2, Printer } from "lucide-react";
 import {
   CareqCard,
@@ -57,8 +58,9 @@ export function AppointmentForm() {
   } | null>(null);
 
   useEffect(() => {
-    setToday(format(new Date(), "yyyy-MM-dd"));
-    setMaxDate(format(addDays(new Date(), 30), "yyyy-MM-dd"));
+    const clinicToday = getClinicTodayYmd();
+    setToday(clinicToday);
+    setMaxDate(format(addDays(new Date(`${clinicToday}T12:00:00`), 30), "yyyy-MM-dd"));
     fetch("/api/doctors")
       .then((r) => (r.ok ? r.json() : { doctors: [] }))
       .then((d) => setDoctors(d.doctors ?? []))
@@ -75,14 +77,24 @@ export function AppointmentForm() {
       setTime("");
       return;
     }
-    fetch(`/api/doctors/availability?doctorId=${doctorId}&date=${date}`)
+    const type = types.find((t) => String(t.id) === appTypeId);
+    const duration = type?.duration ?? 30;
+    const params = new URLSearchParams({
+      doctorId,
+      date,
+      durationMinutes: String(duration),
+    });
+    fetch(`/api/doctors/availability?${params}`)
       .then((r) => (r.ok ? r.json() : { available_slots: [] }))
       .then((d) => {
         setSlots(d.available_slots ?? d.slots ?? []);
         setTime("");
+        if (d.no_schedule && (d.available_slots ?? []).length === 0) {
+          toast.error("No availability — doctor schedule may not be configured for this day.");
+        }
       })
       .catch(() => setSlots([]));
-  }, [doctorId, date]);
+  }, [doctorId, date, appTypeId, types]);
 
   function handleDateChange(val: string) {
     if (isWeekend(val)) {

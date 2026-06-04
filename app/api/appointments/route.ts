@@ -6,8 +6,8 @@ import { CHECKIN_TYPE } from "@/lib/constants";
 import { normalizePhone } from "@/lib/phone";
 import { logAudit } from "@/lib/audit";
 import { format } from "date-fns";
-import { generateTimeSlots, filterSameDaySlots } from "@/lib/slots";
-import { getDay } from "date-fns";
+import { getDoctorAvailableSlots } from "@/lib/slots-availability";
+import { getClinicTodayYmd } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -78,69 +78,6 @@ async function hasDuplicateActiveAppointment(
   return !!data;
 }
 
-/**
- * Get available slots for a doctor on a date (same logic as availability endpoint).
- */
-async function getDoctorAvailableSlots(
-  doctorId: string,
-  date: string
-): Promise<string[]> {
-  const supabase = createAdminClient();
-  const dayOfWeek = getDay(new Date(date));
-
-  const { data: schedule } = await supabase
-    .from("doctor_schedules")
-    .select("start_time, end_time")
-    .eq("doctor_id", doctorId)
-    .eq("day_of_week", dayOfWeek)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (!schedule) return [];
-
-  // Slots are always 30-minute intervals (legacy hardcoded 1800 seconds)
-  let slots = generateTimeSlots(
-    schedule.start_time.slice(0, 5),
-    schedule.end_time.slice(0, 5),
-    30
-  );
-
-  const { data: blocks } = await supabase
-    .from("doctor_blocks")
-    .select("start_time, end_time, block_date, day_of_week, is_recurring")
-    .eq("doctor_id", doctorId);
-
-  slots = slots.filter((slot) => {
-    for (const block of blocks ?? []) {
-      const applies =
-        (block.is_recurring && block.day_of_week === dayOfWeek) ||
-        (!block.is_recurring && block.block_date === date);
-      if (!applies) continue;
-      const bs = block.start_time.slice(0, 5);
-      const be = block.end_time.slice(0, 5);
-      if (slot >= bs && slot < be) return false;
-    }
-    return true;
-  });
-
-  const { data: booked } = await supabase
-    .from("checkins")
-    .select("scheduled_time")
-    .eq("doctor_id", doctorId)
-    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
-    .gte("appointment_date", `${date}T00:00:00`)
-    .lte("appointment_date", `${date}T23:59:59`)
-    .not("status", "in", '("cancelled","no_show")');
-
-  const bookedTimes = new Set(
-    (booked ?? []).map((b) => b.scheduled_time?.slice(0, 5))
-  );
-  slots = slots.filter((s) => !bookedTimes.has(s));
-  slots = filterSameDaySlots(slots, date);
-
-  return slots;
-}
-
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -174,7 +111,7 @@ export async function GET(request: Request) {
     }
 
     const ids = patients.map((p) => p.id);
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getClinicTodayYmd();
 
     const { data } = await supabase
       .from("checkins")
@@ -239,8 +176,10 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const today = format(new Date(), "yyyy-MM-dd");
-  const { data } = await supabase
+  const today = getClinicTodayYmd();
+  const filter = new URL(request.url).searchParams.get("filter") ?? "upcoming";
+
+  let query = supabase
     .from("checkins")
     .select(
       `checkin_id, reference_number, scheduled_time, appointment_date, status,
@@ -248,9 +187,22 @@ export async function GET(request: Request) {
        staff:doctor_id(first_name, last_name),
        appointment_types(name)`
     )
-    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
-    .gte("appointment_date", `${today}T00:00:00`)
-    .order("appointment_date", { ascending: true });
+    .eq("type_id", CHECKIN_TYPE.APPOINTMENT);
+
+  if (filter === "no_show") {
+    query = query.eq("status", "no_show").order("appointment_date", { ascending: false }).limit(100);
+  } else if (filter === "cancelled") {
+    query = query.eq("status", "cancelled").order("appointment_date", { ascending: false }).limit(100);
+  } else if (filter === "all") {
+    query = query.order("appointment_date", { ascending: false }).limit(200);
+  } else {
+    query = query
+      .gte("appointment_date", `${today}T00:00:00`)
+      .not("status", "in", '("cancelled","no_show","completed")')
+      .order("appointment_date", { ascending: true });
+  }
+
+  const { data } = await query;
 
   return NextResponse.json({ success: true, appointments: data ?? [] });
 }
@@ -409,8 +361,19 @@ export async function POST(request: Request) {
       ? `${timeParts[0].padStart(2, "0")}:${timeParts[1].padStart(2, "0")}`
       : timeRaw;
 
-  // Validate slot availability
-  const availableSlots = await getDoctorAvailableSlots(doctorId, appointmentDate);
+  const appTypeId = String(body.appointmentType);
+  const { data: apptTypeRow } = await supabase
+    .from("appointment_types")
+    .select("duration")
+    .eq("id", appTypeId)
+    .maybeSingle();
+  const durationMinutes = apptTypeRow?.duration ?? 30;
+
+  const availableSlots = await getDoctorAvailableSlots(
+    doctorId,
+    appointmentDate,
+    durationMinutes
+  );
   if (!availableSlots.includes(timeNorm)) {
     return NextResponse.json(
       {
@@ -558,7 +521,6 @@ export async function POST(request: Request) {
 
   const reason = (body.reason ?? "").toString().trim() || null;
   const consentAppt = body.termsAgreement === "on" || Boolean(body.termsAgreement);
-  const appTypeId = String(body.appointmentType);
 
   const { data: checkin, error: cErr } = await supabase
     .from("checkins")

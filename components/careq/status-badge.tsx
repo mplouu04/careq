@@ -13,6 +13,7 @@ const statusBadgeVariants = cva(
         pending: "bg-secondary-container text-on-secondary-container",
         confirmed: "bg-status-called/15 text-status-called",
         cancelled: "bg-muted text-muted-foreground",
+        no_show: "bg-amber-100 text-amber-900",
       },
     },
     defaultVariants: {

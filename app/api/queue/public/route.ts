@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
-import { format } from "date-fns";
+import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -14,14 +14,22 @@ const DEFAULT_DISPLAY = {
   show_priority: true,
 };
 
-/**
- * GET /api/queue/public?screenId=
- * Returns today's now-serving (in_progress) and upcoming (waiting) rows.
- * Optional screenId loads display_settings for TV theming.
- */
+type QueueRow = {
+  id: number;
+  queue_number: string;
+  status: string;
+  priority?: string;
+  room_id: number | null;
+  skip_count?: number;
+  called_at: string | null;
+  called_by_staff?: unknown;
+  checkins?: unknown;
+};
+
 export async function GET(request: Request) {
   const supabase = createAdminClient();
-  const today = format(new Date(), "yyyy-MM-dd");
+  const dayStart = getClinicDayStartIso();
+  const dayEnd = getClinicDayEndIso();
   const screenId = new URL(request.url).searchParams.get("screenId");
 
   let display = { ...DEFAULT_DISPLAY };
@@ -43,31 +51,35 @@ export async function GET(request: Request) {
     }
   }
 
-  const { data } = await supabase
-    .from("queue")
-    .select(
-      `id, queue_number, status, priority, room_id, skip_count, called_at,
-       called_by_staff:called_by(first_name, last_name),
-       checkins!inner(
-         checkin_id,
-         patients(first_name, last_name),
-         appointment_types(name),
-         staff:doctor_id(first_name, last_name)
-       )`
-    )
-    .gte("created_at", `${today}T00:00:00`)
-    .in("status", ["waiting", "in_progress"])
-    .order("skip_count", { ascending: true })
-    .order("id", { ascending: true });
+  const [{ data: roomRows }, { data: queueRows }] = await Promise.all([
+    supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
+    supabase
+      .from("queue")
+      .select(
+        `id, queue_number, status, priority, room_id, skip_count, called_at,
+         called_by_staff:called_by(first_name, last_name),
+         checkins!inner(
+           checkin_id,
+           patients(first_name, last_name),
+           appointment_types(name),
+           staff:doctor_id(first_name, last_name)
+         )`
+      )
+      .gte("created_at", dayStart)
+      .lte("created_at", dayEnd)
+      .in("status", ["waiting", "in_progress"])
+      .order("skip_count", { ascending: true })
+      .order("id", { ascending: true }),
+  ]);
 
-  const items = data ?? [];
+  const items = (queueRows ?? []) as QueueRow[];
 
-  // Calculate average service time for estimated wait
   const { data: completed } = await supabase
     .from("queue")
     .select("called_at, completed_at")
     .eq("status", "completed")
-    .gte("called_at", `${today}T00:00:00`)
+    .gte("called_at", dayStart)
+    .lte("called_at", dayEnd)
     .not("completed_at", "is", null);
 
   let avgServiceTime = 10;
@@ -80,7 +92,7 @@ export async function GET(request: Request) {
     avgServiceTime = Math.round(total / completed.length) || 10;
   }
 
-  const mapItem = (item: (typeof items)[0], pos?: number) => {
+  const mapServing = (item: QueueRow) => {
     const checkinRaw = item.checkins;
     const checkin = (Array.isArray(checkinRaw) ? checkinRaw[0] : checkinRaw) as {
       patients?: unknown;
@@ -94,15 +106,7 @@ export async function GET(request: Request) {
       | null
       | undefined;
 
-    const apptTypeRaw = checkin?.appointment_types;
-    const apptType = (Array.isArray(apptTypeRaw) ? apptTypeRaw[0] : apptTypeRaw) as
-      | { name: string }
-      | null
-      | undefined;
-
-    // For in_progress entries use the doctor who actually called the patient (called_by).
-    // For waiting entries fall back to the appointment-assigned doctor from the checkin.
-    const calledByRaw = (item as Record<string, unknown>).called_by_staff;
+    const calledByRaw = item.called_by_staff;
     const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
       | { first_name: string; last_name: string }
       | null
@@ -118,40 +122,78 @@ export async function GET(request: Request) {
       item.status === "in_progress" && calledBy ? calledBy : checkinDoctor;
 
     return {
-      id: item.queue_number,
-      queueId: item.id,
+      queue_number: item.queue_number,
       name: patient ? `${patient.first_name} ${patient.last_name}` : "",
       doctor: doctorSource
         ? `Dr. ${doctorSource.first_name} ${doctorSource.last_name}`
         : "",
-      room: item.room_id ?? "",
-      reason: apptType?.name ?? "",
-      status: item.status,
-      priority: (item as { priority?: string }).priority ?? "normal",
-      called_at: item.called_at,
-      ...(pos !== undefined
-        ? { position: pos, est_wait_minutes: pos * avgServiceTime }
-        : {}),
     };
   };
 
+  const inProgressByRoom = new Map<number, ReturnType<typeof mapServing>>();
+  for (const item of items.filter((q) => q.status === "in_progress")) {
+    if (item.room_id != null) {
+      inProgressByRoom.set(Number(item.room_id), mapServing(item));
+    }
+  }
+
+  const rooms = (roomRows ?? []).map((room) => ({
+    id: room.id,
+    name: room.name,
+    description: room.description ?? undefined,
+    current: inProgressByRoom.get(room.id) ?? null,
+  }));
+
   const waiting = items.filter((q) => q.status === "waiting");
-  const nowServing = items.filter((q) => q.status === "in_progress");
+
+  const mapWaiting = (item: QueueRow, pos: number) => {
+    const base = mapServing(item);
+    return {
+      id: item.queue_number,
+      queueId: item.id,
+      ...base,
+      reason: "",
+      status: item.status,
+      priority: item.priority ?? "normal",
+      position: pos,
+      est_wait_minutes: pos * avgServiceTime,
+    };
+  };
+
+  const waitingMapped = waiting.map((q, i) => {
+    const checkinRaw = q.checkins;
+    const checkin = (Array.isArray(checkinRaw) ? checkinRaw[0] : checkinRaw) as {
+      appointment_types?: unknown;
+    } | null;
+    const apptTypeRaw = checkin?.appointment_types;
+    const apptType = (Array.isArray(apptTypeRaw) ? apptTypeRaw[0] : apptTypeRaw) as
+      | { name: string }
+      | null
+      | undefined;
+    const row = mapWaiting(q, i + 1);
+    return { ...row, reason: apptType?.name ?? "" };
+  });
+
+  const nowServing = items
+    .filter((q) => q.status === "in_progress")
+    .map((q) => ({
+      id: q.queue_number,
+      queueId: q.id,
+      ...mapServing(q),
+      room_id: q.room_id,
+      status: q.status,
+    }));
 
   return NextResponse.json({
     success: true,
     display,
-    nowServing: nowServing.map((q) => mapItem(q)),
-    waiting: waiting.map((q, i) => mapItem(q, i + 1)),
+    rooms,
+    nowServing,
+    waiting: waitingMapped,
     avg_service_time: avgServiceTime,
   });
 }
 
-/**
- * POST /api/queue/public  (body: { auto: true })
- * Auto-completes in_progress queue entries that have been calling for > 20 minutes.
- * Staff-only: requires valid session to prevent unauthenticated state mutations.
- */
 export async function POST(request: Request) {
   const auth = await requireStaff();
   if ("error" in auth) {

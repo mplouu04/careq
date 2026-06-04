@@ -3,17 +3,28 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 import { normalizePhone } from "@/lib/phone";
 import { sanitize } from "@/lib/utils";
+import {
+  escapePostgrestValue,
+  ilikePattern,
+  isDigitsOnly,
+  minSearchLength,
+  normalizePhoneDigits,
+  splitSearchTokens,
+} from "@/lib/patient-search";
 
 export const dynamic = "force-dynamic";
 
-/**
- * Resolve an existing patient by priority:
- * 1. phone (normalized) match
- * 2. email match (if provided)
- * 3. first_name + last_name + dob match
- *
- * Returns { id, matched_by } or null.
- */
+type PatientRow = {
+  id: number;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string;
+  phone: string;
+  gender: string;
+  address: string;
+  created_at: string;
+};
+
 async function resolveExistingPatient(params: {
   firstName: string;
   lastName: string;
@@ -23,27 +34,24 @@ async function resolveExistingPatient(params: {
 }): Promise<{ id: string; matched_by: string } | null> {
   const supabase = createAdminClient();
 
-  // 1. Phone match
   if (params.phoneNorm) {
     const { data } = await supabase
       .from("patients")
       .select("id")
       .eq("phone_normalized", params.phoneNorm)
       .maybeSingle();
-    if (data) return { id: data.id, matched_by: "phone" };
+    if (data) return { id: String(data.id), matched_by: "phone" };
   }
 
-  // 2. Email match
   if (params.emailNorm) {
     const { data } = await supabase
       .from("patients")
       .select("id")
       .eq("email", params.emailNorm)
       .maybeSingle();
-    if (data) return { id: data.id, matched_by: "email" };
+    if (data) return { id: String(data.id), matched_by: "email" };
   }
 
-  // 3. Name + DOB match
   const { data } = await supabase
     .from("patients")
     .select("id")
@@ -51,9 +59,90 @@ async function resolveExistingPatient(params: {
     .ilike("last_name", params.lastName)
     .eq("date_of_birth", params.dob)
     .maybeSingle();
-  if (data) return { id: data.id, matched_by: "name_dob" };
+  if (data) return { id: String(data.id), matched_by: "name_dob" };
 
   return null;
+}
+
+function mapPatient(p: PatientRow) {
+  return {
+    id: p.id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    dob: p.date_of_birth,
+    phone: p.phone,
+    gender: p.gender,
+    address: p.address,
+    created_at: p.created_at,
+  };
+}
+
+async function searchPatients(term: string, dob: string): Promise<PatientRow[]> {
+  const supabase = createAdminClient();
+  const select =
+    "id, first_name, last_name, date_of_birth, phone, gender, address, created_at";
+  const seen = new Map<number, PatientRow>();
+
+  const addRows = (rows: PatientRow[] | null) => {
+    for (const r of rows ?? []) {
+      if (!seen.has(r.id)) seen.set(r.id, r);
+    }
+  };
+
+  const pattern = ilikePattern(term);
+  const quoted = escapePostgrestValue(pattern);
+
+  if (isDigitsOnly(term)) {
+    const idNum = parseInt(term, 10);
+    if (!Number.isNaN(idNum)) {
+      let q = supabase.from("patients").select(select).eq("id", idNum);
+      if (dob) q = q.eq("date_of_birth", dob);
+      const { data } = await q;
+      addRows(data as PatientRow[] | null);
+    }
+
+    const digits = normalizePhoneDigits(term);
+    const phoneOr = [
+      `phone.ilike."%${escapePostgrestValue(digits)}%"`,
+      `phone_normalized.ilike."%${escapePostgrestValue(digits)}%"`,
+    ].join(",");
+    let q = supabase.from("patients").select(select).or(phoneOr).limit(10);
+    if (dob) q = q.eq("date_of_birth", dob);
+    const { data } = await q;
+    addRows(data as PatientRow[] | null);
+  } else {
+    const tokens = splitSearchTokens(term);
+    if (tokens.length >= 2) {
+      const [a, b] = tokens;
+      const pa = escapePostgrestValue(ilikePattern(a));
+      const pb = escapePostgrestValue(ilikePattern(b));
+
+      for (const filter of [
+        `and(first_name.ilike."${pa}",last_name.ilike."${pb}")`,
+        `and(first_name.ilike."${pb}",last_name.ilike."${pa}")`,
+      ]) {
+        let q = supabase.from("patients").select(select).or(filter).limit(10);
+        if (dob) q = q.eq("date_of_birth", dob);
+        const { data } = await q;
+        addRows(data as PatientRow[] | null);
+      }
+    }
+
+    const orFilter = [
+      `first_name.ilike."${quoted}"`,
+      `last_name.ilike."${quoted}"`,
+      `phone.ilike."${quoted}"`,
+      `phone_normalized.ilike."${quoted}"`,
+    ].join(",");
+    let q = supabase.from("patients").select(select).or(orFilter).limit(10);
+    if (dob) q = q.eq("date_of_birth", dob);
+    const { data } = await q;
+    addRows(data as PatientRow[] | null);
+  }
+
+  return Array.from(seen.values()).sort((x, y) =>
+    x.last_name.localeCompare(y.last_name)
+  );
 }
 
 /** GET /api/patients?term=&dob= */
@@ -63,7 +152,7 @@ export async function GET(request: Request) {
   const term = searchParams.get("term")?.trim() ?? "";
   const dob = searchParams.get("dob")?.trim() ?? "";
 
-  if (term.length < 2) {
+  if (!minSearchLength(term)) {
     return NextResponse.json({ success: true, patients: [] });
   }
 
@@ -71,38 +160,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
-  const supabase = createAdminClient();
-  const likeTerm = `%${term}%`;
-
-  let query = supabase
-    .from("patients")
-    .select("id, first_name, last_name, date_of_birth, phone, gender, address, created_at")
-    .or(`first_name.ilike.${likeTerm},last_name.ilike.${likeTerm},phone.ilike.${likeTerm}`)
-    .order("last_name", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(10);
-
-  if (dob) {
-    query = query.eq("date_of_birth", dob);
+  try {
+    const rows = await searchPatients(term, dob);
+    return NextResponse.json({
+      success: true,
+      patients: rows.map(mapPatient),
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Search failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const { data, error } = await query;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const patients = (data ?? []).map((p) => ({
-    id: p.id,
-    first_name: p.first_name,
-    last_name: p.last_name,
-    dob: p.date_of_birth,
-    phone: p.phone,
-    gender: p.gender,
-    address: p.address,
-    created_at: p.created_at,
-  }));
-
-  return NextResponse.json({ success: true, patients });
 }
 
 /** POST /api/patients — register a new patient or return an existing match */
@@ -127,7 +194,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // Email validation (optional field)
   const emailRaw = (body.email ?? "").toString().trim();
   if (emailRaw !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
     return NextResponse.json(
@@ -137,7 +203,6 @@ export async function POST(request: Request) {
   }
   const emailNorm = emailRaw !== "" ? emailRaw.toLowerCase() : null;
 
-  // Phone: exactly 11 digits
   const phoneDigits = normalizePhone(body.phone);
   if (phoneDigits.length !== 11) {
     return NextResponse.json(
@@ -146,18 +211,16 @@ export async function POST(request: Request) {
     );
   }
 
-  // DOB: must be YYYY-MM-DD with year between 1900 and current year
-  const dob = sanitize(body.dob, 10);
-  const dobYear = parseInt(dob.slice(0, 4), 10);
+  const dobVal = sanitize(body.dob, 10);
+  const dobYear = parseInt(dobVal.slice(0, 4), 10);
   const currentYear = new Date().getFullYear();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob) || dobYear < 1900 || dobYear > currentYear) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dobVal) || dobYear < 1900 || dobYear > currentYear) {
     return NextResponse.json(
       { success: false, error: "Invalid date of birth." },
       { status: 400 }
     );
   }
 
-  // Sanitize name/address fields
   const firstName = sanitize(body.firstName, 100);
   const lastName = sanitize(body.lastName, 100);
   const address = sanitize(body.address, 255);
@@ -169,11 +232,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // Duplicate patient detection
   const existing = await resolveExistingPatient({
     firstName,
     lastName,
-    dob,
+    dob: dobVal,
     phoneNorm: phoneDigits,
     emailNorm,
   });
@@ -195,7 +257,7 @@ export async function POST(request: Request) {
     .insert({
       first_name: firstName,
       last_name: lastName,
-      date_of_birth: dob,
+      date_of_birth: dobVal,
       gender: body.gender,
       phone: phoneDigits,
       phone_normalized: phoneDigits,

@@ -31,13 +31,14 @@ type QueueEntry = {
   } | null;
 };
 
-const TERMINAL = ["completed", "cancelled"];
+const TERMINAL = ["completed", "cancelled", "no_show"];
 
 const HEADER_BG: Record<string, string> = {
   waiting: "bg-primary",
   in_progress: "bg-status-called",
   completed: "bg-muted-foreground",
   cancelled: "bg-destructive",
+  no_show: "bg-amber-600",
 };
 
 function ordinal(n: number) {
@@ -49,16 +50,18 @@ function ordinal(n: number) {
 
 function statusBadgeVariant(
   status: string
-): "waiting" | "called" | "completed" | "error" {
+): "waiting" | "called" | "completed" | "error" | "no_show" {
   if (status === "waiting") return "waiting";
   if (status === "in_progress") return "called";
   if (status === "completed") return "completed";
+  if (status === "no_show") return "no_show";
   return "error";
 }
 
 export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [queue, setQueue] = useState<QueueEntry | null>(null);
   const [position, setPosition] = useState<number | null>(null);
+  const [patientsAhead, setPatientsAhead] = useState<number | null>(null);
   const [estWait, setEstWait] = useState<number | null>(null);
   const [doctor, setDoctor] = useState("");
   const [room, setRoom] = useState("");
@@ -81,6 +84,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       setNotFound(false);
       setQueue(data.queue);
       setPosition(data.position ?? null);
+      setPatientsAhead(data.patients_ahead ?? null);
       setEstWait(data.est_wait_minutes ?? null);
       setDoctor(data.doctor ?? "");
       setRoom(data.room ?? "");
@@ -171,10 +175,12 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     queue.status === "waiting"
       ? "Waiting"
       : queue.status === "in_progress"
-        ? "Called"
+        ? "Called — Proceed to Room"
         : queue.status === "completed"
           ? "Completed"
-          : "Cancelled";
+          : queue.status === "no_show"
+            ? "No Show"
+            : "Cancelled";
 
   return (
     <div className="max-w-md mx-auto">
@@ -196,6 +202,11 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
               <span className="text-label-sm uppercase tracking-wider opacity-90 mt-1">
                 {ordinal(position)} in line
               </span>
+              {patientsAhead !== null && patientsAhead > 0 && (
+                <span className="text-body-sm opacity-90 mt-1">
+                  {patientsAhead} ahead of you
+                </span>
+              )}
             </div>
           )}
 
@@ -259,6 +270,19 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
               </p>
               <CareqButton variant="outline" asChild>
                 <Link href="/">Back to Home</Link>
+              </CareqButton>
+            </div>
+          )}
+
+          {queue.status === "no_show" && (
+            <div className="text-center py-4">
+              <XCircle className="w-16 h-16 text-amber-600 mx-auto mb-3" />
+              <h5 className="text-headline-sm text-foreground mb-1">Marked as No Show</h5>
+              <p className="text-body-sm text-on-surface-variant mb-4">
+                You did not respond when called. Please see the front desk to rejoin the queue.
+              </p>
+              <CareqButton variant="outline" asChild>
+                <Link href="/visit">Check In Again</Link>
               </CareqButton>
             </div>
           )}

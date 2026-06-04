@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Search, UserPlus } from "lucide-react";
@@ -41,13 +41,17 @@ export function PatientSearch() {
   const [verifyInput, setVerifyInput] = useState("");
   const [verifyError, setVerifyError] = useState("");
 
-  async function search(e?: React.FormEvent) {
-    if (e) e.preventDefault();
-    if (term.trim().length < 2) return;
+  const runSearch = useCallback(async () => {
+    const t = term.trim();
+    const minOk = /^\d+$/.test(t) ? t.length >= 1 : t.length >= 2;
+    if (!minOk) {
+      setPatients([]);
+      setSearched(false);
+      return;
+    }
     setLoading(true);
-    setSearched(false);
     try {
-      const params = new URLSearchParams({ term: term.trim() });
+      const params = new URLSearchParams({ term: t });
       if (dob) params.set("dob", dob);
       const res = await fetch(`/api/patients?${params}`);
       const data = res.ok ? await res.json() : { patients: [] };
@@ -58,6 +62,25 @@ export function PatientSearch() {
       setLoading(false);
       setSearched(true);
     }
+  }, [term, dob]);
+
+  useEffect(() => {
+    const t = term.trim();
+    const minOk = /^\d+$/.test(t) ? t.length >= 1 : t.length >= 2;
+    if (!minOk) {
+      setPatients([]);
+      setSearched(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      runSearch();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [term, dob, runSearch]);
+
+  async function search(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    await runSearch();
   }
 
   function navigate(patient: Patient, destination: "appointments" | "checkin") {
@@ -96,7 +119,7 @@ export function PatientSearch() {
       <CareqCard className="overflow-hidden max-w-2xl">
         <CareqCardHeader
           title="Find Patient"
-          description="Search by name or phone number"
+          description="Search by name, phone, or patient number — partial matches OK"
         />
 
         <div className="px-6 py-5">
@@ -106,11 +129,10 @@ export function PatientSearch() {
                 <FormLabel>Search Term</FormLabel>
                 <FormInput
                   type="text"
-                  placeholder="Name or phone number"
+                  placeholder="Name, phone, or patient #"
                   value={term}
                   onChange={(e) => setTerm(e.target.value)}
-                  required
-                  minLength={2}
+                  autoComplete="off"
                 />
               </div>
               <div>
@@ -122,9 +144,31 @@ export function PatientSearch() {
                 />
               </div>
             </div>
+            {searched && patients.length > 0 && !loading && (
+              <ul className="border border-outline-variant rounded-lg divide-y divide-outline-variant max-h-48 overflow-y-auto">
+                {patients.map((p) => (
+                  <li
+                    key={p.id}
+                    className="px-4 py-3 hover:bg-surface-container-low cursor-pointer"
+                    onClick={() => navigate(p, "checkin")}
+                  >
+                    <span className="font-medium text-on-surface">
+                      {p.first_name} {p.last_name}
+                    </span>
+                    <span className="text-body-sm text-on-surface-variant ml-2">
+                      Patient #{p.id}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             <CareqButton
               type="submit"
-              disabled={loading || term.trim().length < 2}
+              disabled={
+                loading ||
+                (/^\d+$/.test(term.trim()) ? term.trim().length < 1 : term.trim().length < 2)
+              }
               className="w-full"
             >
               <Search className="h-4 w-4" />
