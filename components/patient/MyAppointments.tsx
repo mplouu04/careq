@@ -2,8 +2,19 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-colors";
+import { ClipboardList } from "lucide-react";
+import {
+  CareqCard,
+  CareqButton,
+  CareqCardHeader,
+  ConfirmDialog,
+  EmptyState,
+  FormLabel,
+  FormInput,
+  StatusBadge,
+  type QueueStatusVariant,
+} from "@/components/careq";
+import { Button } from "@/components/ui/button";
 
 type Appointment = {
   checkinId: string;
@@ -25,6 +36,15 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
+const STATUS_VARIANT: Record<string, QueueStatusVariant> = {
+  pending: "waiting",
+  checked_in: "confirmed",
+  cancelled: "cancelled",
+  no_show: "completed",
+  in_progress: "called",
+  completed: "completed",
+};
+
 const TERMINAL_STATUSES = ["cancelled", "completed", "no_show"];
 
 export function MyAppointments() {
@@ -34,8 +54,6 @@ export function MyAppointments() {
   const [patientName, setPatientName] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-
-  // Cancel confirm modal
   const [cancelRef, setCancelRef] = useState<string | null>(null);
 
   async function lookup() {
@@ -73,126 +91,114 @@ export function MyAppointments() {
       return;
     }
     toast.success("Appointment cancelled.");
-    // Refresh list
     await lookup();
   }
 
-  const statusColors: Record<string, string> = {
-    pending: "bg-blue-100 text-blue-700",
-    checked_in: "bg-green-100 text-green-700",
-    cancelled: "bg-red-100 text-red-700",
-    no_show: "bg-gray-100 text-gray-600",
-    in_progress: "bg-yellow-100 text-yellow-700",
-    completed: "bg-gray-100 text-gray-600",
-  };
-
   return (
     <div className="space-y-5 max-w-xl">
-      {/* Search form */}
-      <div className="careq-card shadow">
-        <div className="px-6 py-4 bg-white border-b border-gray-100">
-          <h3 className="text-xl font-semibold text-gray-800">Look Up Appointments</h3>
-          <p className="text-gray-500 text-sm mt-0.5">Enter your phone and date of birth</p>
-        </div>
+      <CareqCard className="overflow-hidden">
+        <CareqCardHeader
+          title="Look Up Appointments"
+          description="Enter your phone and date of birth"
+        />
         <div className="px-6 py-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-              <input
+              <FormLabel>Phone Number</FormLabel>
+              <FormInput
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="09XXXXXXXXX"
-                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-              <input
-                type="date"
-                value={dob}
-                onChange={(e) => setDob(e.target.value)}
-                className={inputCls}
-              />
+              <FormLabel>Date of Birth</FormLabel>
+              <FormInput type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
             </div>
           </div>
-          <button
-            onClick={lookup}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 bg-[#0d6efd] hover:bg-[#0b5ed7] disabled:bg-gray-400 text-white font-medium px-4 py-2.5 rounded-lg transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
+          <CareqButton onClick={lookup} disabled={loading} className="w-full">
+            <ClipboardList className="h-4 w-4" />
             {loading ? "Looking up..." : "Look Up Appointments"}
-          </button>
+          </CareqButton>
         </div>
-      </div>
+      </CareqCard>
 
       {searched && (
         <>
           {patientName && (
-            <p className="font-medium text-lg text-gray-800">
+            <p className="text-headline-sm text-foreground">
               Hello, <strong>{patientName}</strong>!
             </p>
           )}
-          {appointments.length === 0 && (
-            <p className="text-gray-500 text-sm">No upcoming appointments found.</p>
-          )}
-          <div className="space-y-3">
-            {appointments.map((a) => (
-              <div key={a.checkinId} className="careq-card p-4 space-y-2">
-                <div className="flex justify-between items-start gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-800 truncate">{a.reference}</p>
-                    <p className="text-sm text-gray-500">{a.doctor} — {a.type}</p>
-                    <p className="text-sm text-gray-700">{a.date} at {a.time}</p>
-                    {a.reason && <p className="text-sm text-gray-400">Reason: {a.reason}</p>}
+          {appointments.length === 0 ? (
+            <EmptyState
+              icon={ClipboardList}
+              title="No upcoming appointments"
+              description="We could not find any appointments for the details provided."
+            />
+          ) : (
+            <div className="space-y-3">
+              {appointments.map((a) => (
+                <CareqCard key={a.checkinId} className="p-4 space-y-3">
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-foreground truncate">{a.reference}</p>
+                      <p className="text-body-sm text-muted-foreground">
+                        {a.doctor} — {a.type}
+                      </p>
+                      <p className="text-body-sm text-foreground">
+                        {a.date} at {a.time}
+                      </p>
+                      {a.reason && (
+                        <p className="text-body-sm text-muted-foreground">Reason: {a.reason}</p>
+                      )}
+                    </div>
+                    <StatusBadge
+                      status={STATUS_VARIANT[a.status] ?? "pending"}
+                      label={STATUS_LABELS[a.status] ?? a.status}
+                    />
                   </div>
-                  <span className={`text-xs font-semibold px-2 py-1 rounded-full flex-shrink-0 ${statusColors[a.status] ?? "bg-gray-100 text-gray-600"}`}>
-                    {STATUS_LABELS[a.status] ?? a.status}
-                  </span>
-                </div>
-                {!TERMINAL_STATUSES.includes(a.status) && (
-                  <button
-                    onClick={() => setCancelRef(a.reference)}
-                    className="text-sm border border-red-300 text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg font-medium transition-colors"
-                  >
-                    Cancel Appointment
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+                  {!TERMINAL_STATUSES.includes(a.status) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                      onClick={() => setCancelRef(a.reference)}
+                    >
+                      Cancel Appointment
+                    </Button>
+                  )}
+                </CareqCard>
+              ))}
+            </div>
+          )}
         </>
       )}
 
-      {/* Cancel confirmation modal */}
-      {cancelRef && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h5 className="font-bold text-gray-800 mb-3">Cancel Appointment</h5>
-            <p className="text-sm text-gray-600 mb-4">
-              Are you sure you want to cancel appointment{" "}
-              <strong>{cancelRef}</strong>? This cannot be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => confirmCancel(cancelRef)}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-medium transition-colors"
-              >
-                Yes, Cancel
-              </button>
-              <button
-                onClick={() => setCancelRef(null)}
-                className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 py-2 rounded-lg font-medium transition-colors"
-              >
-                Go Back
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!cancelRef}
+        onOpenChange={(open) => !open && setCancelRef(null)}
+        title="Cancel Appointment"
+        description={
+          cancelRef
+            ? `Are you sure you want to cancel appointment ${cancelRef}? This cannot be undone.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCancelRef(null)}>
+              Go Back
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => cancelRef && confirmCancel(cancelRef)}
+            >
+              Yes, Cancel
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

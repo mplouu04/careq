@@ -1,8 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ConfirmDialog, StatusBadge, FormSelect, type QueueStatusVariant } from "@/components/careq";
+import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +69,15 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
+const APPT_STATUS_VARIANT: Record<string, QueueStatusVariant> = {
+  pending: "waiting",
+  checked_in: "confirmed",
+  cancelled: "cancelled",
+  no_show: "completed",
+  in_progress: "called",
+  completed: "completed",
+};
+
 export function AdminPanel() {
   const [staffList, setStaffList] = useState<StaffRow[]>([]);
   const [types, setTypes] = useState<ApptType[]>([]);
@@ -79,14 +91,11 @@ export function AdminPanel() {
   const [editLastName, setEditLastName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
-  const editStaffModalRef = useFocusTrap(!!editStaff, () => setEditStaff(null));
-
   // Edit type modal
   const [editType, setEditType] = useState<ApptType | null>(null);
   const [editTypeName, setEditTypeName] = useState("");
   const [editTypeDuration, setEditTypeDuration] = useState("");
   const [editTypeDesc, setEditTypeDesc] = useState("");
-  const editTypeModalRef = useFocusTrap(!!editType, () => setEditType(null));
 
   const load = useCallback(async () => {
     try {
@@ -254,7 +263,7 @@ export function AdminPanel() {
         action: "add",
         display_name,
         location,
-        theme_color: fd.get("themeColor") || "#0d6efd",
+        theme_color: fd.get("themeColor") || CAREQ_DEFAULT_THEME_COLOR,
       }),
     });
     toast.success("Display screen added");
@@ -412,16 +421,12 @@ export function AdminPanel() {
                 </div>
                 <div>
                   <Label>Role</Label>
-                  <select
-                    name="role"
-                    className="flex h-9 w-full rounded-md border px-3 text-sm bg-background"
-                    required
-                  >
+                  <FormSelect name="role" required>
                     <option value="doctor">Doctor</option>
                     <option value="nurse">Nurse</option>
                     <option value="receptionist">Receptionist</option>
                     <option value="admin">Admin</option>
-                  </select>
+                  </FormSelect>
                 </div>
                 <div className="flex items-end">
                   <Button type="submit" className="w-full">
@@ -537,14 +542,25 @@ export function AdminPanel() {
                     />
                     <span className="text-xs">{s.theme_color}</span>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-2"
-                    onClick={() => toggleDisplay(s.id)}
-                  >
-                    {s.is_active ? "Deactivate" : "Activate"}
-                  </Button>
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Button size="sm" variant="outline" asChild>
+                      <Link
+                        href={`/queue/${s.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <ExternalLink className="h-3 w-3 mr-1" />
+                        Open Board
+                      </Link>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toggleDisplay(s.id)}
+                    >
+                      {s.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -565,7 +581,12 @@ export function AdminPanel() {
                 </div>
                 <div>
                   <Label>Theme Color</Label>
-                  <Input name="themeColor" type="color" defaultValue="#0d6efd" className="w-16 h-9 p-1" />
+                  <Input
+                    name="themeColor"
+                    type="color"
+                    defaultValue={CAREQ_DEFAULT_THEME_COLOR}
+                    className="w-16 h-9 p-1"
+                  />
                 </div>
                 <Button type="submit">Add Display</Button>
               </form>
@@ -622,17 +643,10 @@ export function AdminPanel() {
                           {a.appointment_date?.slice(0, 10)} {a.scheduled_time}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              a.status === "cancelled" || a.status === "no_show"
-                                ? "destructive"
-                                : a.status === "checked_in"
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {STATUS_LABELS[a.status] ?? a.status}
-                          </Badge>
+                          <StatusBadge
+                            status={APPT_STATUS_VARIANT[a.status] ?? "pending"}
+                            label={STATUS_LABELS[a.status] ?? a.status}
+                          />
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-1 flex-wrap">
@@ -702,86 +716,79 @@ export function AdminPanel() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Edit Staff Modal ─────────────────────────────────────────────── */}
-      {editStaff && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div ref={editStaffModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-staff-title" className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
-            <h2 id="edit-staff-title" className="text-lg font-semibold">Edit Staff</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label>First Name</Label>
-                <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
-              </div>
-              <div>
-                <Label>Last Name</Label>
-                <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
-              </div>
-            </div>
-            <div>
-              <Label>Email</Label>
-              <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
-            </div>
-            <div>
-              <Label>Role</Label>
-              <select
-                value={editRole}
-                onChange={(e) => setEditRole(e.target.value)}
-                className="flex h-9 w-full rounded-md border px-3 text-sm bg-background"
-              >
-                <option value="doctor">Doctor</option>
-                <option value="nurse">Nurse</option>
-                <option value="receptionist">Receptionist</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <div className="flex gap-3">
-              <Button className="flex-1" onClick={updateStaff}>
-                Save Changes
-              </Button>
-              <Button variant="outline" className="flex-1" onClick={() => setEditStaff(null)}>
-                Cancel
-              </Button>
-            </div>
+      <ConfirmDialog
+        open={!!editStaff}
+        onOpenChange={(open) => !open && setEditStaff(null)}
+        title="Edit Staff"
+        className="sm:max-w-md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditStaff(null)}>
+              Cancel
+            </Button>
+            <Button onClick={updateStaff}>Save Changes</Button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <Label>First Name</Label>
+            <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
+          </div>
+          <div>
+            <Label>Last Name</Label>
+            <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
           </div>
         </div>
-      )}
+        <div>
+          <Label>Email</Label>
+          <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+        </div>
+        <div>
+          <Label>Role</Label>
+          <FormSelect value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+            <option value="doctor">Doctor</option>
+            <option value="nurse">Nurse</option>
+            <option value="receptionist">Receptionist</option>
+            <option value="admin">Admin</option>
+          </FormSelect>
+        </div>
+      </ConfirmDialog>
 
-      {/* ── Edit Appointment Type Modal ─────────────────────────────────── */}
-      {editType && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div ref={editTypeModalRef} role="dialog" aria-modal="true" aria-labelledby="edit-type-title" className="bg-white rounded-lg p-6 max-w-sm w-full space-y-4">
-            <h2 id="edit-type-title" className="text-lg font-semibold">Edit Appointment Type</h2>
-            <div>
-              <Label>Name</Label>
-              <Input value={editTypeName} onChange={(e) => setEditTypeName(e.target.value)} />
-            </div>
-            <div>
-              <Label>Duration (min)</Label>
-              <Input
-                type="number"
-                min={1}
-                value={editTypeDuration}
-                onChange={(e) => setEditTypeDuration(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Input
-                value={editTypeDesc}
-                onChange={(e) => setEditTypeDesc(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-3">
-              <Button className="flex-1" onClick={saveEditType}>
-                Save
-              </Button>
-              <Button variant="outline" className="flex-1" onClick={() => setEditType(null)}>
-                Cancel
-              </Button>
-            </div>
+      <ConfirmDialog
+        open={!!editType}
+        onOpenChange={(open) => !open && setEditType(null)}
+        title="Edit Appointment Type"
+        className="sm:max-w-sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setEditType(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveEditType}>Save</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <Label>Name</Label>
+            <Input value={editTypeName} onChange={(e) => setEditTypeName(e.target.value)} />
+          </div>
+          <div>
+            <Label>Duration (min)</Label>
+            <Input
+              type="number"
+              min={1}
+              value={editTypeDuration}
+              onChange={(e) => setEditTypeDuration(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Input value={editTypeDesc} onChange={(e) => setEditTypeDesc(e.target.value)} />
           </div>
         </div>
-      )}
+      </ConfirmDialog>
     </>
   );
 }

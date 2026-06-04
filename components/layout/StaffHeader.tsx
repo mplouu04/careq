@@ -3,16 +3,17 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { Menu, X, LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { StaffProfile } from "@/lib/auth";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export function StaffHeader({ staff }: { staff: StaffProfile }) {
   const router = useRouter();
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Close mobile menu on navigation
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
@@ -22,7 +23,7 @@ export function StaffHeader({ staff }: { staff: StaffProfile }) {
       const supabase = createClient();
       await supabase.auth.signOut();
     } catch {
-      // Proceed to login regardless of signOut error
+      // Proceed to login regardless
     }
     router.push("/login");
     router.refresh();
@@ -33,57 +34,59 @@ export function StaffHeader({ staff }: { staff: StaffProfile }) {
       ? `Dr. ${staff.last_name}`
       : `${staff.first_name} ${staff.last_name}`;
 
-  const navLinks = (
-    <>
-      <Link
-        href="/dashboard"
-        className="text-white/90 hover:text-white hover:bg-white/10 px-3 py-1.5 rounded text-sm font-medium transition-colors"
-      >
-        Dashboard
-      </Link>
-      <Link
-        href="/queue"
-        target="_blank"
-        className="text-white/90 hover:text-white hover:bg-white/10 px-3 py-1.5 rounded text-sm font-medium transition-colors"
-      >
-        Queue Display
-      </Link>
-      {staff.role === "admin" && (
-        <Link
-          href="/admin"
-          className="text-white/90 hover:text-white hover:bg-white/10 px-3 py-1.5 rounded text-sm font-medium transition-colors"
-        >
-          Admin
-        </Link>
-      )}
-    </>
-  );
+  const links = [
+    { href: "/dashboard", label: "Dashboard" },
+    { href: "/queue", label: "Queue Display", external: true },
+    ...(staff.role === "admin" ? [{ href: "/admin", label: "Admin" }] : []),
+  ] as const;
+
+  const linkClass = (href: string) =>
+    cn(
+      "text-body-sm font-medium transition-colors px-3 py-1.5 rounded-md",
+      pathname === href || (href === "/dashboard" && pathname.startsWith("/dashboard"))
+        ? "text-primary bg-primary/10"
+        : "text-muted-foreground hover:text-primary hover:bg-muted/50"
+    );
 
   return (
-    <nav className="careq-navbar sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
-        {/* Brand */}
-        <Link href="/" className="text-xl font-bold text-white">
-          CAREQ
-        </Link>
-
-        {/* Desktop nav links */}
-        <div className="hidden sm:flex items-center gap-1 flex-1 ml-6">
-          {navLinks}
+    <header className="careq-navbar sticky top-0 z-50">
+      <div className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop flex items-center justify-between h-16">
+        <div className="flex items-center gap-6 flex-1 min-w-0">
+          <Link href="/dashboard" className="text-headline-md font-bold text-primary shrink-0">
+            CAREQ
+          </Link>
+          <nav className="hidden sm:flex items-center gap-1" aria-label="Staff">
+            {links.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                target={"external" in link && link.external ? "_blank" : undefined}
+                rel={"external" in link && link.external ? "noopener noreferrer" : undefined}
+                className={linkClass(link.href)}
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
         </div>
 
-        {/* Right side: user name + logout + hamburger */}
         <div className="flex items-center gap-3">
-          <span className="text-white text-sm hidden md:inline">{displayName}</span>
-          <button
+          <span className="text-body-sm text-muted-foreground hidden md:inline truncate max-w-[160px]">
+            {displayName}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={logout}
-            className="text-white border border-white/40 hover:bg-white/10 rounded px-3 py-1 text-sm font-medium transition-colors"
+            className="hidden sm:inline-flex gap-1"
           >
+            <LogOut className="h-4 w-4" />
             Logout
-          </button>
-          {/* Hamburger — mobile only */}
+          </Button>
           <button
-            className="sm:hidden text-white p-1 rounded hover:bg-white/10 transition-colors"
+            type="button"
+            className="sm:hidden text-primary p-1 rounded-lg hover:bg-muted"
             onClick={() => setMenuOpen((o) => !o)}
             aria-label={menuOpen ? "Close menu" : "Open menu"}
             aria-expanded={menuOpen}
@@ -93,41 +96,32 @@ export function StaffHeader({ staff }: { staff: StaffProfile }) {
         </div>
       </div>
 
-      {/* Mobile dropdown menu */}
       {menuOpen && (
-        <div className="sm:hidden bg-[#0b5ed7] border-t border-white/10 flex flex-col">
-          <span className="px-4 py-2 text-white/60 text-xs font-medium uppercase tracking-wide border-b border-white/10">
+        <nav className="sm:hidden border-t border-border bg-card flex flex-col" aria-label="Staff mobile">
+          <span className="px-4 py-2 text-label-sm text-muted-foreground uppercase tracking-wide border-b border-border">
             {displayName}
           </span>
-          <Link
-            href="/dashboard"
-            className="px-4 py-3 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors border-b border-white/10"
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/queue"
-            target="_blank"
-            className="px-4 py-3 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors border-b border-white/10"
-          >
-            Queue Display
-          </Link>
-          {staff.role === "admin" && (
+          {links.map((link) => (
             <Link
-              href="/admin"
-              className="px-4 py-3 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors border-b border-white/10"
+              key={link.href}
+              href={link.href}
+              target={"external" in link && link.external ? "_blank" : undefined}
+              rel={"external" in link && link.external ? "noopener noreferrer" : undefined}
+              className={cn("px-4 py-3 border-b border-border", linkClass(link.href))}
             >
-              Admin
+              {link.label}
             </Link>
-          )}
+          ))}
           <button
+            type="button"
             onClick={logout}
-            className="px-4 py-3 text-left text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors"
+            className="px-4 py-3 text-left text-body-sm text-muted-foreground hover:text-primary flex items-center gap-2"
           >
+            <LogOut className="h-4 w-4" />
             Logout
           </button>
-        </div>
+        </nav>
       )}
-    </nav>
+    </header>
   );
 }

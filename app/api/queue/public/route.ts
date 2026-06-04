@@ -1,25 +1,52 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
+import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { format } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_DISPLAY = {
+  display_name: "CAREQ",
+  location: "",
+  theme_color: CAREQ_DEFAULT_THEME_COLOR,
+  show_wait_time: true,
+  show_priority: true,
+};
+
 /**
- * GET /api/queue/public
+ * GET /api/queue/public?screenId=
  * Returns today's now-serving (in_progress) and upcoming (waiting) rows.
- * Used by the public TV queue board.
- *
- * Also handles POST ?auto=1 — marks in_progress rows older than 20 minutes as completed.
+ * Optional screenId loads display_settings for TV theming.
  */
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = createAdminClient();
   const today = format(new Date(), "yyyy-MM-dd");
+  const screenId = new URL(request.url).searchParams.get("screenId");
+
+  let display = { ...DEFAULT_DISPLAY };
+  if (screenId) {
+    const screenIdNum = parseInt(screenId, 10);
+    const { data: screen } = await supabase
+      .from("display_settings")
+      .select("display_name, location, theme_color, show_wait_time, show_priority, is_active")
+      .eq("id", Number.isNaN(screenIdNum) ? screenId : screenIdNum)
+      .maybeSingle();
+    if (screen?.is_active) {
+      display = {
+        display_name: screen.display_name,
+        location: screen.location,
+        theme_color: screen.theme_color ?? CAREQ_DEFAULT_THEME_COLOR,
+        show_wait_time: screen.show_wait_time ?? true,
+        show_priority: screen.show_priority ?? true,
+      };
+    }
+  }
 
   const { data } = await supabase
     .from("queue")
     .select(
-      `id, queue_number, status, room_id, skip_count, called_at,
+      `id, queue_number, status, priority, room_id, skip_count, called_at,
        called_by_staff:called_by(first_name, last_name),
        checkins!inner(
          checkin_id,
@@ -100,6 +127,7 @@ export async function GET() {
       room: item.room_id ?? "",
       reason: apptType?.name ?? "",
       status: item.status,
+      priority: (item as { priority?: string }).priority ?? "normal",
       called_at: item.called_at,
       ...(pos !== undefined
         ? { position: pos, est_wait_minutes: pos * avgServiceTime }
@@ -112,6 +140,7 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
+    display,
     nowServing: nowServing.map((q) => mapItem(q)),
     waiting: waiting.map((q, i) => mapItem(q, i + 1)),
     avg_service_time: avgServiceTime,

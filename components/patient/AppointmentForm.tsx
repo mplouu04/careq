@@ -5,6 +5,18 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { format, addDays, getDay } from "date-fns";
+import { CheckCircle2, Printer } from "lucide-react";
+import {
+  CareqCard,
+  CareqButton,
+  CareqCardHeader,
+  FormLabel,
+  FormInput,
+  FormSelect,
+  FormWarning,
+  FormInfo,
+} from "@/components/careq";
+import { Button } from "@/components/ui/button";
 
 type Doctor = { id: string; first_name: string; last_name: string };
 type ApptType = { id: string; name: string; duration: number };
@@ -20,8 +32,6 @@ function isWeekend(dateStr: string): boolean {
   const day = getDay(new Date(dateStr + "T00:00:00"));
   return day === 0 || day === 6;
 }
-
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-colors";
 
 export function AppointmentForm() {
   const params = useSearchParams();
@@ -50,21 +60,28 @@ export function AppointmentForm() {
     setToday(format(new Date(), "yyyy-MM-dd"));
     setMaxDate(format(addDays(new Date(), 30), "yyyy-MM-dd"));
     fetch("/api/doctors")
-      .then((r) => r.ok ? r.json() : { doctors: [] })
+      .then((r) => (r.ok ? r.json() : { doctors: [] }))
       .then((d) => setDoctors(d.doctors ?? []))
       .catch(() => {});
     fetch("/api/appointment-types")
-      .then((r) => r.ok ? r.json() : { types: [] })
+      .then((r) => (r.ok ? r.json() : { types: [] }))
       .then((d) => setTypes(d.types ?? []))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (!doctorId || !date) { setSlots([]); setTime(""); return; }
+    if (!doctorId || !date) {
+      setSlots([]);
+      setTime("");
+      return;
+    }
     fetch(`/api/doctors/availability?doctorId=${doctorId}&date=${date}`)
-      .then((r) => r.ok ? r.json() : { available_slots: [] })
-      .then((d) => { setSlots(d.available_slots ?? d.slots ?? []); setTime(""); })
-      .catch(() => { setSlots([]); });
+      .then((r) => (r.ok ? r.json() : { available_slots: [] }))
+      .then((d) => {
+        setSlots(d.available_slots ?? d.slots ?? []);
+        setTime("");
+      })
+      .catch(() => setSlots([]));
   }, [doctorId, date]);
 
   function handleDateChange(val: string) {
@@ -77,7 +94,10 @@ export function AppointmentForm() {
 
   async function book(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!patientId) { toast.error("Select a patient first via patient search"); return; }
+    if (!patientId) {
+      toast.error("Select a patient first via patient search");
+      return;
+    }
     setLoading(true);
     const fd = new FormData(e.currentTarget);
     const res = await fetch("/api/appointments", {
@@ -95,7 +115,10 @@ export function AppointmentForm() {
     });
     const data = await res.json();
     setLoading(false);
-    if (!res.ok) { toast.error(data.error ?? "Booking failed"); return; }
+    if (!res.ok) {
+      toast.error(data.error ?? "Booking failed");
+      return;
+    }
 
     const doctor = doctors.find((d) => d.id === doctorId);
     const apptType = types.find((t) => String(t.id) === appTypeId);
@@ -110,147 +133,164 @@ export function AppointmentForm() {
 
   if (success) {
     return (
-      <div className="careq-card shadow overflow-hidden">
-        <div className="px-6 py-5 text-center" style={{ backgroundColor: "rgba(25,135,84,0.08)" }}>
-          <div className="icon-circle mx-auto mb-3" style={{ backgroundColor: "#d1e7dd", color: "#198754" }}>
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+      <CareqCard className="overflow-hidden">
+        <div className="px-6 py-8 text-center bg-status-called/10">
+          <div className="icon-circle bg-status-called/15 text-status-called mx-auto mb-3">
+            <CheckCircle2 className="w-8 h-8" />
           </div>
-          <h4 className="text-xl font-bold text-gray-800 mb-1">Appointment Confirmed!</h4>
-          <p className="text-gray-500 text-sm">Your appointment has been successfully booked.</p>
+          <h4 className="text-headline-sm text-foreground mb-1">Appointment Confirmed!</h4>
+          <p className="text-body-sm text-muted-foreground">
+            Your appointment has been successfully booked.
+          </p>
         </div>
-        <div className="px-6 py-4 space-y-2 text-sm">
-          <div className="flex justify-between border-b border-gray-100 pb-2">
-            <span className="text-gray-500">Reference:</span>
-            <strong className="text-gray-800 font-mono">{success.appointmentID}</strong>
-          </div>
-          <div className="flex justify-between border-b border-gray-100 pb-2">
-            <span className="text-gray-500">Date:</span>
-            <strong className="text-gray-800">{success.date}</strong>
-          </div>
-          <div className="flex justify-between border-b border-gray-100 pb-2">
-            <span className="text-gray-500">Time:</span>
-            <strong className="text-gray-800">{success.time}</strong>
-          </div>
-          <div className="flex justify-between border-b border-gray-100 pb-2">
-            <span className="text-gray-500">Doctor:</span>
-            <strong className="text-gray-800">{success.doctor}</strong>
-          </div>
-          <div className="flex justify-between pb-2">
-            <span className="text-gray-500">Type:</span>
-            <strong className="text-gray-800">{success.type}</strong>
-          </div>
+        <div className="px-6 py-4 space-y-2 text-body-sm">
+          <DetailRow label="Reference" value={success.appointmentID} mono />
+          <DetailRow label="Date" value={success.date} />
+          <DetailRow label="Time" value={success.time} />
+          <DetailRow label="Doctor" value={success.doctor} />
+          <DetailRow label="Type" value={success.type} />
         </div>
-        <div className="px-6 pb-5">
-          <div className="p-3 rounded text-sm mb-4" style={{ backgroundColor: "#d1ecf1", color: "#0c5460", border: "1px solid #bee5eb" }}>
-            <svg className="w-4 h-4 inline mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Save this reference number. You&apos;ll need it for check-in on your visit day.
-          </div>
+        <div className="px-6 pb-6">
+          <FormInfo message="Save this reference number. You'll need it for check-in on your visit day." />
           <div className="flex gap-3">
-            <button onClick={() => window.print()} className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => window.print()}
+            >
+              <Printer className="h-4 w-4" />
               Print
-            </button>
-            <button onClick={() => (window.location.href = "/")} className="flex-1 bg-[#0d6efd] hover:bg-[#0b5ed7] text-white py-2 rounded-lg text-sm font-medium transition-colors">
+            </Button>
+            <CareqButton className="flex-1" onClick={() => (window.location.href = "/")}>
               Done
-            </button>
+            </CareqButton>
           </div>
         </div>
-      </div>
+      </CareqCard>
     );
   }
 
   return (
-    <div className="careq-card shadow overflow-hidden">
-      <div className="px-6 py-4 bg-white border-b border-gray-100">
-        <h3 className="text-xl font-semibold text-gray-800">Book an Appointment</h3>
-        <p className="text-gray-500 text-sm mt-0.5">Fill in the details below to schedule your visit.</p>
-      </div>
+    <CareqCard className="overflow-hidden">
+      <CareqCardHeader
+        title="Book an Appointment"
+        description="Fill in the details below to schedule your visit."
+      />
       <div className="px-6 py-5">
         {!patientId && (
-          <div className="mb-4 p-3 rounded text-sm" style={{ backgroundColor: "#fff3cd", color: "#664d03", border: "1px solid #ffecb5" }}>
-            <Link href="/patient-search" className="text-[#0d6efd] hover:underline font-medium">Find a patient</Link>{" "}
+          <FormWarning>
+            <Link href="/patient-search" className="text-primary hover:underline font-medium">
+              Find a patient
+            </Link>{" "}
             before booking.
-          </div>
+          </FormWarning>
         )}
 
         <form onSubmit={book} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Doctor</label>
-            <select value={doctorId} onChange={(e) => setDoctorId(e.target.value)} className={inputCls}>
+            <FormLabel required>Preferred Doctor</FormLabel>
+            <FormSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} required>
               <option value="">Select doctor</option>
               {doctors.map((d) => (
-                <option key={d.id} value={d.id}>Dr. {d.first_name} {d.last_name}</option>
+                <option key={d.id} value={d.id}>
+                  Dr. {d.first_name} {d.last_name}
+                </option>
               ))}
-            </select>
+            </FormSelect>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Type</label>
-            <select value={appTypeId} onChange={(e) => setAppTypeId(e.target.value)} className={inputCls}>
+            <FormLabel required>Appointment Type</FormLabel>
+            <FormSelect value={appTypeId} onChange={(e) => setAppTypeId(e.target.value)} required>
               <option value="">Select type</option>
               {types.map((t) => (
-                <option key={t.id} value={String(t.id)}>{t.name} ({t.duration} min)</option>
+                <option key={t.id} value={String(t.id)}>
+                  {t.name} ({t.duration} min)
+                </option>
               ))}
-            </select>
+            </FormSelect>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Appointment Date</label>
-            <input
+            <FormLabel required>Appointment Date</FormLabel>
+            <FormInput
               type="date"
               value={date}
               onChange={(e) => handleDateChange(e.target.value)}
               required
               min={today}
               max={maxDate}
-              className={inputCls}
             />
-            <p className="text-xs text-gray-400 mt-1">Weekdays only &bull; Up to 30 days in advance</p>
+            <p className="text-body-sm text-muted-foreground mt-1">
+              Weekdays only · Up to 30 days in advance
+            </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Time Slot</label>
-            <select
+            <FormLabel required>Time Slot</FormLabel>
+            <FormSelect
               value={time}
               onChange={(e) => setTime(e.target.value)}
               disabled={slots.length === 0}
               required
-              className={inputCls}
             >
               <option value="">
-                {!doctorId || !date ? "Select doctor and date first" : slots.length ? "Select time" : "No slots available"}
+                {!doctorId || !date
+                  ? "Select doctor and date first"
+                  : slots.length
+                    ? "Select time"
+                    : "No slots available"}
               </option>
               {slots.map((s) => (
-                <option key={s} value={s}>{formatTime12h(s)}</option>
+                <option key={s} value={s}>
+                  {formatTime12h(s)}
+                </option>
               ))}
-            </select>
+            </FormSelect>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-            <textarea name="reason" placeholder="Brief reason for the visit" rows={3} className={inputCls + " resize-none"} />
+            <FormLabel>Reason (optional)</FormLabel>
+            <textarea
+              name="reason"
+              placeholder="Brief reason for the visit"
+              rows={3}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-body-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[88px]"
+            />
           </div>
 
-          <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
-            <input type="checkbox" name="termsAgreement" required className="mt-0.5 rounded" />
+          <label className="flex items-start gap-2 text-body-sm cursor-pointer">
+            <input type="checkbox" name="termsAgreement" required className="mt-1 rounded" />
             <span>I agree to the clinic terms and consent to this appointment.</span>
           </label>
 
-          <button
+          <CareqButton
             type="submit"
+            className="w-full"
             disabled={loading || !patientId || !doctorId || !appTypeId || !date || !time}
-            className="w-full bg-[#0d6efd] hover:bg-[#0b5ed7] disabled:bg-gray-400 text-white py-3 rounded-lg font-medium transition-colors"
           >
             {loading ? "Booking..." : "Book Appointment"}
-          </button>
+          </CareqButton>
         </form>
       </div>
+    </CareqCard>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex justify-between border-b border-border pb-2 last:border-0">
+      <span className="text-muted-foreground">{label}:</span>
+      <strong className={mono ? "font-mono text-foreground" : "text-foreground"}>{value}</strong>
     </div>
   );
 }

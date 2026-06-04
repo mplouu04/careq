@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CAREQ - Patient Registration</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-effect {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "error-container": "#ffdad6",
+                      "tertiary": "#943700",
+                      "primary-fixed-dim": "#b4c5ff",
+                      "on-tertiary-container": "#ffede6",
+                      "surface-bright": "#faf8ff",
+                      "on-primary-fixed-variant": "#003ea8",
+                      "on-secondary-fixed": "#0b1c30",
+                      "secondary-fixed": "#d3e4fe",
+                      "primary": "#004ac6",
+                      "on-surface": "#191b23",
+                      "on-primary-container": "#eeefff",
+                      "surface": "#faf8ff",
+                      "surface-container-lowest": "#ffffff",
+                      "primary-fixed": "#dbe1ff",
+                      "on-tertiary-fixed-variant": "#7d2d00",
+                      "on-error-container": "#93000a",
+                      "surface-variant": "#e1e2ed",
+                      "surface-tint": "#0053db",
+                      "surface-container-low": "#f3f3fe",
+                      "on-secondary": "#ffffff",
+                      "surface-dim": "#d9d9e5",
+                      "inverse-primary": "#b4c5ff",
+                      "on-surface-variant": "#434655",
+                      "error": "#ba1a1a",
+                      "secondary-container": "#d0e1fb",
+                      "primary-container": "#2563eb",
+                      "on-background": "#191b23",
+                      "background": "#faf8ff",
+                      "surface-container": "#ededf9",
+                      "secondary": "#505f76",
+                      "on-secondary-container": "#54647a",
+                      "on-primary-fixed": "#00174b",
+                      "on-error": "#ffffff",
+                      "tertiary-fixed": "#ffdbcd",
+                      "tertiary-fixed-dim": "#ffb596",
+                      "tertiary-container": "#bc4800",
+                      "secondary-fixed-dim": "#b7c8e1",
+                      "on-primary": "#ffffff",
+                      "inverse-on-surface": "#f0f0fb",
+                      "outline": "#737686",
+                      "on-tertiary-fixed": "#360f00",
+                      "surface-container-high": "#e7e7f3",
+                      "inverse-surface": "#2e3039",
+                      "outline-variant": "#c3c6d7",
+                      "on-secondary-fixed-variant": "#38485d",
+                      "surface-container-highest": "#e1e2ed",
+                      "on-tertiary": "#ffffff"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "card": "12px",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sm": "8px",
+                      "xxl": "48px",
+                      "md": "16px",
+                      "lg": "24px",
+                      "margin-mobile": "16px",
+                      "xs": "4px",
+                      "gutter": "24px",
+                      "xl": "32px",
+                      "margin-desktop": "40px"
+              },
+              "fontFamily": {
+                      "body-sm": ["Inter"],
+                      "label-md": ["Inter"],
+                      "label-sm": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "headline-sm": ["Inter"],
+                      "body-md": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "headline-lg-mobile": ["Inter"]
+              },
+              "fontSize": {
+                      "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "label-md": ["14px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                      "label-sm": ["12px", {"lineHeight": "1.2", "fontWeight": "500"}],
+                      "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                      "headline-sm": ["20px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                      "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "body-lg": ["18px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "headline-lg-mobile": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}]
+              }
+            },
+          },
+        }
+      </script>
+</head>
+<body class="bg-background text-on-background min-h-screen relative overflow-x-hidden">
+<!-- TopNavBar (Shared Component) -->
+<header class="sticky top-0 z-50 flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-16 bg-surface/95 backdrop-blur-sm shadow-sm border-b border-outline-variant">
+<div class="font-headline-md text-headline-md font-bold text-primary">CAREQ</div>
+<nav class="hidden md:flex space-x-lg items-center">
+<a class="font-body-md text-body-md text-primary font-bold border-b-2 border-primary pb-1" href="#">Check In</a>
+<a class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors" href="#">Queue Status</a>
+</nav>
+<button class="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors">Staff Login</button>
+</header>
+<!-- Main Registration Area -->
+<main class="relative flex flex-col items-center justify-center py-xxl px-margin-mobile">
+<!-- Background Pattern Decor -->
+<div class="absolute inset-0 -z-10 overflow-hidden pointer-events-none opacity-40">
+<div class="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-3xl -mr-64 -mt-64"></div>
+<div class="absolute bottom-0 left-0 w-[400px] h-[400px] bg-secondary/5 rounded-full blur-3xl -ml-48 -mb-48"></div>
+</div>
+<div class="w-full max-w-2xl bg-surface-container-lowest border border-outline-variant rounded-card shadow-sm transition-all duration-500 overflow-hidden" id="form-container">
+<div class="p-lg md:p-xl">
+<div class="mb-xl">
+<h1 class="font-headline-lg text-headline-lg text-primary mb-xs">Patient Registration</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Please provide your details to join the electronic queue.</p>
+</div>
+<form class="grid grid-cols-1 md:grid-cols-2 gap-lg" id="registrationForm" onsubmit="event.preventDefault(); showSuccess();">
+<!-- Personal Info Section -->
+<div class="space-y-md md:col-span-2">
+<label class="block">
+<span class="font-label-md text-label-md text-on-surface mb-xs block">Full Name</span>
+<input class="w-full h-11 px-md border border-outline rounded-lg focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-surface transition-all outline-none" placeholder="John Doe" required="" type="text"/>
+</label>
+</div>
+<div class="space-y-md">
+<label class="block">
+<span class="font-label-md text-label-md text-on-surface mb-xs block">Date of Birth</span>
+<input class="w-full h-11 px-md border border-outline rounded-lg focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-surface transition-all outline-none" required="" type="date"/>
+</label>
+</div>
+<div class="space-y-md">
+<label class="block">
+<span class="font-label-md text-label-md text-on-surface mb-xs block">Gender</span>
+<select class="w-full h-11 px-md border border-outline rounded-lg focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-surface transition-all outline-none">
+<option>Male</option>
+<option>Female</option>
+<option>Other</option>
+<option>Prefer not to say</option>
+</select>
+</label>
+</div>
+<div class="space-y-md md:col-span-2">
+<label class="block">
+<span class="font-label-md text-label-md text-on-surface mb-xs block">Reason for Visit</span>
+<textarea class="w-full p-md border border-outline rounded-lg focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-surface transition-all outline-none resize-none" placeholder="Describe your symptoms or reason for visiting..." required="" rows="3"></textarea>
+</label>
+</div>
+<div class="space-y-md">
+<label class="block">
+<span class="font-label-md text-label-md text-on-surface mb-xs block">Contact Number</span>
+<input class="w-full h-11 px-md border border-outline rounded-lg focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-surface transition-all outline-none" placeholder="+1 (555) 000-0000" required="" type="tel"/>
+</label>
+</div>
+<div class="space-y-md">
+<label class="block">
+<span class="font-label-md text-label-md text-on-surface mb-xs block">Insurance Provider</span>
+<input class="w-full h-11 px-md border border-outline rounded-lg focus:ring-2 focus:ring-primary focus:ring-offset-2 bg-surface transition-all outline-none" placeholder="Optional" type="text"/>
+</label>
+</div>
+<div class="md:col-span-2 pt-md">
+<button class="w-full h-[44px] bg-primary text-on-primary font-label-md text-label-md rounded-lg shadow-sm hover:bg-primary-container transition-all active:scale-[0.98] flex items-center justify-center gap-sm" type="submit">
+<span class="material-symbols-outlined">how_to_reg</span>
+                            Complete Registration
+                        </button>
+</div>
+</form>
+</div>
+</div>
+</main>
+<!-- Success Modal Overlay -->
+<div class="fixed inset-0 z-[100] hidden items-center justify-center px-margin-mobile" id="successModal">
+<!-- Backdrop -->
+<div class="absolute inset-0 bg-on-surface/40 backdrop-blur-md transition-opacity duration-300"></div>
+<!-- Modal Card -->
+<div class="relative bg-surface-container-lowest w-full max-w-md rounded-card shadow-xl overflow-hidden animate-[modal-in_0.4s_ease-out] border border-outline-variant">
+<div class="p-xl flex flex-col items-center text-center">
+<!-- Checkmark Icon -->
+<div class="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-lg">
+<span class="material-symbols-outlined text-primary text-[40px]" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-primary mb-sm">Registration Successful</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mb-lg">
+                    Your details have been securely added to our system. Your unique Patient ID has been generated.
+                </p>
+<div class="bg-surface-container w-full p-md rounded-lg mb-xl border border-outline-variant">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider block mb-xs">Patient ID</span>
+<span class="font-headline-sm text-headline-sm text-on-surface font-black tracking-widest" id="patientId">PX-492-02B</span>
+</div>
+<div class="flex flex-col w-full gap-md">
+<button class="w-full h-[44px] bg-primary text-on-primary font-label-md text-label-md rounded-lg hover:bg-primary-container transition-all shadow-md active:scale-[0.98]" onclick="location.reload()">
+                        Go to Check-In
+                    </button>
+<button class="w-full h-[44px] bg-transparent border border-outline text-secondary font-label-md text-label-md rounded-lg hover:bg-surface-container-low transition-all active:scale-[0.98]" onclick="hideSuccess()">
+                        Done
+                    </button>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer (Shared Component) -->
+<footer class="w-full py-lg px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row justify-between items-center gap-md border-t border-outline-variant bg-surface-container-lowest">
+<div class="font-label-md text-label-md font-black text-on-surface uppercase">CAREQ</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">© 2024 CAREQ Queue Management System</div>
+<div class="flex gap-lg">
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Live Updates</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Contact Clinic</a>
+</div>
+</footer>
+<script>
+        function showSuccess() {
+            const modal = document.getElementById('successModal');
+            const form = document.getElementById('form-container');
+            
+            // Blur the form container even more
+            form.classList.add('blur-sm', 'opacity-50', 'pointer-events-none');
+            
+            // Generate a random ID
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+            const nums = '0123456789';
+            const randomId = 'PX-' + 
+                Array.from({length: 3}, () => nums.charAt(Math.floor(Math.random() * nums.length))).join('') + '-' +
+                Array.from({length: 2}, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('') + 
+                nums.charAt(Math.floor(Math.random() * nums.length));
+            
+            document.getElementById('patientId').textContent = randomId;
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideSuccess() {
+            const modal = document.getElementById('successModal');
+            const form = document.getElementById('form-container');
+            
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            form.classList.remove('blur-sm', 'opacity-50', 'pointer-events-none');
+            document.body.style.overflow = 'auto';
+            document.getElementById('registrationForm').reset();
+        }
+
+        // Simple animation for the modal
+        const style = document.createElement('style');
+        style.innerHTML = `
+            @keyframes modal-in {
+                from { opacity: 0; transform: scale(0.95) translateY(10px); }
+                to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body></html>

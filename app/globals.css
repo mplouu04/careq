@@ -4,26 +4,32 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Clinical Precision — see design-system/MASTER.md */
+    --background: 250 100% 99%;
+    --foreground: 222 47% 11%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
+    --popover-foreground: 222 47% 11%;
+    --primary: 222 100% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 240 33% 97%;
+    --muted-foreground: 228 9% 36%;
+    --accent: 214 89% 93%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 228 20% 87%;
+    --input: 228 20% 87%;
+    --ring: 222 100% 39%;
+    --radius: 0.75rem;
+    --status-waiting: 222 100% 39%;
+    --status-called: 142 76% 36%;
+    --status-completed: 215 16% 47%;
+    --secondary-container: 214 89% 93%;
+    --on-secondary-container: 215 25% 40%;
   }
 
   .dark {
@@ -33,8 +39,8 @@
     --card-foreground: 210 40% 98%;
     --popover: 222.2 84% 4.9%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 222 100% 55%;
+    --primary-foreground: 0 0% 100%;
     --secondary: 217.2 32.6% 17.5%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217.2 32.6% 17.5%;
@@ -45,7 +51,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --ring: 222 100% 55%;
   }
 }
 
@@ -54,222 +60,129 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    line-height: 1.6;
-    color: #333;
+    @apply bg-background text-foreground font-sans antialiased;
+    line-height: 1.5;
   }
 }
 
-/* ── Landing page ─────────────────────────────────────────────────────────── */
-.landing-page {
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  min-height: 100vh;
-}
-
-/* ── Navbar ───────────────────────────────────────────────────────────────── */
-.careq-navbar {
-  background-color: #0d6efd;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-}
-
-/* ── Cards ────────────────────────────────────────────────────────────────── */
+/* ── Legacy aliases (migrate screens off these gradually) ───────────────── */
 .careq-card {
-  border: none;
-  border-radius: 10px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  background: white;
+  @apply rounded-xl border border-border bg-card shadow-sm transition-shadow duration-200;
 }
 
-.careq-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+.careq-card-interactive:hover {
+  @apply shadow-md cursor-pointer;
 }
 
-/* ── Queue Display ────────────────────────────────────────────────────────── */
+.careq-navbar {
+  @apply bg-card/95 backdrop-blur-sm shadow-sm border-b border-border;
+}
+
+/* ── Queue TV display ─────────────────────────────────────────────────────── */
 .current-patient-section {
-  background-color: #0d6efd;
+  background-color: hsl(var(--primary));
   color: white;
   min-height: 100vh;
 }
 
 .upcoming-queue-section {
-  background-color: white;
-  min-height: 100vh;
-  overflow-y: auto;
+  @apply bg-card min-h-screen overflow-y-auto;
 }
 
 .current-patient-card {
-  background-color: white;
-  border-radius: 10px;
-  color: #333;
-  margin: 0 auto;
-  max-width: 600px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  @apply bg-card rounded-xl text-foreground mx-auto max-w-xl shadow-lg;
 }
 
 .queue-number-lg {
-  font-size: 5rem;
-  font-weight: bold;
-  color: #0d6efd;
+  @apply text-[5rem] font-bold text-primary;
 }
 
 .queue-number-sm {
-  font-size: 1.2rem;
-  font-weight: bold;
-  color: #0d6efd;
-  background-color: rgba(13, 110, 253, 0.1);
-  display: inline-block;
-  padding: 0.2rem 1rem;
-  border-radius: 50px;
-  min-width: 60px;
-  text-align: center;
-  flex-shrink: 0;
+  @apply text-body-md font-bold text-primary bg-primary/10 inline-block py-0.5 px-4 rounded-full min-w-[60px] text-center shrink-0;
 }
 
 .patient-name {
-  font-size: 1.8rem;
-  margin-bottom: 1rem;
+  @apply text-[1.8rem] mb-4;
 }
 
 .patient-info {
-  display: flex;
-  justify-content: center;
-  gap: 2rem;
-  margin-top: 1rem;
-  flex-wrap: wrap;
+  @apply flex justify-center gap-8 mt-4 flex-wrap;
 }
 
 .info-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  @apply flex items-center gap-2;
 }
 
 .upcoming-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+  @apply list-none p-0 m-0;
 }
 
 .upcoming-item {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 1rem;
-  border-bottom: 1px solid #eee;
-  transition: background-color 0.2s;
-}
-
-.upcoming-item:hover {
-  background-color: #f8f9fa;
+  @apply flex items-center gap-6 p-4 border-b border-border transition-colors duration-200 hover:bg-muted/50;
 }
 
 .patient-details {
-  flex-grow: 1;
+  @apply flex-grow;
 }
 
 .appointment-time {
-  color: #6c757d;
-  font-size: 0.9rem;
+  @apply text-muted-foreground text-body-sm;
 }
 
-/* ── Badges ───────────────────────────────────────────────────────────────── */
 .est-wait-badge {
-  display: inline-block;
-  background-color: #198754;
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.15rem 0.5rem;
-  border-radius: 50px;
-  margin-left: 0.25rem;
+  @apply inline-block bg-status-called text-white text-label-sm font-semibold py-0.5 px-2 rounded-full ml-1;
 }
 
 .position-badge {
-  display: inline-block;
-  background-color: #0d6efd;
-  color: #fff;
-  font-size: 0.72rem;
-  padding: 0.15rem 0.5rem;
-  border-radius: 50px;
+  @apply inline-block bg-primary text-primary-foreground text-label-sm py-0.5 px-2 rounded-full;
 }
 
-/* ── Analytics ────────────────────────────────────────────────────────────── */
 .analytics-value {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #0d6efd;
+  @apply text-headline-md font-bold text-primary;
 }
 
 .analytics-label {
-  font-size: 0.8rem;
-  color: #6c757d;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  @apply text-label-sm text-muted-foreground uppercase tracking-wide;
 }
 
-/* ── Icon circle (admin cards) ───────────────────────────────────────────── */
 .icon-circle {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 1rem;
+  @apply w-[60px] h-[60px] rounded-full flex items-center justify-center mx-auto mb-4;
 }
 
-/* ── Login / Auth container ──────────────────────────────────────────────── */
 .auth-container {
-  max-width: 500px;
-  width: 100%;
-  margin: 0 auto;
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
+  @apply max-w-lg w-full mx-auto bg-card rounded-xl shadow-lg overflow-hidden;
 }
 
 .auth-header-tab {
-  display: flex;
-  border-bottom: 1px solid #eee;
+  @apply flex border-b border-border;
 }
 
 .auth-tab-item {
-  flex: 1;
-  text-align: center;
-  padding: 1rem;
-  font-weight: 500;
+  @apply flex-1 text-center p-4 font-medium;
 }
 
 .auth-tab-item.active {
-  color: #0d6efd;
-  border-bottom: 3px solid #0d6efd;
+  @apply text-primary border-b-[3px] border-primary;
 }
 
 .auth-body {
-  padding: 2rem;
+  @apply p-8;
 }
 
-/* ── Forms ────────────────────────────────────────────────────────────────── */
 .careq-input {
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  border: 1px solid #ced4da;
-  width: 100%;
-  font-size: 1rem;
-  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  @apply w-full rounded-lg border border-input bg-background px-4 py-3 text-body-md transition-colors;
 }
 
 .careq-input:focus {
-  border-color: #86b7fe;
-  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
-  outline: 0;
+  @apply outline-none ring-2 ring-ring ring-offset-2 border-primary;
 }
 
-/* ── Responsive ───────────────────────────────────────────────────────────── */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
 @media (max-width: 768px) {
   .queue-number-lg {
     font-size: 3rem;
@@ -278,11 +191,10 @@
     font-size: 1.4rem;
   }
   .patient-info {
-    flex-direction: column;
-    gap: 0.5rem;
+    @apply flex-col gap-2;
   }
   .analytics-value {
-    font-size: 1.4rem;
+    @apply text-headline-sm;
   }
 }
 
@@ -292,31 +204,15 @@
     min-height: auto;
   }
   .upcoming-item {
-    gap: 0.75rem;
-    padding: 0.6rem;
+    @apply gap-3 py-2.5;
   }
 }
 
-/* ── Mobile (≤640px) ──────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
-  .careq-navbar {
-    padding: 0;
-  }
-  .careq-navbar .max-w-7xl {
-    padding-left: 1rem;
-    padding-right: 1rem;
-  }
-  .auth-container {
-    padding-left: 1rem;
-    padding-right: 1rem;
-    margin-left: auto;
-    margin-right: auto;
-  }
   .current-patient-card {
-    max-width: 100%;
-    padding: 1.5rem 1rem;
+    @apply max-w-full px-4 py-6;
   }
   .careq-card {
-    padding: 1rem;
+    @apply p-4;
   }
 }

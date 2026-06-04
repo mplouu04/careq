@@ -2,9 +2,33 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { useFocusTrap } from "@/lib/hooks/useFocusTrap";
+import {
+  UserPlus,
+  BarChart3,
+  RefreshCw,
+  Users,
+  Clock,
+} from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import type { StaffProfile } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/client";
+import {
+  CareqCard,
+  CareqButton,
+  ConfirmDialog,
+  EmptyState,
+  FormLabel,
+} from "@/components/careq";
+import { cn } from "@/lib/utils";
 
-// Lazy-load Chart.js — keeps it out of the initial dashboard bundle (~200 KB saved)
 const Bar = dynamic(
   () =>
     import("react-chartjs-2").then(async (m) => {
@@ -15,18 +39,6 @@ const Bar = dynamic(
     }),
   { ssr: false }
 );
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { toast } from "sonner";
-import type { StaffProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/client";
-
 
 type QueueWaiting = {
   id: number;
@@ -60,6 +72,8 @@ type QueueCompleted = {
 type Doctor = { id: string; first_name: string; last_name: string };
 type Room = { id: string; name: string };
 
+const CHART_PRIMARY = "rgba(0, 74, 198, 0.75)";
+
 export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [waiting, setWaiting] = useState<QueueWaiting[]>([]);
   const [inProgress, setInProgress] = useState<QueueInProgress[]>([]);
@@ -73,10 +87,9 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [chartData, setChartData] = useState<{ date: string; served: number; avg_time?: number }[]>([]);
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
-  const callModalRef = useFocusTrap(callModalOpen, () => setCallModalOpen(false));
-  const recallModalRef = useFocusTrap(!!recallModal, () => setRecallModal(null));
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
+  const [today, setToday] = useState("");
 
   const loadQueue = useCallback(async () => {
     try {
@@ -90,7 +103,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         setAvgServiceTime(data.appointment.avg_service_time ?? 10);
       }
     } catch {
-      // Silently retry on next poll interval
+      // Retry on next poll
     }
   }, []);
 
@@ -110,19 +123,27 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       });
       setChartData(data.history ?? []);
     } catch {
-      // Silently retry on next poll interval
+      // Retry on next poll
     }
   }, []);
 
   useEffect(() => {
+    setToday(
+      new Date().toLocaleDateString("en-PH", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    );
     loadQueue();
     loadStats();
     fetch("/api/doctors")
-      .then((r) => r.ok ? r.json() : { doctors: [] })
+      .then((r) => (r.ok ? r.json() : { doctors: [] }))
       .then((d) => setDoctors(d.doctors ?? []))
       .catch(() => {});
     fetch("/api/rooms")
-      .then((r) => r.ok ? r.json() : { rooms: [] })
+      .then((r) => (r.ok ? r.json() : { rooms: [] }))
       .then((d) => setRooms(d.rooms ?? []))
       .catch(() => {});
 
@@ -134,21 +155,48 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         loadStats();
       })
       .subscribe();
-    const interval = setInterval(() => { loadQueue(); loadStats(); }, 5000);
-    return () => { supabase.removeChannel(channel); clearInterval(interval); };
+    const interval = setInterval(() => {
+      loadQueue();
+      loadStats();
+    }, 5000);
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, [loadQueue, loadStats]);
 
-  async function performAction(name: string, queueId: number, overrideDoctorId?: string, overrideRoomId?: string) {
+  async function performAction(
+    name: string,
+    queueId: number,
+    overrideDoctorId?: string,
+    overrideRoomId?: string
+  ) {
     const useDoctorId = overrideDoctorId ?? doctorId ?? doctors[0]?.id;
     const useRoomId = overrideRoomId ?? roomId ?? rooms[0]?.id;
     const res = await fetch("/api/queue/actions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: name, queueId, doctorId: useDoctorId, roomNumber: useRoomId }),
+      body: JSON.stringify({
+        action: name,
+        queueId,
+        doctorId: useDoctorId,
+        roomNumber: useRoomId,
+      }),
     });
     const data = await res.json();
-    if (!res.ok) { toast.error(data.error ?? "Action failed"); return; }
-    toast.success(name === "call_next" ? "Patient called!" : name === "mark_done" ? "Marked as done" : name === "skip" ? "Patient skipped" : "Updated");
+    if (!res.ok) {
+      toast.error(data.error ?? "Action failed");
+      return;
+    }
+    toast.success(
+      name === "call_next"
+        ? "Patient called!"
+        : name === "mark_done"
+          ? "Marked as done"
+          : name === "skip"
+            ? "Patient skipped"
+            : "Updated"
+    );
     loadQueue();
     loadStats();
   }
@@ -161,18 +209,16 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       body: JSON.stringify({ action: "reset_daily" }),
     });
     const data = await res.json();
-    if (!res.ok) { toast.error(data.error ?? "Reset failed"); return; }
+    if (!res.ok) {
+      toast.error(data.error ?? "Reset failed");
+      return;
+    }
     toast.success(`Queue reset. ${data.cancelled} entries cancelled.`);
-    loadQueue(); loadStats();
+    loadQueue();
+    loadStats();
   }
 
-  const [today, setToday] = useState("");
-  useEffect(() => {
-    setToday(new Date().toLocaleDateString("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" }));
-  }, []);
-
   const nextWaiting = waiting[0];
-
   const reversed = [...chartData].reverse();
   const barChartData = {
     labels: reversed.map((c) => c.date.slice(5)),
@@ -180,336 +226,382 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       {
         label: "Patients Served",
         data: reversed.map((c) => c.served),
-        backgroundColor: "rgba(13, 110, 253, 0.75)",
+        backgroundColor: CHART_PRIMARY,
         borderRadius: 4,
         yAxisID: "y",
       },
     ],
   };
 
-
   return (
     <div>
-      {/* Page header row */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Today&apos;s Queue</h2>
-          <p className="text-gray-500 text-sm">{today}</p>
+          <h2 className="text-headline-md text-foreground">Today&apos;s Queue</h2>
+          <p className="text-body-sm text-muted-foreground">{today}</p>
         </div>
-        <button
-          onClick={() => setCallModalOpen(true)}
-          className="inline-flex items-center gap-2 bg-[#0d6efd] hover:bg-[#0b5ed7] text-white font-medium px-4 py-2 rounded-lg transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-          </svg>
+        <CareqButton onClick={() => setCallModalOpen(true)} className="gap-2">
+          <UserPlus className="h-4 w-4" />
           Call Next Patient
-        </button>
+        </CareqButton>
       </div>
 
-      {/* Queue columns */}
       <div className="grid md:grid-cols-3 gap-5 mb-5">
-        {/* Waiting Room */}
-        <div className="careq-card overflow-hidden">
-          <div className="px-4 py-3" style={{ backgroundColor: "#0dcaf0" }}>
-            <h5 className="font-semibold text-white m-0">Waiting Room</h5>
-          </div>
-          <ul className="divide-y divide-gray-100">
-            {waiting.map((q) => (
-              <li key={q.queueId} className="px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-[#0d6efd]">{q.queue_number ?? q.id}</span>
-                      <span className="position-badge"># {q.position}</span>
-                      <span className="est-wait-badge">~{q.est_wait_minutes}m</span>
-                      {q.skip_count > 0 && (
-                        <span className="text-xs text-orange-500">(skipped {q.skip_count}×)</span>
-                      )}
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 mt-0.5">{q.name}</p>
-                    {q.reason && <p className="text-xs text-gray-500 truncate">{q.reason}</p>}
+        <QueueColumn
+          title="Waiting Room"
+          headerClass="bg-sky-500 text-white"
+          footer={`Total waiting: ${waiting.length} patients`}
+          empty={
+            waiting.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No patients waiting"
+                description="The waiting room is clear. New check-ins will appear here."
+                className="border-0 bg-transparent py-8"
+              />
+            ) : null
+          }
+        >
+          {waiting.map((q) => (
+            <li key={q.queueId} className="px-4 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-bold text-primary">{q.queue_number ?? q.id}</span>
+                    <span className="position-badge"># {q.position}</span>
+                    <span className="est-wait-badge">~{q.est_wait_minutes}m</span>
+                    {q.skip_count > 0 && (
+                      <span className="text-label-sm text-amber-600">
+                        (skipped {q.skip_count}×)
+                      </span>
+                    )}
                   </div>
-                  <button
-                    onClick={() => setRecallModal(q)}
-                    className="ml-2 text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-2 py-1 rounded transition-colors flex-shrink-0"
-                  >
-                    Recall
-                  </button>
+                  <p className="text-body-sm font-medium text-foreground mt-0.5">{q.name}</p>
+                  {q.reason && (
+                    <p className="text-label-sm text-muted-foreground truncate">{q.reason}</p>
+                  )}
                 </div>
-              </li>
-            ))}
-          </ul>
-          {waiting.length === 0 && (
-            <div className="px-4 py-3 text-gray-500 text-sm">No patients waiting</div>
-          )}
-          <div className="px-4 py-2 bg-gray-50 border-t">
-            <small className="text-gray-500">Total waiting: <span className="font-medium">{waiting.length}</span> patients</small>
-          </div>
-        </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRecallModal(q)}
+                  className="shrink-0 text-label-sm"
+                >
+                  Recall
+                </Button>
+              </div>
+            </li>
+          ))}
+        </QueueColumn>
 
-        {/* In Progress */}
-        <div className="careq-card overflow-hidden">
-          <div className="px-4 py-3" style={{ backgroundColor: "#ffc107" }}>
-            <h5 className="font-semibold text-gray-900 m-0">In Progress</h5>
-          </div>
-          <ul className="divide-y divide-gray-100">
-            {inProgress.map((q) => (
-              <li key={q.queueId} className="px-4 py-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold text-[#0d6efd]">{q.queue_number ?? q.id}</span>
-                  <span className="text-sm font-medium text-gray-800">{q.name}</span>
-                </div>
-                <p className="text-xs text-gray-500 mb-2">{q.doctor} · {q.room}</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => performAction("skip", q.queueId)}
-                    className="text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-                  >
-                    Skip
-                  </button>
-                  <button
-                    onClick={() => performAction("mark_done", q.queueId)}
-                    className="text-xs bg-[#0d6efd] hover:bg-[#0b5ed7] text-white px-2 py-1 rounded transition-colors"
-                  >
-                    Mark Done
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {inProgress.length === 0 && (
-            <div className="px-4 py-3 text-gray-500 text-sm">No patients in progress</div>
-          )}
-          <div className="px-4 py-2 bg-gray-50 border-t">
-            <small className="text-gray-500">Total in progress: <span className="font-medium">{inProgress.length}</span> patients</small>
-          </div>
-        </div>
+        <QueueColumn
+          title="In Progress"
+          headerClass="bg-amber-400 text-foreground"
+          footer={`Total in progress: ${inProgress.length} patients`}
+          empty={
+            inProgress.length === 0 ? (
+              <p className="px-4 py-6 text-body-sm text-muted-foreground text-center">
+                No patients in progress
+              </p>
+            ) : null
+          }
+        >
+          {inProgress.map((q) => (
+            <li key={q.queueId} className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="font-bold text-primary">{q.queue_number ?? q.id}</span>
+                <span className="text-body-sm font-medium text-foreground">{q.name}</span>
+              </div>
+              <p className="text-label-sm text-muted-foreground mb-2">
+                {q.doctor} · {q.room}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => performAction("skip", q.queueId)}
+                >
+                  Skip
+                </Button>
+                <CareqButton size="sm" onClick={() => performAction("mark_done", q.queueId)}>
+                  Mark Done
+                </CareqButton>
+              </div>
+            </li>
+          ))}
+        </QueueColumn>
 
-        {/* Completed */}
-        <div className="careq-card overflow-hidden">
-          <div className="px-4 py-3" style={{ backgroundColor: "#198754" }}>
-            <h5 className="font-semibold text-white m-0">Completed</h5>
-          </div>
-          <ul className="divide-y divide-gray-100 max-h-72 overflow-y-auto">
-            {completed.map((q, i) => (
-              <li key={q.queueId ?? i} className="px-4 py-2 flex items-center justify-between">
-                <span className="font-medium text-gray-800">{q.id}</span>
-                <span className="text-sm text-gray-500">{q.name}</span>
-              </li>
-            ))}
-          </ul>
-          {completed.length === 0 && (
-            <div className="px-4 py-3 text-gray-500 text-sm">No completions yet today</div>
-          )}
-          <div className="px-4 py-2 bg-gray-50 border-t">
-            <small className="text-gray-500">Total completed: <span className="font-medium">{completed.length}</span> patients</small>
-          </div>
-        </div>
+        <QueueColumn
+          title="Completed"
+          headerClass="bg-status-called text-white"
+          footer={`Total completed: ${completed.length} patients`}
+          listClass="max-h-72 overflow-y-auto"
+          empty={
+            completed.length === 0 ? (
+              <p className="px-4 py-6 text-body-sm text-muted-foreground text-center">
+                No completions yet today
+              </p>
+            ) : null
+          }
+        >
+          {completed.map((q, i) => (
+            <li
+              key={q.queueId ?? i}
+              className="px-4 py-2 flex items-center justify-between gap-2"
+            >
+              <span className="font-medium text-foreground">{q.id}</span>
+              <span className="text-body-sm text-muted-foreground truncate">{q.name}</span>
+            </li>
+          ))}
+        </QueueColumn>
       </div>
 
-      {/* Analytics panel */}
-      <div className="careq-card overflow-hidden mb-5">
-        <div className="px-4 py-3 bg-gray-900 flex items-center justify-between">
-          <h6 className="font-semibold text-white flex items-center gap-2 m-0">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
+      <CareqCard className="overflow-hidden mb-5">
+        <div className="px-4 py-3 bg-foreground flex items-center justify-between gap-3">
+          <h6 className="font-semibold text-primary-foreground flex items-center gap-2 m-0 text-body-md">
+            <BarChart3 className="h-4 w-4" />
             Today&apos;s Performance
           </h6>
           {staff.role === "admin" && (
-            <button
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
               onClick={resetDaily}
-              className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded transition-colors flex items-center gap-1"
+              className="text-label-sm"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
+              <RefreshCw className="h-3 w-3 mr-1" />
               Reset Daily Queue
-            </button>
+            </Button>
           )}
         </div>
         <div className="p-4">
-          {/* Stats row */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 text-center mb-4">
-            <div className="border-r border-gray-100">
+          <div className="grid grid-cols-1 sm:grid-cols-3 text-center mb-4 divide-y sm:divide-y-0 sm:divide-x divide-border">
+            <div className="py-3 sm:py-0">
               <div className="analytics-value">{stats.avg} min</div>
               <div className="analytics-label">Avg Service Time</div>
             </div>
-            <div className="border-r border-gray-100">
+            <div className="py-3 sm:py-0">
               <div className="analytics-value">{stats.served}</div>
               <div className="analytics-label">Served Today</div>
             </div>
-            <div>
+            <div className="py-3 sm:py-0">
               <div className="analytics-value">{stats.waiting}</div>
               <div className="analytics-label">Still Waiting</div>
             </div>
           </div>
-          <hr className="mb-3" />
+          <hr className="mb-3 border-border" />
           <div className="flex items-center justify-between mb-2 px-1">
-            <small className="text-gray-500 font-semibold">Patients Served — Last 7 Days</small>
-            <button
-              onClick={loadStats}
-              className="text-xs border border-gray-300 text-gray-600 hover:bg-gray-50 px-2 py-1 rounded transition-colors"
-            >
-              <svg className="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
+            <span className="text-label-sm text-muted-foreground font-semibold uppercase tracking-wide">
+              Patients Served — Last 7 Days
+            </span>
+            <Button type="button" variant="outline" size="sm" onClick={loadStats}>
+              <RefreshCw className="h-3 w-3" />
+            </Button>
           </div>
-          <div style={{ position: "relative", height: "180px" }}>
+          <div className="relative h-[180px]">
             {chartData.length > 0 && (
-              <Bar data={barChartData} options={{
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                  legend: { position: "top" as const, labels: { boxWidth: 12, font: { size: 11 } } },
-                },
-                scales: {
-                  y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
-                  x: { ticks: { font: { size: 10 } } },
-                },
-              }} />
+              <Bar
+                data={barChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      position: "top" as const,
+                      labels: { boxWidth: 12, font: { size: 11 } },
+                    },
+                  },
+                  scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 } } },
+                  },
+                }}
+              />
             )}
           </div>
         </div>
-      </div>
+      </CareqCard>
 
-      {/* Call Next Patient Modal */}
-      {callModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div ref={callModalRef} role="dialog" aria-modal="true" aria-labelledby="call-modal-title" className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h5 id="call-modal-title" className="font-bold text-gray-800">Call Next Patient</h5>
-              <button onClick={() => setCallModalOpen(false)} aria-label="Close" className="text-gray-400 hover:text-gray-600">
-                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Doctor</label>
-                <Select value={doctorId} onValueChange={(v) => setDoctorId(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select doctor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        Dr. {d.first_name} {d.last_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Room</label>
-                <Select value={roomId} onValueChange={(v) => setRoomId(v ?? "")}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select room" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {rooms.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {nextWaiting ? (
-                <p className="text-sm text-gray-600">
-                  Next patient: <strong>{nextWaiting.name}</strong> ({nextWaiting.queue_number ?? nextWaiting.id})
-                </p>
-              ) : (
-                <p className="text-sm text-gray-400">No patients waiting.</p>
-              )}
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => setCallModalOpen(false)}
-                className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 py-2 rounded-lg font-medium transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!doctorId || !roomId || !nextWaiting}
-                onClick={() => {
-                  if (nextWaiting) {
-                    performAction("call_next", nextWaiting.queueId);
-                    setCallModalOpen(false);
-                  }
-                }}
-                className="flex-1 bg-[#0d6efd] hover:bg-[#0b5ed7] disabled:bg-gray-400 text-white py-2 rounded-lg font-medium transition-colors"
-              >
-                Call Patient
-              </button>
-            </div>
+      <ConfirmDialog
+        open={callModalOpen}
+        onOpenChange={setCallModalOpen}
+        title="Call Next Patient"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCallModalOpen(false)}>
+              Cancel
+            </Button>
+            <CareqButton
+              disabled={!doctorId || !roomId || !nextWaiting}
+              onClick={() => {
+                if (nextWaiting) {
+                  performAction("call_next", nextWaiting.queueId);
+                  setCallModalOpen(false);
+                }
+              }}
+            >
+              Call Patient
+            </CareqButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <FormLabel>Select Doctor</FormLabel>
+            <Select value={doctorId} onValueChange={(v) => setDoctorId(v ?? "")}>
+              <SelectTrigger className="w-full h-11">
+                <SelectValue placeholder="Select doctor" />
+              </SelectTrigger>
+              <SelectContent>
+                {doctors.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    Dr. {d.first_name} {d.last_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </div>
-      )}
-
-      {/* Recall Modal */}
-      {recallModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div ref={recallModalRef} role="dialog" aria-modal="true" aria-labelledby="recall-modal-title" className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-between mb-4">
-              <h5 id="recall-modal-title" className="font-bold text-gray-800">Recall Patient</h5>
-              <button onClick={() => setRecallModal(null)} aria-label="Close" className="text-gray-400 hover:text-gray-600">
-                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <p className="text-sm mb-4">
-              Recalling: <strong>{recallModal.name}</strong> ({recallModal.queue_number ?? recallModal.id})
+          <div>
+            <FormLabel>Select Room</FormLabel>
+            <Select value={roomId} onValueChange={(v) => setRoomId(v ?? "")}>
+              <SelectTrigger className="w-full h-11">
+                <SelectValue placeholder="Select room" />
+              </SelectTrigger>
+              <SelectContent>
+                {rooms.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {nextWaiting ? (
+            <p className="text-body-sm text-muted-foreground">
+              Next patient: <strong className="text-foreground">{nextWaiting.name}</strong> (
+              {nextWaiting.queue_number ?? nextWaiting.id})
             </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Doctor</label>
-                <Select value={recallDoctorId} onValueChange={(v) => setRecallDoctorId(v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Select doctor" /></SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>Dr. {d.first_name} {d.last_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Select Room</label>
-                <Select value={recallRoomId} onValueChange={(v) => setRecallRoomId(v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Select room" /></SelectTrigger>
-                  <SelectContent>
-                    {rooms.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => { setRecallModal(null); setRecallDoctorId(""); setRecallRoomId(""); }}
-                className="flex-1 border border-gray-300 text-gray-600 hover:bg-gray-50 py-2 rounded-lg font-medium transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!recallDoctorId || !recallRoomId}
-                onClick={() => {
+          ) : (
+            <EmptyState
+              icon={Clock}
+              title="Queue is empty"
+              description="No patients are waiting to be called."
+              className="py-6"
+            />
+          )}
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!recallModal}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRecallModal(null);
+            setRecallDoctorId("");
+            setRecallRoomId("");
+          }
+        }}
+        title="Recall Patient"
+        description={
+          recallModal
+            ? `Recalling ${recallModal.name} (${recallModal.queue_number ?? recallModal.id})`
+            : undefined
+        }
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setRecallModal(null);
+                setRecallDoctorId("");
+                setRecallRoomId("");
+              }}
+            >
+              Cancel
+            </Button>
+            <CareqButton
+              className="bg-sky-500 hover:bg-sky-600"
+              disabled={!recallDoctorId || !recallRoomId}
+              onClick={() => {
+                if (recallModal) {
                   performAction("recall", recallModal.queueId, recallDoctorId, recallRoomId);
-                  setRecallModal(null); setRecallDoctorId(""); setRecallRoomId("");
-                }}
-                className="flex-1 bg-[#0dcaf0] hover:bg-[#31d2f2] text-white py-2 rounded-lg font-medium transition-colors disabled:bg-gray-400"
-              >
-                Recall Patient
-              </button>
-            </div>
+                  setRecallModal(null);
+                  setRecallDoctorId("");
+                  setRecallRoomId("");
+                }
+              }}
+            >
+              Recall Patient
+            </CareqButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <FormLabel>Select Doctor</FormLabel>
+            <Select value={recallDoctorId} onValueChange={(v) => setRecallDoctorId(v ?? "")}>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Select doctor" />
+              </SelectTrigger>
+              <SelectContent>
+                {doctors.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    Dr. {d.first_name} {d.last_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <FormLabel>Select Room</FormLabel>
+            <Select value={recallRoomId} onValueChange={(v) => setRecallRoomId(v ?? "")}>
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Select room" />
+              </SelectTrigger>
+              <SelectContent>
+                {rooms.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {r.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
-      )}
+      </ConfirmDialog>
     </div>
+  );
+}
+
+function QueueColumn({
+  title,
+  headerClass,
+  footer,
+  children,
+  empty,
+  listClass,
+}: {
+  title: string;
+  headerClass: string;
+  footer: string;
+  children: React.ReactNode;
+  empty?: React.ReactNode;
+  listClass?: string;
+}) {
+  return (
+    <CareqCard className="overflow-hidden flex flex-col">
+      <div className={cn("px-4 py-3", headerClass)}>
+        <h5 className="font-semibold m-0 text-body-md">{title}</h5>
+      </div>
+      <ul className={cn("divide-y divide-border flex-1", listClass)}>
+        {empty || children}
+      </ul>
+      <div className="px-4 py-2 bg-muted/40 border-t border-border">
+        <small className="text-muted-foreground text-label-sm">{footer}</small>
+      </div>
+    </CareqCard>
   );
 }

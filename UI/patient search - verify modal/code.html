@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-blur {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .modal-animate {
+            animation: modalScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes modalScale {
+            from { opacity: 0; transform: scale(0.95) translateY(10px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .code-input:focus {
+            border-color: #004ac6;
+            box-shadow: 0 0 0 2px rgba(0, 74, 198, 0.2);
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "error-container": "#ffdad6",
+                    "tertiary": "#943700",
+                    "primary-fixed-dim": "#b4c5ff",
+                    "on-tertiary-container": "#ffede6",
+                    "surface-bright": "#faf8ff",
+                    "on-primary-fixed-variant": "#003ea8",
+                    "on-secondary-fixed": "#0b1c30",
+                    "secondary-fixed": "#d3e4fe",
+                    "primary": "#004ac6",
+                    "on-surface": "#191b23",
+                    "on-primary-container": "#eeefff",
+                    "surface": "#faf8ff",
+                    "surface-container-lowest": "#ffffff",
+                    "primary-fixed": "#dbe1ff",
+                    "on-tertiary-fixed-variant": "#7d2d00",
+                    "on-error-container": "#93000a",
+                    "surface-variant": "#e1e2ed",
+                    "surface-tint": "#0053db",
+                    "surface-container-low": "#f3f3fe",
+                    "on-secondary": "#ffffff",
+                    "surface-dim": "#d9d9e5",
+                    "inverse-primary": "#b4c5ff",
+                    "on-surface-variant": "#434655",
+                    "error": "#ba1a1a",
+                    "secondary-container": "#d0e1fb",
+                    "primary-container": "#2563eb",
+                    "on-background": "#191b23",
+                    "background": "#faf8ff",
+                    "surface-container": "#ededf9",
+                    "secondary": "#505f76",
+                    "on-secondary-container": "#54647a",
+                    "on-primary-fixed": "#00174b",
+                    "on-error": "#ffffff",
+                    "tertiary-fixed": "#ffdbcd",
+                    "tertiary-fixed-dim": "#ffb596",
+                    "tertiary-container": "#bc4800",
+                    "secondary-fixed-dim": "#b7c8e1",
+                    "on-primary": "#ffffff",
+                    "inverse-on-surface": "#f0f0fb",
+                    "outline": "#737686",
+                    "on-tertiary-fixed": "#360f00",
+                    "surface-container-high": "#e7e7f3",
+                    "inverse-surface": "#2e3039",
+                    "outline-variant": "#c3c6d7",
+                    "on-secondary-fixed-variant": "#38485d",
+                    "surface-container-highest": "#e1e2ed",
+                    "on-tertiary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "12px",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sm": "8px",
+                    "xxl": "48px",
+                    "md": "16px",
+                    "lg": "24px",
+                    "margin-mobile": "16px",
+                    "xs": "4px",
+                    "gutter": "24px",
+                    "xl": "32px",
+                    "margin-desktop": "40px"
+            },
+            "fontFamily": {
+                    "body-sm": ["Inter"],
+                    "label-md": ["Inter"],
+                    "label-sm": ["Inter"],
+                    "headline-md": ["Inter"],
+                    "headline-sm": ["Inter"],
+                    "body-md": ["Inter"],
+                    "body-lg": ["Inter"],
+                    "headline-lg": ["Inter"],
+                    "headline-lg-mobile": ["Inter"]
+            },
+            "fontSize": {
+                    "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "label-md": ["14px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "1.2", "fontWeight": "500"}],
+                    "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                    "headline-sm": ["20px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                    "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "body-lg": ["18px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}]
+            }
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background font-body-md text-on-surface antialiased overflow-hidden">
+<!-- TopNavBar -->
+<header class="sticky top-0 z-50 flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-16 bg-surface/95 backdrop-blur-sm shadow-sm border-b border-outline-variant">
+<div class="font-headline-md text-headline-md font-bold text-primary">CAREQ</div>
+<nav class="hidden md:flex gap-lg">
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-md" href="#">Check In</a>
+<a class="text-primary font-bold border-b-2 border-primary pb-1 font-body-md" href="#">Queue Status</a>
+</nav>
+<button class="text-primary font-body-md hover:opacity-80 transition-opacity">Staff Login</button>
+</header>
+<div class="flex h-[calc(100vh-64px)] overflow-hidden">
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col h-full w-64 p-md space-y-md bg-surface-container-low border-r border-outline-variant">
+<div class="flex items-center gap-md mb-lg">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div>
+<div class="font-label-md text-label-md text-on-surface">Staff Dashboard</div>
+<div class="text-xs text-on-surface-variant">Clinic Coordinator</div>
+</div>
+</div>
+<nav class="space-y-sm flex-1">
+<a class="flex items-center gap-md p-md bg-secondary-container text-on-secondary-container rounded-lg font-bold transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md">Dashboard</span>
+</a>
+<a class="flex items-center gap-md p-md text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="admin_panel_settings">admin_panel_settings</span>
+<span class="font-label-md text-label-md">Admin</span>
+</a>
+</nav>
+<button class="w-full py-md px-lg bg-primary text-on-primary rounded-lg font-label-md shadow-sm hover:opacity-90 active:scale-95 transition-all">
+                Call Next Patient
+            </button>
+<div class="pt-md border-t border-outline-variant">
+<a class="flex items-center gap-md p-md text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-label-md">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas (Blurred Background) -->
+<main class="flex-1 overflow-y-auto bg-surface-container-lowest p-md md:p-xl glass-blur filter blur-[4px]">
+<div class="max-w-5xl mx-auto space-y-xl">
+<!-- Search Header -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-md">
+<h1 class="font-headline-lg text-headline-lg text-on-surface">Patient Search</h1>
+<div class="relative flex-1 max-w-md">
+<span class="material-symbols-outlined absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-xxl pr-md h-11 border border-outline-variant rounded-lg bg-surface text-body-md focus:ring-2 focus:ring-primary focus:outline-none transition-all" type="text" value="James Wilson"/>
+</div>
+</div>
+<!-- Bento Grid Patient Results -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg">
+<!-- Featured Patient Card -->
+<div class="md:col-span-2 bg-surface border border-outline-variant rounded-lg p-lg shadow-sm">
+<div class="flex justify-between items-start mb-lg">
+<div class="flex gap-md">
+<div class="w-16 h-16 rounded-lg bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-3xl" style="font-variation-settings: 'FILL' 1;">person</span>
+</div>
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface">James Wilson</h2>
+<p class="text-on-surface-variant font-body-sm">DOB: 12/05/1982 (41y)</p>
+<div class="mt-xs inline-flex items-center px-sm py-xs bg-secondary-container text-on-secondary-container text-xs rounded-full font-bold uppercase tracking-wider">
+                                        Active Queue
+                                    </div>
+</div>
+</div>
+<button class="p-sm text-primary hover:bg-primary/5 rounded-full transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<div class="grid grid-cols-2 gap-md border-t border-outline-variant pt-lg">
+<div>
+<p class="text-xs text-on-surface-variant uppercase font-bold tracking-tighter">Last Visit</p>
+<p class="font-body-md text-on-surface">Oct 24, 2023</p>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant uppercase font-bold tracking-tighter">Primary Physician</p>
+<p class="font-body-md text-on-surface">Dr. Sarah Chen</p>
+</div>
+</div>
+</div>
+<!-- Sidebar Info Card -->
+<div class="bg-primary-fixed text-on-primary-fixed-variant rounded-lg p-lg flex flex-col justify-between">
+<div>
+<span class="material-symbols-outlined text-3xl mb-md">clinical_notes</span>
+<h3 class="font-headline-sm text-headline-sm mb-xs">Medical Profile</h3>
+<p class="font-body-sm opacity-90">Verification required before accessing full medical history and sensitive records.</p>
+</div>
+<button class="mt-lg w-full bg-primary text-on-primary h-11 rounded-lg font-label-md transition-transform active:scale-95">
+                            Verify Now
+                        </button>
+</div>
+<!-- Minor Results -->
+<div class="bg-surface border border-outline-variant rounded-lg p-md flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">person</span>
+</div>
+<div>
+<div class="font-label-md text-on-surface">Jane Williams</div>
+<div class="text-xs text-on-surface-variant">DOB: 03/11/1995</div>
+</div>
+</div>
+<div class="bg-surface border border-outline-variant rounded-lg p-md flex items-center gap-md opacity-60">
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">person</span>
+</div>
+<div>
+<div class="font-label-md text-on-surface">James Williamson</div>
+<div class="text-xs text-on-surface-variant">DOB: 08/22/1978</div>
+</div>
+</div>
+<div class="bg-surface border border-outline-variant rounded-lg p-md flex items-center gap-md opacity-60">
+<div class="w-10 h-10 rounded-full bg-surface-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant">person</span>
+</div>
+<div>
+<div class="font-label-md text-on-surface">Jim Wilson</div>
+<div class="text-xs text-on-surface-variant">DOB: 01/15/1964</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Modal Overlay -->
+<div class="fixed inset-0 z-[100] flex items-center justify-center bg-on-surface/40 backdrop-blur-[2px]">
+<!-- Modal Container -->
+<div class="modal-animate w-full max-w-[400px] mx-margin-mobile bg-surface rounded-lg shadow-2xl overflow-hidden border border-outline-variant">
+<div class="p-lg border-b border-outline-variant flex items-center gap-md">
+<div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-xl" style="font-variation-settings: 'FILL' 1;">verified_user</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Verify Identity</h3>
+</div>
+<div class="p-lg space-y-lg text-center">
+<div>
+<p class="font-body-md text-on-surface">Please enter the 4-digit security code sent to</p>
+<p class="font-headline-sm text-primary mt-xs">James Wilson</p>
+</div>
+<div class="flex justify-center gap-md">
+<input autofocus="" class="code-input w-14 h-14 text-center text-headline-md font-bold rounded-lg border border-outline bg-surface focus:outline-none transition-all" maxlength="1" type="text"/>
+<input class="code-input w-14 h-14 text-center text-headline-md font-bold rounded-lg border border-outline bg-surface focus:outline-none transition-all" maxlength="1" type="text"/>
+<input class="code-input w-14 h-14 text-center text-headline-md font-bold rounded-lg border border-outline bg-surface focus:outline-none transition-all" maxlength="1" type="text"/>
+<input class="code-input w-14 h-14 text-center text-headline-md font-bold rounded-lg border border-outline bg-surface focus:outline-none transition-all" maxlength="1" type="text"/>
+</div>
+<p class="text-xs text-on-surface-variant">Code expires in 4:59</p>
+</div>
+<div class="p-lg bg-surface-container-low flex flex-col md:flex-row gap-md">
+<button class="flex-1 order-2 md:order-1 h-11 font-label-md text-on-surface-variant hover:bg-surface-variant rounded-lg transition-colors">
+                    Cancel
+                </button>
+<button class="flex-1 order-1 md:order-2 h-11 font-label-md bg-primary text-on-primary rounded-lg shadow-md hover:bg-on-primary-fixed-variant transition-colors active:scale-95">
+                    Confirm
+                </button>
+</div>
+</div>
+</div>
+<script>
+        // Simple micro-interaction for code inputs
+        const inputs = document.querySelectorAll('.code-input');
+        inputs.forEach((input, index) => {
+            input.addEventListener('input', (e) => {
+                if (e.target.value.length === 1 && index < inputs.length - 1) {
+                    inputs[index + 1].focus();
+                }
+            });
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && !e.target.value && index > 0) {
+                    inputs[index - 1].focus();
+                }
+            });
+        });
+    </script>
+</body></html>

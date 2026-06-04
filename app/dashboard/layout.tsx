@@ -11,9 +11,11 @@ export default async function DashboardLayout({
   if (!session) redirect("/login");
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f8f9fa" }}>
+    <div className="min-h-screen bg-background">
       <StaffHeader staff={session.staff} />
-      <main className="max-w-7xl mx-auto px-4 2xl:px-8 py-8">{children}</main>
+      <main className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop py-8">
+        {children}
+      </main>
     </div>
   );
 }

@@ -4,43 +4,65 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+const NAV_LINKS = [
+  { href: "/visit", label: "Check In" },
+  { href: "/status", label: "Queue Status" },
+] as const;
 
 export function PublicHeader() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Close on route change
   useEffect(() => {
     setMenuOpen(false);
   }, [pathname]);
 
-  return (
-    <nav className="careq-navbar sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
-        <Link href="/" className="text-xl font-bold text-white">
-          CAREQ
-        </Link>
+  const navLinkClass = (href: string) =>
+    cn(
+      "text-body-md font-medium transition-colors pb-0.5",
+      pathname === href || (href === "/visit" && pathname.startsWith("/checkin"))
+        ? "text-primary font-bold border-b-2 border-primary"
+        : "text-muted-foreground hover:text-primary"
+    );
 
-        {/* Desktop links */}
+  return (
+    <header className="careq-navbar sticky top-0 z-50">
+      <div className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop flex items-center justify-between h-16">
+        <div className="flex items-center gap-8">
+          <Link href="/" className="text-headline-md font-bold text-primary">
+            CAREQ
+          </Link>
+          <nav className="hidden md:flex items-center gap-6" aria-label="Main">
+            {NAV_LINKS.map(({ href, label }) => (
+              <Link key={href} href={href} className={navLinkClass(href)}>
+                {label}
+              </Link>
+            ))}
+          </nav>
+        </div>
+
         <div className="hidden sm:flex items-center gap-4">
           <Link
             href="/queue"
             target="_blank"
-            className="text-white/80 hover:text-white text-sm font-medium transition-colors"
+            rel="noopener noreferrer"
+            className="text-body-sm text-muted-foreground hover:text-primary transition-colors"
           >
             Queue Board
           </Link>
           <Link
             href="/login"
-            className="text-white border border-white/40 hover:bg-white/10 rounded px-3 py-1 text-sm font-medium transition-colors"
+            className="text-body-md text-muted-foreground hover:text-primary transition-colors"
           >
             Staff Login
           </Link>
         </div>
 
-        {/* Hamburger — mobile only */}
         <button
-          className="sm:hidden text-white p-1 rounded hover:bg-white/10 transition-colors"
+          type="button"
+          className="md:hidden text-primary p-1 rounded-lg hover:bg-muted transition-colors"
           onClick={() => setMenuOpen((o) => !o)}
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
@@ -49,24 +71,36 @@ export function PublicHeader() {
         </button>
       </div>
 
-      {/* Mobile dropdown */}
       {menuOpen && (
-        <div className="sm:hidden bg-[#0b5ed7] border-t border-white/10 flex flex-col">
+        <nav
+          className="md:hidden border-t border-border bg-card flex flex-col"
+          aria-label="Mobile"
+        >
+          {NAV_LINKS.map(({ href, label }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn("px-4 py-3 border-b border-border", navLinkClass(href))}
+            >
+              {label}
+            </Link>
+          ))}
           <Link
             href="/queue"
             target="_blank"
-            className="px-4 py-3 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors border-b border-white/10"
+            rel="noopener noreferrer"
+            className="px-4 py-3 text-body-md text-muted-foreground hover:text-primary border-b border-border"
           >
             Queue Board
           </Link>
           <Link
             href="/login"
-            className="px-4 py-3 text-white/90 hover:text-white hover:bg-white/10 text-sm font-medium transition-colors"
+            className="px-4 py-3 text-body-md text-muted-foreground hover:text-primary"
           >
             Staff Login
           </Link>
-        </div>
+        </nav>
       )}
-    </nav>
+    </header>
   );
 }

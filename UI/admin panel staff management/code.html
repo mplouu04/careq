@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CAREQ Admin Panel - Staff Management</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Custom Toggle Styling */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #004ac6;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #004ac6;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-error-container": "#93000a",
+                      "on-secondary-fixed": "#0b1c30",
+                      "primary-fixed": "#dbe1ff",
+                      "error": "#ba1a1a",
+                      "on-error": "#ffffff",
+                      "on-secondary": "#ffffff",
+                      "error-container": "#ffdad6",
+                      "on-surface": "#191b23",
+                      "inverse-on-surface": "#f0f0fb",
+                      "tertiary-container": "#bc4800",
+                      "tertiary-fixed-dim": "#ffb596",
+                      "surface-container-low": "#f3f3fe",
+                      "inverse-primary": "#b4c5ff",
+                      "surface-tint": "#0053db",
+                      "surface-dim": "#d9d9e5",
+                      "surface-container-high": "#e7e7f3",
+                      "secondary": "#505f76",
+                      "on-secondary-fixed-variant": "#38485d",
+                      "inverse-surface": "#2e3039",
+                      "on-tertiary": "#ffffff",
+                      "surface-container": "#ededf9",
+                      "on-secondary-container": "#54647a",
+                      "outline": "#737686",
+                      "primary-container": "#2563eb",
+                      "primary": "#004ac6",
+                      "surface-bright": "#faf8ff",
+                      "on-primary-fixed-variant": "#003ea8",
+                      "secondary-fixed-dim": "#b7c8e1",
+                      "on-tertiary-fixed": "#360f00",
+                      "tertiary": "#943700",
+                      "surface-variant": "#e1e2ed",
+                      "on-tertiary-container": "#ffede6",
+                      "secondary-container": "#d0e1fb",
+                      "secondary-fixed": "#d3e4fe",
+                      "on-primary": "#ffffff",
+                      "on-primary-container": "#eeefff",
+                      "on-background": "#191b23",
+                      "on-surface-variant": "#434655",
+                      "primary-fixed-dim": "#b4c5ff",
+                      "outline-variant": "#c3c6d7",
+                      "tertiary-fixed": "#ffdbcd",
+                      "surface-container-lowest": "#ffffff",
+                      "surface": "#faf8ff",
+                      "on-tertiary-fixed-variant": "#7d2d00",
+                      "background": "#faf8ff",
+                      "surface-container-highest": "#e1e2ed",
+                      "on-primary-fixed": "#00174b"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "xxl": "48px",
+                      "lg": "24px",
+                      "margin-desktop": "40px",
+                      "xs": "4px",
+                      "sm": "8px",
+                      "margin-mobile": "16px",
+                      "xl": "32px",
+                      "gutter": "24px",
+                      "md": "16px"
+              },
+              "fontFamily": {
+                      "headline-sm": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "label-sm": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "body-md": ["Inter"],
+                      "headline-lg-mobile": ["Inter"],
+                      "body-lg": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "label-md": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-sm": ["20px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                      "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}],
+                      "label-sm": ["12px", {"lineHeight": "1.2", "fontWeight": "500"}],
+                      "body-sm": ["14px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-lg-mobile": ["24px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                      "body-lg": ["18px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-lg": ["32px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "label-md": ["14px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface">
+<!-- TopNavBar (Shared Component) -->
+<header class="sticky top-0 z-50 flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-16 bg-surface/95 backdrop-blur-sm border-b border-outline-variant dark:border-outline shadow-sm">
+<div class="flex items-center gap-md">
+<span class="font-headline-md text-headline-md font-bold text-primary dark:text-inverse-primary">CAREQ</span>
+<nav class="hidden md:flex items-center gap-lg ml-xl">
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors font-body-md text-body-md" href="#">Check In</a>
+<a class="text-on-surface-variant dark:text-surface-variant hover:text-primary dark:hover:text-primary-fixed-dim transition-colors font-body-md text-body-md" href="#">Queue Status</a>
+</nav>
+</div>
+<div class="flex items-center gap-md">
+<button class="font-body-md text-body-md text-primary hover:opacity-80 transition-opacity">Staff Login</button>
+</div>
+</header>
+<div class="flex min-h-[calc(100vh-64px)]">
+<!-- SideNavBar (Shared Component) -->
+<aside class="hidden md:flex flex-col h-[calc(100vh-64px)] w-64 sticky top-16 left-0 bg-surface-container-low border-r border-outline-variant p-md space-y-md">
+<div class="flex items-center gap-md px-sm py-md border-b border-outline-variant mb-md">
+<div class="w-10 h-10 rounded-full bg-secondary-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">person</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Staff Dashboard</p>
+<p class="text-[12px] text-on-surface-variant">Clinic Coordinator</p>
+</div>
+</div>
+<div class="space-y-xs flex-1">
+<a class="flex items-center gap-md p-md text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-all font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center gap-md p-md bg-secondary-container text-on-secondary-container rounded-lg font-bold transition-all font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">admin_panel_settings</span>
+<span>Admin</span>
+</a>
+</div>
+<button class="w-full bg-primary text-on-primary py-md rounded-lg font-label-md text-label-md shadow-sm hover:opacity-90 transition-all active:scale-95 mb-xl">
+                Call Next Patient
+            </button>
+<div class="pt-md border-t border-outline-variant">
+<a class="flex items-center gap-md p-md text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-all font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span>Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 p-margin-mobile md:p-margin-desktop overflow-x-hidden">
+<!-- Header Section -->
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-md mb-xl">
+<div>
+<h1 class="font-headline-lg text-headline-lg text-on-surface">Clinic Settings</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage your clinic staff, display screens, and appointment parameters.</p>
+</div>
+<button class="bg-primary text-on-primary px-lg h-11 rounded-lg flex items-center gap-sm font-label-md text-label-md shadow-sm hover:shadow-md transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'wght' 600">add</span>
+                    Add Staff
+                </button>
+</div>
+<!-- Tabbed Interface (Bento-style wrapper) -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<!-- Tabs Header -->
+<div class="flex border-b border-outline-variant bg-surface-container-low/30 px-md pt-md">
+<button class="px-xl py-md border-b-2 border-primary text-primary font-bold font-label-md text-label-md transition-all">Staff</button>
+<button class="px-xl py-md border-b-2 border-transparent text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-all">Appointment Types</button>
+<button class="px-xl py-md border-b-2 border-transparent text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-all">Display Screens</button>
+<button class="px-xl py-md border-b-2 border-transparent text-on-surface-variant hover:text-on-surface font-label-md text-label-md transition-all">Data</button>
+</div>
+<!-- Staff Content (Bento Grid Layout for Active Tab) -->
+<div class="p-md md:p-lg space-y-lg">
+<!-- Filters/Search Bar -->
+<div class="flex flex-wrap items-center gap-md justify-between">
+<div class="relative w-full md:w-96">
+<span class="absolute left-md top-1/2 -translate-y-1/2 material-symbols-outlined text-outline">search</span>
+<input class="w-full pl-xl pr-md py-sm rounded-lg border border-outline-variant focus:ring-2 focus:ring-primary focus:outline-none font-body-sm text-body-sm bg-surface" placeholder="Search staff members..." type="text"/>
+</div>
+<div class="flex items-center gap-sm">
+<span class="font-label-md text-label-md text-on-surface-variant">Filter by Role:</span>
+<select class="rounded-lg border border-outline-variant py-sm px-md font-body-sm text-body-sm bg-surface focus:ring-2 focus:ring-primary">
+<option>All Roles</option>
+<option>Doctor</option>
+<option>Receptionist</option>
+</select>
+</div>
+</div>
+<!-- Staff Table -->
+<div class="overflow-x-auto rounded-lg border border-outline-variant">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container text-on-surface-variant border-b border-outline-variant">
+<th class="p-md font-label-md text-label-md">Staff Member</th>
+<th class="p-md font-label-md text-label-md">Email Address</th>
+<th class="p-md font-label-md text-label-md">Role</th>
+<th class="p-md font-label-md text-label-md">Status</th>
+<th class="p-md font-label-md text-label-md text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-md">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+<img alt="Dr. Sarah Miller" class="w-10 h-10 rounded-full object-cover" data-alt="A professional headshot of a middle-aged female doctor with a stethoscope around her neck, smiling warmly in a bright, modern medical office. The lighting is soft and clinical, enhancing the clean, high-end healthcare aesthetic. The color palette is composed of soft whites, light blues, and professional navy tones, conveying reliability and calm." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD3ei9B6D6cz8yq73ntqIHr41ayrSO19PmRW5Z-AdQ1nMqot8qn0U-zJJzZOmLc0llkbNh77HvWB1Rn8IkmILR-B4Qx96pUBciFHAU0Q8tBH_HYZJ0jza0Iz4FCF27L17l3L49smHnbNyZfbjlnRe4r325RlBSpb4Bjwqbli3OQjB_h9Ed1dmrkKMD9Y9p77_Yv5idxqLTkEQT6Yj110tAG0KhIPrtVgAMlZLBTlHXNd2Z70JmQMUdDGvYx6LljVNCqFpWFtWcvJISm"/>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Dr. Sarah Miller</p>
+<p class="text-[12px] text-on-surface-variant">General Practitioner</p>
+</div>
+</div>
+</td>
+<td class="p-md font-body-sm text-body-sm text-on-surface-variant">s.miller@careq-clinic.com</td>
+<td class="p-md">
+<span class="px-sm py-1 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm">Doctor</span>
+</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" id="toggle1" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer transition-colors" for="toggle1"></label>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface">Active</span>
+</div>
+</td>
+<td class="p-md text-right">
+<button class="p-sm text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined">edit</span>
+</button>
+<button class="p-sm text-outline hover:text-error transition-colors">
+<span class="material-symbols-outlined">delete</span>
+</button>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-md">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+<img alt="James Wilson" class="w-10 h-10 rounded-full object-cover" data-alt="A clean-cut male receptionist wearing a professional light blue shirt, working behind a sleek, minimalist clinic reception desk. The background is a blurred, high-end medical lobby with soft architectural lighting and a calm, sterile atmosphere. The visual style is modern corporate, focusing on efficiency and professional care." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDl1v90zPJD3CGgWsEWcQXQXDl6Q0OCc8c3ZMmotbJ0BSYYYo622XD-ZDoQPrVKo_qC6HMrRZypzF1j-bIw3riZiEZ0ZIk2bVk3xOFNWc1PhBOvNgNPQ74JqhdSJlaDpvKZNG8MyBND4_bougXy80c4u4sReltucW_2FgqFmXJEBOMkYnHXXq6x_CGrK0p9I3EZKRCJ2kxj2kbKZvoHtXhuFNu4I32VHW440zkQk2jyN6wnMC5Ff4ASU4EmhM02gww-A6wR7gnQ9pYc"/>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">James Wilson</p>
+<p class="text-[12px] text-on-surface-variant">Senior Receptionist</p>
+</div>
+</div>
+</td>
+<td class="p-md font-body-sm text-body-sm text-on-surface-variant">j.wilson@careq-clinic.com</td>
+<td class="p-md">
+<span class="px-sm py-1 rounded-full bg-tertiary-fixed text-on-tertiary-fixed-variant font-label-sm text-label-sm">Receptionist</span>
+</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" id="toggle2" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer transition-colors" for="toggle2"></label>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface">Active</span>
+</div>
+</td>
+<td class="p-md text-right">
+<button class="p-sm text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined">edit</span>
+</button>
+<button class="p-sm text-outline hover:text-error transition-colors">
+<span class="material-symbols-outlined">delete</span>
+</button>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-low transition-colors">
+<td class="p-md">
+<div class="flex items-center gap-md">
+<div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+<img alt="Dr. Elena Rodriguez" class="w-10 h-10 rounded-full object-cover" data-alt="Portrait of a young female doctor in a crisp white lab coat, standing in a brightly lit corridor of a contemporary medical center. The environment is minimalist and high-tech, with cool-toned lighting and clean lines. The overall mood is one of focused expertise and professional medical authority, utilizing a primary blue and white color scheme." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAi72EeBjt02tmr3wesIr9STzmoHjzCNgN6aSiBkwI5o6ffVXXSf8uDS8sTSf2P2Ihfv_nPJ0W_wQd7jC29HAG6d_2Niy8YR-QBNdFMJU9ghViVeicdld3w3ZzPI0O_TkAi7qicD0YfCfaKbHAklfT8hbInux7beMuFB4S_vqaeQ_7vj2ZQ8GHNUtOf8OJAnV4TOPeR9SQt_NpjMbgBcsUCeTS_A3xVbX9asd8a0b26lJep6htPsLkh0bezC6ggPAuw7kwJlxtM1OgK"/>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">Dr. Elena Rodriguez</p>
+<p class="text-[12px] text-on-surface-variant">Pediatrician</p>
+</div>
+</div>
+</td>
+<td class="p-md font-body-sm text-body-sm text-on-surface-variant">e.rodriguez@careq-clinic.com</td>
+<td class="p-md">
+<span class="px-sm py-1 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm">Doctor</span>
+</td>
+<td class="p-md">
+<div class="flex items-center gap-sm">
+<div class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+<input class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" id="toggle3" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer transition-colors" for="toggle3"></label>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Inactive</span>
+</div>
+</td>
+<td class="p-md text-right">
+<button class="p-sm text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined">edit</span>
+</button>
+<button class="p-sm text-outline hover:text-error transition-colors">
+<span class="material-symbols-outlined">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="flex items-center justify-between pt-md">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Showing 1 to 3 of 12 staff members</p>
+<div class="flex items-center gap-xs">
+<button class="w-10 h-10 flex items-center justify-center border border-outline-variant rounded-lg hover:bg-surface-container-high transition-colors text-outline">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="w-10 h-10 flex items-center justify-center bg-primary text-on-primary rounded-lg font-label-md text-label-md">1</button>
+<button class="w-10 h-10 flex items-center justify-center border border-outline-variant rounded-lg hover:bg-surface-container-high transition-colors font-label-md text-label-md">2</button>
+<button class="w-10 h-10 flex items-center justify-center border border-outline-variant rounded-lg hover:bg-surface-container-high transition-colors font-label-md text-label-md">3</button>
+<button class="w-10 h-10 flex items-center justify-center border border-outline-variant rounded-lg hover:bg-surface-container-high transition-colors text-outline">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Bento Card Grid for Stats (Secondary Info) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-lg mt-xl">
+<div class="bg-surface-container-low p-lg rounded-xl border border-outline-variant shadow-sm">
+<div class="flex items-center justify-between mb-sm">
+<span class="text-on-surface-variant font-label-md text-label-md">Active Staff</span>
+<span class="material-symbols-outlined text-primary">groups</span>
+</div>
+<p class="text-[32px] font-bold text-on-surface">11</p>
+<p class="text-[12px] text-green-600 flex items-center gap-xs">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+                        2 added this month
+                    </p>
+</div>
+<div class="bg-surface-container-low p-lg rounded-xl border border-outline-variant shadow-sm">
+<div class="flex items-center justify-between mb-sm">
+<span class="text-on-surface-variant font-label-md text-label-md">Avg. Queue Wait</span>
+<span class="material-symbols-outlined text-primary">schedule</span>
+</div>
+<p class="text-[32px] font-bold text-on-surface">14m</p>
+<p class="text-[12px] text-on-surface-variant">Clinic Performance Rating: Optimal</p>
+</div>
+<div class="bg-surface-container-low p-lg rounded-xl border border-outline-variant shadow-sm">
+<div class="flex items-center justify-between mb-sm">
+<span class="text-on-surface-variant font-label-md text-label-md">Staff Utilization</span>
+<span class="material-symbols-outlined text-primary">bar_chart</span>
+</div>
+<div class="flex items-end gap-md">
+<p class="text-[32px] font-bold text-on-surface">86%</p>
+<div class="flex-1 h-2 bg-surface-container-highest rounded-full mb-3">
+<div class="h-full bg-primary rounded-full" style="width: 86%"></div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- Footer (Shared Component) -->
+<footer class="w-full py-lg px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row justify-between items-center gap-md border-t border-outline-variant bg-surface-container-lowest">
+<div class="font-label-md text-label-md font-black text-on-surface">CAREQ</div>
+<div class="font-body-sm text-body-sm text-on-surface-variant">© 2024 CAREQ Queue Management System</div>
+<div class="flex items-center gap-lg">
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-sm text-body-sm" href="#">Live Updates</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors font-body-sm text-body-sm" href="#">Contact Clinic</a>
+</div>
+</footer>
+<script>
+        // Micro-interactions for toggle buttons
+        document.querySelectorAll('.toggle-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const statusSpan = this.parentElement.nextElementSibling;
+                if(this.checked) {
+                    statusSpan.textContent = 'Active';
+                    statusSpan.classList.remove('text-on-surface-variant');
+                    statusSpan.classList.add('text-on-surface');
+                } else {
+                    statusSpan.textContent = 'Inactive';
+                    statusSpan.classList.remove('text-on-surface');
+                    statusSpan.classList.add('text-on-surface-variant');
+                }
+            });
+        });
+
+        // Tab switching logic (simplified for demo)
+        document.querySelectorAll('button[font-label-md]').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // This would handle tab content visibility in a real app
+                console.log('Switching to tab:', tab.textContent);
+            });
+        });
+    </script>
+</body></html>

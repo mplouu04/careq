@@ -1,4 +1,5 @@
 import { QueueStatus } from "@/components/queue/QueueStatus";
+import { CareqPage } from "@/components/careq";
 
 export default function StatusRefPage({
   params,
@@ -7,8 +8,8 @@ export default function StatusRefPage({
 }) {
   const ref = decodeURIComponent(params.ref);
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10">
+    <CareqPage narrow className="py-10">
       <QueueStatus refNumber={ref} />
-    </div>
+    </CareqPage>
   );
 }

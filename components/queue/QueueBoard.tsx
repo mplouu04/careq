@@ -2,6 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { User, Home } from "lucide-react";
+import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
+import { cn } from "@/lib/utils";
+
+type DisplayConfig = {
+  display_name: string;
+  location: string;
+  theme_color: string;
+  show_wait_time: boolean;
+  show_priority: boolean;
+};
 
 type NowServingItem = {
   id: string | number;
@@ -11,6 +22,7 @@ type NowServingItem = {
   doctor: string;
   room: string;
   status: string;
+  priority?: string;
   called_at?: string | null;
 };
 
@@ -22,6 +34,7 @@ type WaitingItem = {
   reason: string;
   position: number;
   est_wait_minutes: number;
+  priority?: string;
 };
 
 function ordinal(n: number) {
@@ -31,29 +44,43 @@ function ordinal(n: number) {
   return `${n}th`;
 }
 
-export function QueueBoard() {
+function priorityLabel(priority: string | undefined) {
+  if (!priority || priority === "normal") return null;
+  return priority.charAt(0).toUpperCase() + priority.slice(1);
+}
+
+export function QueueBoard({ screenId }: { screenId?: string }) {
   const [nowServing, setNowServing] = useState<NowServingItem[]>([]);
   const [waiting, setWaiting] = useState<WaitingItem[]>([]);
   const [avgServiceTime, setAvgServiceTime] = useState(10);
+  const [display, setDisplay] = useState<DisplayConfig>({
+    display_name: "CAREQ",
+    location: "",
+    theme_color: CAREQ_DEFAULT_THEME_COLOR,
+    show_wait_time: true,
+    show_priority: true,
+  });
   const [now, setNow] = useState<Date | null>(null);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/queue/public");
+      const qs = screenId ? `?screenId=${encodeURIComponent(screenId)}` : "";
+      const res = await fetch(`/api/queue/public${qs}`);
       if (!res.ok) {
         setLoadError(true);
         return;
       }
       const data = await res.json();
       setLoadError(false);
+      if (data.display) setDisplay(data.display);
       setNowServing(data.nowServing ?? []);
       setWaiting((data.waiting ?? []).slice(0, 8));
       setAvgServiceTime(data.avg_service_time ?? 10);
     } catch {
       setLoadError(true);
     }
-  }, []);
+  }, [screenId]);
 
   useEffect(() => {
     setNow(new Date());
@@ -61,13 +88,9 @@ export function QueueBoard() {
 
     const supabase = createClient();
     const channel = supabase
-      .channel("queue-board")
+      .channel(`queue-board-${screenId ?? "default"}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => load())
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-          // Realtime unavailable — 3s polling continues as fallback
-        }
-      });
+      .subscribe();
 
     const interval = setInterval(load, 3000);
     const clock = setInterval(() => setNow(new Date()), 1000);
@@ -77,91 +100,112 @@ export function QueueBoard() {
       clearInterval(interval);
       clearInterval(clock);
     };
-  }, [load]);
+  }, [load, screenId]);
 
   const timeStr = now
-    ? now.toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    ? now.toLocaleTimeString("en-PH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
     : "--:--:--";
 
   const current = nowServing[0] ?? null;
+  const themeColor = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden" style={{ backgroundColor: "#f8f9fa" }}>
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-muted/30">
       {loadError && (
-        <div className="absolute top-0 left-0 right-0 z-10 bg-red-600 text-white text-center text-sm py-2">
+        <div className="absolute top-0 left-0 right-0 z-10 bg-destructive text-destructive-foreground text-center text-body-sm py-2">
           Unable to load queue data. Retrying...
         </div>
       )}
-      {/* Left panel — NOW SERVING (blue) */}
-      <div className="current-patient-section w-full lg:w-2/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto">
-        {/* Header */}
-        <div className="text-center mb-6 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white">CAREQ</h1>
+
+      <div
+        className="w-full lg:w-2/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto text-primary-foreground"
+        style={{ backgroundColor: themeColor }}
+      >
+        <div className="text-center mb-6 flex items-center justify-between gap-4">
+          <div className="text-left min-w-0">
+            <h1 className="text-headline-sm font-bold truncate">{display.display_name}</h1>
+            {display.location && (
+              <p className="text-body-sm opacity-80 truncate">{display.location}</p>
+            )}
           </div>
-          <div className="text-center flex-1">
-            <h2 className="text-2xl font-bold text-white tracking-widest">NOW SERVING</h2>
+          <div className="text-center flex-1 shrink-0">
+            <h2 className="text-headline-sm font-bold tracking-widest">NOW SERVING</h2>
           </div>
-          <div className="text-right text-white/80 text-sm">
-            <div className="text-xl font-mono text-white">{timeStr}</div>
+          <div className="text-right text-body-sm opacity-90 shrink-0">
+            <div className="text-xl font-mono">{timeStr}</div>
           </div>
         </div>
 
-        {/* Current patient card */}
         <div className="flex-1 flex items-center justify-center">
           <div className="current-patient-card text-center py-10 px-8 w-full">
             {current ? (
               <>
-                <div className="queue-number-lg mb-3">
+                <div className="queue-number-lg mb-3" style={{ color: themeColor }}>
                   {current.queue_number ?? current.id}
                 </div>
-                <h3 className="patient-name text-gray-800">{current.name || "—"}</h3>
+                <h3 className="patient-name text-foreground">{current.name || "—"}</h3>
                 <div className="patient-info">
-                  <div className="info-item text-gray-500">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
+                  <div className="info-item text-muted-foreground">
+                    <User className="w-4 h-4" aria-hidden />
                     <span>{current.doctor || "—"}</span>
                   </div>
-                  <div className="info-item text-gray-500">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                    </svg>
+                  <div className="info-item text-muted-foreground">
+                    <Home className="w-4 h-4" aria-hidden />
                     <span>{current.room || "—"}</span>
                   </div>
                 </div>
               </>
             ) : (
-              <h3 className="patient-name text-gray-500">No Patient Currently Serving</h3>
+              <h3 className="patient-name text-muted-foreground">No Patient Currently Serving</h3>
             )}
           </div>
         </div>
       </div>
 
-      {/* Right panel — UPCOMING PATIENTS (white) */}
-      <div className="upcoming-queue-section w-full lg:w-1/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto">
-        <h4 className="text-xl font-bold text-center text-gray-800 mb-6 tracking-wide">
+      <div className="upcoming-queue-section w-full lg:w-1/3 h-1/2 lg:h-auto flex flex-col p-6 overflow-y-auto bg-card">
+        <h4 className="text-headline-sm font-bold text-center text-foreground mb-6 tracking-wide">
           UPCOMING PATIENTS
         </h4>
         <ul className="upcoming-list">
           {waiting.length === 0 ? (
             <li className="upcoming-item">
               <div className="patient-details">
-                <div className="text-gray-500">No upcoming patients</div>
+                <div className="text-muted-foreground text-body-md">No upcoming patients</div>
               </div>
             </li>
           ) : (
             waiting.map((q, i) => {
               const pos = i + 1;
               const estWait = q.est_wait_minutes ?? pos * avgServiceTime;
+              const pri = priorityLabel(q.priority);
               return (
                 <li key={q.queueId ?? q.id} className="upcoming-item">
-                  <div className="queue-number-sm">{q.queue_number ?? q.id}</div>
+                  <div className="queue-number-sm" style={{ color: themeColor }}>
+                    {q.queue_number ?? q.id}
+                  </div>
                   <div className="patient-details">
-                    <div className="font-medium text-gray-800">{q.name}</div>
-                    <div className="appointment-time mt-1">
+                    <div className="font-medium text-foreground">{q.name}</div>
+                    <div className="appointment-time mt-1 flex flex-wrap gap-1 items-center">
                       <span className="position-badge">{ordinal(pos)} in line</span>
-                      <span className="est-wait-badge">~{estWait} min</span>
+                      {display.show_wait_time && (
+                        <span className="est-wait-badge">~{estWait} min</span>
+                      )}
+                      {display.show_priority && pri && (
+                        <span
+                          className={cn(
+                            "text-label-sm font-semibold px-2 py-0.5 rounded-full uppercase",
+                            q.priority === "emergency" && "bg-destructive text-white",
+                            q.priority === "high" && "bg-amber-500 text-white",
+                            q.priority === "low" && "bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {pri}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </li>

@@ -48,7 +48,7 @@ export async function POST(request: Request) {
         location: body.location,
         show_wait_time: body.show_wait_time ?? true,
         show_priority: body.show_priority ?? true,
-        theme_color: body.theme_color ?? "#0d6efd",
+        theme_color: body.theme_color ?? "#004ac6",
         is_active: true,
       })
       .select("id")
@@ -91,7 +91,7 @@ export async function POST(request: Request) {
         location: body.location,
         show_wait_time: body.show_wait_time ?? true,
         show_priority: body.show_priority ?? true,
-        theme_color: body.theme_color ?? "#0d6efd",
+        theme_color: body.theme_color ?? "#004ac6",
         is_active: body.is_active ?? true,
       })
       .eq("id", body.id);
