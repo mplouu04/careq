@@ -3,30 +3,20 @@
 import { useState, useEffect, useCallback, useId, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import {
-  Search,
-  UserPlus,
-  Shield,
-  Calendar,
-  LogIn,
-  Lightbulb,
-} from "lucide-react";
+import { Search, UserPlus, Calendar, LogIn } from "lucide-react";
 import { minSearchLength } from "@/lib/patient-search";
 import {
   CareqCard,
   CareqButton,
-  CareqCardHeader,
   ConfirmDialog,
   EmptyState,
   FormLabel,
   FormInput,
-  FormInfo,
   FormHelperText,
   FormError,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
 
 type Patient = {
   id: string;
@@ -49,8 +39,6 @@ export function PatientSearch() {
   const router = useRouter();
   const formId = useId();
   const termHintId = `${formId}-term-hint`;
-  const dobHintId = `${formId}-dob-hint`;
-  const submitHintId = `${formId}-submit-hint`;
   const resultsLiveId = `${formId}-results-live`;
 
   const [term, setTerm] = useState("");
@@ -70,12 +58,9 @@ export function PatientSearch() {
   const canSearch = minSearchLength(trimmedTerm);
 
   const validationMessage = useMemo(() => {
-    if (!trimmedTerm) return null;
-    if (canSearch) return null;
-    if (/^\d+$/.test(trimmedTerm)) {
-      return "Enter at least one digit for phone or patient ID.";
-    }
-    return "Enter at least 2 characters of a name.";
+    if (!trimmedTerm || canSearch) return null;
+    if (/^\d+$/.test(trimmedTerm)) return "Enter at least one digit.";
+    return "Enter at least 2 characters.";
   }, [trimmedTerm, canSearch]);
 
   const runSearch = useCallback(async () => {
@@ -105,17 +90,14 @@ export function PatientSearch() {
       if (!trimmedTerm) setSearched(false);
       return;
     }
-    const timer = setTimeout(() => {
-      runSearch();
-    }, 350);
+    const timer = setTimeout(() => runSearch(), 350);
     return () => clearTimeout(timer);
   }, [trimmedTerm, dob, canSearch, runSearch]);
 
-  async function search(e?: React.FormEvent) {
-    if (e) e.preventDefault();
+  function handleSearch() {
     setSubmitAttempted(true);
     if (!canSearch) return;
-    await runSearch();
+    runSearch();
   }
 
   function navigate(patient: Patient, destination: "appointments" | "checkin") {
@@ -141,7 +123,7 @@ export function PatientSearch() {
     const phone = verifyModal.patient.phone.replace(/\D/g, "");
     const last4 = phone.slice(-4);
     if (verifyInput.trim() !== last4) {
-      setVerifyError("The last 4 digits do not match. Please try again.");
+      setVerifyError("Last 4 digits do not match.");
       return;
     }
     const { patient, destination } = verifyModal;
@@ -150,234 +132,134 @@ export function PatientSearch() {
   }
 
   const showValidation = submitAttempted && validationMessage;
-  const submitBlockedReason = !canSearch
-    ? trimmedTerm
-      ? validationMessage
-      : "Enter a name, phone number, or patient ID to search."
-    : null;
 
   return (
     <>
-      <CareqCard className="overflow-hidden w-full shadow-sm border-outline-variant">
-        <CareqCardHeader
-          title="Find your profile"
-          description="Search our records to check in for today's visit or book an appointment."
-        />
-
-        <div className="px-5 sm:px-6 py-5 space-y-5">
-          <FormInfo>
-            <strong className="text-on-surface">How this works:</strong> Search first, then
-            choose <strong>Check in</strong> if you are at the clinic today, or{" "}
-            <strong>Book appointment</strong> for a future visit. Date of birth is optional
-            but helps narrow matches.
-          </FormInfo>
-
-          <form onSubmit={search} className="space-y-4" noValidate>
-            <fieldset className="space-y-4">
-              <legend className="sr-only">Patient search criteria</legend>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <FormLabel htmlFor={`${formId}-term`} required>
-                    Search term
-                  </FormLabel>
-                  <FormInput
-                    id={`${formId}-term`}
-                    type="search"
-                    placeholder="e.g. Maria, 09171234567, or 42"
-                    value={term}
-                    onChange={(e) => {
-                      setTerm(e.target.value);
-                      setSubmitAttempted(false);
-                    }}
-                    autoComplete="off"
-                    inputMode="search"
-                    aria-required="true"
-                    aria-invalid={showValidation ? true : undefined}
-                    aria-describedby={termHintId}
-                  />
-                  <FormHelperText id={termHintId}>
-                    Required · At least 2 letters of a name, or digits from phone / patient ID.
-                    Partial matches are OK.
-                  </FormHelperText>
-                </div>
-                <div>
-                  <FormLabel htmlFor={`${formId}-dob`}>
-                    Date of birth{" "}
-                    <span className="text-on-surface-variant font-normal">(optional)</span>
-                  </FormLabel>
-                  <FormInput
-                    id={`${formId}-dob`}
-                    type="date"
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                    max={new Date().toISOString().slice(0, 10)}
-                    min="1900-01-01"
-                    aria-describedby={dobHintId}
-                  />
-                  <FormHelperText id={dobHintId}>
-                    Uses the clinic calendar picker — no manual typing. Narrows results when
-                    several patients share a name.
-                  </FormHelperText>
-                </div>
-              </div>
-
-              {showValidation && validationMessage && (
-                <FormError message={validationMessage} />
-              )}
-
-              <div className="rounded-lg border border-outline-variant bg-surface-container-low px-4 py-3 flex gap-3">
-                <Lightbulb
-                  className="h-5 w-5 text-primary shrink-0 mt-0.5"
-                  aria-hidden
+      <CareqCard className="overflow-hidden w-full">
+        <div className="px-5 sm:px-6 py-5 space-y-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <FormLabel htmlFor={`${formId}-term`} required>
+                  Search term
+                </FormLabel>
+                <FormInput
+                  id={`${formId}-term`}
+                  type="search"
+                  placeholder="Name, phone, or patient #"
+                  value={term}
+                  onChange={(e) => {
+                    setTerm(e.target.value);
+                    setSubmitAttempted(false);
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  autoComplete="off"
+                  inputMode="search"
+                  aria-required="true"
+                  aria-invalid={showValidation ? true : undefined}
+                  aria-describedby={termHintId}
                 />
-                <div className="text-body-sm text-on-surface-variant space-y-1">
-                  <p className="font-medium text-on-surface">Search examples</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Full or partial name: <span className="text-on-surface">Santos</span> or <span className="text-on-surface">Maria Sa</span></li>
-                    <li>Phone digits: <span className="text-on-surface font-mono-careq">0917</span> or full <span className="text-on-surface font-mono-careq">09XXXXXXXXX</span></li>
-                    <li>Patient ID number if you have it</li>
-                  </ul>
-                </div>
+                <FormHelperText id={termHintId}>
+                  2+ letters or phone digits.
+                </FormHelperText>
               </div>
-            </fieldset>
-
-            <div className="space-y-2">
-              <CareqButton
-                type="submit"
-                disabled={loading}
-                aria-disabled={!canSearch && !loading ? true : undefined}
-                aria-describedby={submitHintId}
-                className={cn(
-                  "w-full min-h-[48px]",
-                  !canSearch && !loading && "opacity-100"
-                )}
-              >
-                <Search className="h-4 w-4" aria-hidden />
-                {loading ? "Searching…" : "Search patient"}
-              </CareqButton>
-              <p
-                id={submitHintId}
-                className={cn(
-                  "text-body-sm text-center",
-                  submitBlockedReason
-                    ? "text-on-surface"
-                    : canSearch
-                      ? "text-on-surface-variant"
-                      : "text-on-surface-variant"
-                )}
-                role="status"
-              >
-                {loading
-                  ? "Looking for matching profiles…"
-                  : submitBlockedReason ??
-                    (canSearch
-                      ? "Results update automatically as you type."
-                      : "Enter a search term above to continue.")}
-              </p>
+              <div>
+                <FormLabel htmlFor={`${formId}-dob`}>
+                  Date of birth{" "}
+                  <span className="text-on-surface-variant font-normal">(optional)</span>
+                </FormLabel>
+                <FormInput
+                  id={`${formId}-dob`}
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  min="1900-01-01"
+                />
+              </div>
             </div>
-          </form>
 
-          <div
-            className="flex gap-2 items-start rounded-lg border border-outline-variant/80 bg-surface-container-lowest px-4 py-3"
-            role="note"
-          >
-            <Shield className="h-4 w-4 text-primary shrink-0 mt-0.5" aria-hidden />
-            <p className="text-body-sm text-on-surface-variant">
-              <span className="font-medium text-on-surface">Privacy:</span> Only staff and
-              verified patients can access full records. Multiple matches require phone
-              verification. We never show complete phone numbers in search results.
+            {showValidation && validationMessage && <FormError message={validationMessage} />}
+
+            <CareqButton
+              type="button"
+              className="w-full min-h-[44px] cursor-pointer"
+              disabled={loading}
+              onClick={handleSearch}
+              aria-describedby={termHintId}
+            >
+              <Search className="h-4 w-4" aria-hidden />
+              {loading ? "Searching…" : "Search patient"}
+            </CareqButton>
+
+            <p
+              className="text-body-sm text-on-surface-variant text-center"
+              title="We mask phone numbers and verify identity when multiple patients match."
+            >
+              <span className="text-primary underline decoration-dotted underline-offset-2 cursor-help">
+                How we protect your data
+              </span>
             </p>
           </div>
 
           {loading && (
-            <div
-              className="space-y-2 pt-2"
-              aria-busy="true"
-              aria-label="Loading search results"
-            >
+            <div className="space-y-2" aria-busy="true" aria-label="Loading results">
               <Skeleton className="h-14 w-full rounded-lg" />
               <Skeleton className="h-14 w-full rounded-lg" />
             </div>
           )}
 
-          {!loading && !searched && !trimmedTerm && (
-            <EmptyState
-              icon={Search}
-              title="Ready when you are"
-              description="Enter a name, phone digits, or patient ID above. We'll show matching profiles here."
-              className="border border-dashed border-outline-variant bg-surface-container-low/50 py-8"
-            />
-          )}
-
           {searched && !loading && (
             <section aria-labelledby={`${formId}-results-heading`}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
-                <h2
-                  id={`${formId}-results-heading`}
-                  className="text-headline-sm text-on-surface"
-                >
-                  Search results
+              <div className="flex items-baseline justify-between gap-2 mb-3">
+                <h2 id={`${formId}-results-heading`} className="text-headline-sm text-on-surface">
+                  Results
                 </h2>
                 <p
                   id={resultsLiveId}
                   className="text-body-sm text-on-surface-variant"
                   aria-live="polite"
-                  aria-atomic="true"
                 >
                   {patients.length === 0
-                    ? "No matches found"
-                    : `${patients.length} match${patients.length === 1 ? "" : "es"} found`}
+                    ? "No matches"
+                    : `${patients.length} found`}
                 </p>
               </div>
-
-              {patients.length > 1 && (
-                <FormInfo>
-                  Multiple profiles matched. You will be asked for the{" "}
-                  <strong>last 4 digits</strong> of the selected patient&apos;s phone before
-                  continuing.
-                </FormInfo>
-              )}
 
               {patients.length === 0 ? (
                 <EmptyState
                   icon={Search}
                   title="No patients found"
-                  description="Try a different spelling, more phone digits, or add date of birth. If you have never visited us, register as a new patient."
-                  className="py-8"
+                  description="Try different spelling or add date of birth."
+                  className="py-6"
                   action={
                     <CareqButton asChild>
                       <Link href="/registration">
                         <UserPlus className="h-4 w-4" />
-                        Register new patient
+                        Register
                       </Link>
                     </CareqButton>
                   }
                 />
               ) : (
-                <ul className="space-y-3" role="list">
+                <ul className="space-y-2" role="list">
                   {patients.map((p) => (
                     <li key={p.id}>
-                      <CareqCard className="p-4 sm:p-5 border-outline-variant">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                      <CareqCard className="p-3 sm:p-4 border-outline-variant">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                           <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-on-surface text-body-md">
+                            <p className="font-semibold text-body-md text-on-surface">
                               {p.first_name} {p.last_name}
                             </p>
-                            <p className="text-body-sm text-on-surface-variant mt-0.5">
-                              DOB: {p.dob} · {p.gender}
-                            </p>
                             <p className="text-body-sm text-on-surface-variant">
-                              Phone: {maskPhone(p.phone)} · {p.address}
-                            </p>
-                            <p className="text-label-sm text-on-surface-variant mt-1 font-mono-careq">
-                              Patient #{p.id}
+                              {maskPhone(p.phone)} · #{p.id}
                             </p>
                           </div>
-                          <div className="flex flex-col gap-2 w-full sm:w-auto sm:min-w-[160px]">
+                          <div className="flex gap-2">
                             <CareqButton
                               type="button"
-                              className="w-full min-h-[44px]"
+                              size="sm"
+                              className="min-h-[44px] flex-1 sm:flex-none cursor-pointer"
                               onClick={() => navigate(p, "checkin")}
                             >
                               <LogIn className="h-4 w-4" />
@@ -386,11 +268,12 @@ export function PatientSearch() {
                             <Button
                               type="button"
                               variant="outline"
-                              className="w-full min-h-[44px] rounded-xl border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+                              size="sm"
+                              className="min-h-[44px] flex-1 sm:flex-none rounded-xl border-primary text-primary cursor-pointer"
                               onClick={() => navigate(p, "appointments")}
                             >
                               <Calendar className="h-4 w-4" />
-                              Book appointment
+                              Book
                             </Button>
                           </div>
                         </div>
@@ -402,24 +285,12 @@ export function PatientSearch() {
             </section>
           )}
 
-          <div className="border-t border-outline-variant pt-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 rounded-xl bg-primary/5 border border-primary/20 px-4 py-4">
-              <div>
-                <p className="text-body-md font-semibold text-on-surface">
-                  First time at this clinic?
-                </p>
-                <p className="text-body-sm text-on-surface-variant mt-0.5">
-                  Create a profile once, then search and check in faster next time.
-                </p>
-              </div>
-              <CareqButton asChild variant="outline" className="shrink-0 min-h-[44px] border-primary">
-                <Link href="/registration">
-                  <UserPlus className="h-4 w-4" />
-                  Register new patient
-                </Link>
-              </CareqButton>
-            </div>
-          </div>
+          <p className="text-body-sm text-on-surface-variant text-center pt-2 border-t border-outline-variant">
+            New patient?{" "}
+            <Link href="/registration" className="text-primary font-medium hover:underline">
+              Register
+            </Link>
+          </p>
         </div>
       </CareqCard>
 
@@ -429,7 +300,7 @@ export function PatientSearch() {
         title="Verify identity"
         description={
           verifyModal
-            ? `For your privacy, confirm ${verifyModal.patient.first_name} ${verifyModal.patient.last_name} by entering the last 4 digits of their phone number on file.`
+            ? `Enter last 4 digits of ${verifyModal.patient.first_name}'s phone.`
             : undefined
         }
         footer={
@@ -438,27 +309,24 @@ export function PatientSearch() {
               Cancel
             </Button>
             <CareqButton onClick={handleVerify} disabled={verifyInput.length !== 4}>
-              Confirm and continue
+              Confirm
             </CareqButton>
           </>
         }
       >
-        <FormLabel htmlFor={`${formId}-verify`}>Last 4 digits of phone</FormLabel>
+        <FormLabel htmlFor={`${formId}-verify`}>Last 4 digits</FormLabel>
         <FormInput
           id={`${formId}-verify`}
           type="text"
-          placeholder="••••"
           maxLength={4}
           value={verifyInput}
           inputMode="numeric"
-          autoComplete="off"
           onChange={(e) => {
             setVerifyInput(e.target.value.replace(/\D/g, ""));
             setVerifyError("");
           }}
           onKeyDown={(e) => e.key === "Enter" && handleVerify()}
           className="text-center text-lg tracking-widest font-mono-careq"
-          aria-invalid={verifyError ? true : undefined}
         />
         {verifyError && (
           <p className="text-destructive text-body-sm mt-2" role="alert">

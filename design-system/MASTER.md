@@ -63,6 +63,19 @@ Reliable, efficient, calm. Corporate/modern minimalism for healthcare queue mana
 
 Status CSS variables: `--status-waiting`, `--status-called`, `--status-completed`, `--status-no-show`.
 
+## Copy budget (patient screens)
+
+- 1 h1 (`PageHeader`) + 1 subtitle ≤12 words + 1 helper line max
+- No `FormInfo` / examples panels on default view
+- Privacy: 1 muted line or link, not a block
+- Success: `SuccessCard` inline only (no success modals)
+
+## UI patterns
+
+- **SuccessCard** — `CheckCircle2`, mono reference (`headline-sm`), 1 sentence, 1–2 CTAs
+- **Dashboard density** — command bar single row; waiting rows max 72px
+- **TV board** — waiting list cap 5; reconnect dot top-right (green/amber)
+
 ## Implementation
 
 - React components: `components/careq/*` (branded primitives)

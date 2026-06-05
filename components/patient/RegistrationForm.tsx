@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { User, CheckCircle2, Calendar, LogIn } from "lucide-react";
+import { User, Calendar, LogIn } from "lucide-react";
 import {
   CareqCard,
   CareqButton,
@@ -14,6 +14,7 @@ import {
   FormSelect,
   FormError,
   StepIndicator,
+  SuccessCard,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 
@@ -37,7 +38,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     matchedBy: string;
     message: string;
   } | null>(null);
-  const [successModal, setSuccessModal] = useState<{ patientId: string } | null>(null);
+  const [successPatientId, setSuccessPatientId] = useState<string | null>(null);
 
   function navigateAfterRegister(patientId: string) {
     if (redirectTo) {
@@ -88,8 +89,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     else router.push("/visit");
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitRegistration() {
     if (!consent) {
       setError("You must consent to continue.");
       return;
@@ -133,7 +133,24 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
 
-    setSuccessModal({ patientId: String(data.patient) });
+    setSuccessPatientId(String(data.patient));
+  }
+
+  if (successPatientId) {
+    return (
+      <SuccessCard
+        reference={`Patient #${successPatientId}`}
+        message="Registration complete."
+        primaryCta={{
+          label: "Check in now",
+          href: `/checkin?patientId=${successPatientId}`,
+        }}
+        secondaryCta={{
+          label: "Book appointment",
+          href: `/appointments?patientId=${successPatientId}`,
+        }}
+      />
+    );
   }
 
   return (
@@ -164,7 +181,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
           />
           {error && <FormError message={error} />}
 
-          <form onSubmit={onSubmit} className="space-y-6">
+          <div className="space-y-6">
             {step === "personal" && (
               <fieldset className="space-y-4">
                 <legend className="text-label-md font-semibold text-on-surface mb-2">
@@ -327,12 +344,17 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                   Next
                 </CareqButton>
               ) : (
-                <CareqButton type="submit" disabled={loading || !consent}>
+                <CareqButton
+                  type="button"
+                  disabled={loading || !consent}
+                  onClick={submitRegistration}
+                  className="cursor-pointer"
+                >
                   {loading ? "Registering..." : "Complete Registration"}
                 </CareqButton>
               )}
             </div>
-          </form>
+          </div>
         </div>
       </CareqCard>
 
@@ -373,44 +395,6 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
         )}
       </ConfirmDialog>
 
-      <ConfirmDialog
-        open={!!successModal}
-        onOpenChange={(open) => !open && setSuccessModal(null)}
-        title="Registration Complete!"
-        description="Thank you for registering with our clinic."
-        showCloseButton
-        footer={
-          <>
-            <Button variant="outline" asChild>
-              <Link href={`/appointments?patientId=${successModal?.patientId}`}>
-                <Calendar className="h-4 w-4" />
-                Book Appointment
-              </Link>
-            </Button>
-            <CareqButton
-              onClick={() => successModal && navigateAfterRegister(successModal.patientId)}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Check In Today
-            </CareqButton>
-          </>
-        }
-      >
-        <div className="text-center py-2">
-          <div className="icon-circle bg-status-called/15 text-status-called mx-auto mb-3">
-            <CheckCircle2 className="w-8 h-8" />
-          </div>
-          <div className="text-left rounded-lg border border-secondary-container bg-secondary-container/40 p-3 text-body-sm text-on-secondary-container">
-            <p className="font-semibold mb-1">Next Steps</p>
-            <p>
-              <strong>Check In Today</strong> if you are here right now for a walk-in visit.
-            </p>
-            <p className="mt-1">
-              <strong>Book Appointment</strong> to schedule a future visit.
-            </p>
-          </div>
-        </div>
-      </ConfirmDialog>
     </>
   );
 }

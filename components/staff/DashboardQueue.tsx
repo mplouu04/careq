@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import dynamic from "next/dynamic";
 import {
-  BarChart3,
   RefreshCw,
   Users,
   Clock,
+  UserCheck,
+  AlertCircle,
 } from "lucide-react";
 import {
   Select,
@@ -25,21 +25,11 @@ import {
   ConfirmDialog,
   EmptyState,
   FormLabel,
+  StatCard,
 } from "@/components/careq";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { QueueCommandBar } from "@/components/staff/QueueCommandBar";
-
-const Bar = dynamic(
-  () =>
-    import("react-chartjs-2").then(async (m) => {
-      const { Chart, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } =
-        await import("chart.js");
-      Chart.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
-      return m.Bar;
-    }),
-  { ssr: false }
-);
 
 type QueueWaiting = {
   id: number;
@@ -74,8 +64,6 @@ type QueueCompleted = {
 type Doctor = { id: string; first_name: string; last_name: string };
 type Room = { id: string; name: string };
 
-const CHART_PRIMARY = "rgba(0, 74, 198, 0.75)";
-
 export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [waiting, setWaiting] = useState<QueueWaiting[]>([]);
   const [inProgress, setInProgress] = useState<QueueInProgress[]>([]);
@@ -87,7 +75,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [doctorId, setDoctorId] = useState(staff.role === "doctor" ? staff.id : "");
   const [roomId, setRoomId] = useState("");
   const [stats, setStats] = useState({ served: 0, waiting: 0, avg: 10 });
-  const [chartData, setChartData] = useState<{ date: string; served: number; avg_time?: number }[]>([]);
+  const [isLive, setIsLive] = useState(true);
   const [callModalOpen, setCallModalOpen] = useState(false);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
   const [recallDoctorId, setRecallDoctorId] = useState("");
@@ -128,7 +116,6 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         waiting: data.waiting_count ?? 0,
         avg: data.avg_service_time ?? 10,
       });
-      setChartData(data.history ?? []);
     } catch {
       // Retry on next poll
     }
@@ -161,7 +148,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         loadQueue();
         loadStats();
       })
-      .subscribe();
+      .subscribe((status) => setIsLive(status === "SUBSCRIBED"));
     const interval = setInterval(() => {
       loadQueue();
       loadStats();
@@ -228,19 +215,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   }
 
   const nextWaiting = waiting[0];
-  const reversed = [...chartData].reverse();
-  const barChartData = {
-    labels: reversed.map((c) => c.date.slice(5)),
-    datasets: [
-      {
-        label: "Patients Served",
-        data: reversed.map((c) => c.served),
-        backgroundColor: CHART_PRIMARY,
-        borderRadius: 4,
-        yAxisID: "y",
-      },
-    ],
-  };
+
+  function openRecall(q: QueueWaiting) {
+    setRecallModal(q);
+    setRecallDoctorId(doctorId || doctors[0]?.id || "");
+    setRecallRoomId(roomId || rooms[0]?.id || "");
+  }
 
   return (
     <div>
@@ -261,11 +241,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           if (nextWaiting) performAction("call_next", nextWaiting.queueId);
         }}
         canCall={Boolean(doctorId && roomId && nextWaiting)}
-        nextPatientLabel={
-          nextWaiting
-            ? `${nextWaiting.queue_number ?? nextWaiting.id} · ${nextWaiting.name}`
-            : undefined
-        }
+        isLive={isLive}
       />
 
       <div
@@ -323,41 +299,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           }
         >
           {waiting.map((q) => (
-            <li key={q.queueId} className="px-4 py-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-primary font-mono-careq">
-                      {q.queue_number ?? q.id}
-                    </span>
-                    <span className="position-badge"># {q.position}</span>
-                    <span className="est-wait-badge">~{q.est_wait_minutes}m</span>
-                    {q.skip_count > 0 && (
-                      <span className="text-label-sm text-amber-600">
-                        (skipped {q.skip_count}×)
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-body-sm font-medium text-on-surface mt-0.5">{q.name}</p>
-                  {q.reason && (
-                    <p className="text-label-sm text-on-surface-variant truncate">{q.reason}</p>
-                  )}
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setRecallModal(q);
-                    setRecallDoctorId(doctorId || doctors[0]?.id || "");
-                    setRecallRoomId(roomId || rooms[0]?.id || "");
-                  }}
-                  className="shrink-0 text-label-sm"
-                >
-                  Recall
-                </Button>
-              </div>
-            </li>
+            <WaitingRow key={q.queueId} q={q} onRecall={() => openRecall(q)} />
           ))}
         </QueueColumn>
 
@@ -374,7 +316,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           }
         >
           {inProgress.map((q) => (
-            <li key={q.queueId} className="px-4 py-3">
+            <li key={q.queueId} className="px-3 py-2">
               <div className="flex items-center gap-2 mb-2">
                 <span className="font-bold text-primary font-mono-careq">{q.queue_number ?? q.id}</span>
                 <span className="text-body-sm font-medium text-on-surface">{q.name}</span>
@@ -482,33 +424,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             }
           >
             {waiting.map((q) => (
-              <li key={q.queueId} className="px-4 py-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-primary font-mono-careq">
-                        {q.queue_number ?? q.id}
-                      </span>
-                      <span className="position-badge"># {q.position}</span>
-                      <span className="est-wait-badge">~{q.est_wait_minutes}m</span>
-                    </div>
-                    <p className="text-body-sm font-medium text-on-surface mt-0.5">{q.name}</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setRecallModal(q);
-                      setRecallDoctorId(doctorId || doctors[0]?.id || "");
-                      setRecallRoomId(roomId || rooms[0]?.id || "");
-                    }}
-                    className="shrink-0 text-label-sm"
-                  >
-                    Recall
-                  </Button>
-                </div>
-              </li>
+              <WaitingRow key={q.queueId} q={q} onRecall={() => openRecall(q)} />
             ))}
           </QueueColumn>
         )}
@@ -526,7 +442,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             }
           >
             {inProgress.map((q) => (
-              <li key={q.queueId} className="px-4 py-3">
+              <li key={q.queueId} className="px-3 py-2">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="font-bold text-primary font-mono-careq">
                     {q.queue_number ?? q.id}
@@ -612,72 +528,29 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         )}
       </div>
 
-      <CareqCard className="overflow-hidden mb-5">
-        <div className="px-4 py-3 bg-foreground flex items-center justify-between gap-3">
-          <h6 className="font-semibold text-primary-foreground flex items-center gap-2 m-0 text-body-md">
-            <BarChart3 className="h-4 w-4" />
-            Today&apos;s Performance
-          </h6>
+      <div className="mb-5">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h3 className="text-headline-sm text-on-surface">Today</h3>
           {staff.role === "admin" && (
             <Button
               type="button"
               variant="destructive"
               size="sm"
               onClick={resetDaily}
-              className="text-label-sm"
+              className="cursor-pointer"
             >
               <RefreshCw className="h-3 w-3 mr-1" />
-              Reset Daily Queue
+              Reset queue
             </Button>
           )}
         </div>
-        <div className="p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 text-center mb-4 divide-y sm:divide-y-0 sm:divide-x divide-outline-variant">
-            <div className="py-3 sm:py-0">
-              <div className="analytics-value">{stats.avg} min</div>
-              <div className="analytics-label">Avg Service Time</div>
-            </div>
-            <div className="py-3 sm:py-0">
-              <div className="analytics-value">{stats.served}</div>
-              <div className="analytics-label">Served Today</div>
-            </div>
-            <div className="py-3 sm:py-0">
-              <div className="analytics-value">{stats.waiting}</div>
-              <div className="analytics-label">Still Waiting</div>
-            </div>
-          </div>
-          <hr className="mb-3 border-outline-variant" />
-          <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-label-sm text-on-surface-variant font-semibold uppercase tracking-wide">
-              Patients Served — Last 7 Days
-            </span>
-            <Button type="button" variant="outline" size="sm" onClick={loadStats}>
-              <RefreshCw className="h-3 w-3" />
-            </Button>
-          </div>
-          <div className="relative h-[180px]">
-            {chartData.length > 0 && (
-              <Bar
-                data={barChartData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: {
-                      position: "top" as const,
-                      labels: { boxWidth: 12, font: { size: 11 } },
-                    },
-                  },
-                  scales: {
-                    y: { beginAtZero: true, ticks: { precision: 0, font: { size: 10 } } },
-                    x: { ticks: { font: { size: 10 } } },
-                  },
-                }}
-              />
-            )}
-          </div>
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard label="Avg service" value={`${stats.avg} min`} icon={Clock} />
+          <StatCard label="Served" value={String(stats.served)} icon={UserCheck} />
+          <StatCard label="Waiting" value={String(stats.waiting)} icon={Users} />
+          <StatCard label="No show" value={String(noShow.length)} icon={AlertCircle} />
         </div>
-      </CareqCard>
+      </div>
 
       <ConfirmDialog
         open={callModalOpen}
@@ -827,6 +700,39 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         </div>
       </ConfirmDialog>
     </div>
+  );
+}
+
+function WaitingRow({
+  q,
+  onRecall,
+}: {
+  q: QueueWaiting;
+  onRecall: () => void;
+}) {
+  return (
+    <li className="px-3 py-2 max-h-[72px]">
+      <div className="flex items-center gap-2 min-h-[44px]">
+        <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
+          {q.queue_number ?? q.id}
+        </span>
+        <span className="font-semibold text-body-md text-on-surface truncate flex-1 min-w-0">
+          {q.name}
+        </span>
+        <span className="text-body-sm text-on-surface-variant shrink-0">
+          ~{q.est_wait_minutes}m
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRecall}
+          className="shrink-0 text-label-sm cursor-pointer"
+        >
+          Recall
+        </Button>
+      </div>
+    </li>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { UserPlus } from "lucide-react";
+import { Phone } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CareqButton, FormLabel } from "@/components/careq";
+import { CareqButton } from "@/components/careq";
 import { cn } from "@/lib/utils";
 
 type Doctor = { id: string; first_name: string; last_name: string };
@@ -23,7 +23,7 @@ type QueueCommandBarProps = {
   onRoomChange: (id: string) => void;
   onCallNext: () => void;
   canCall: boolean;
-  nextPatientLabel?: string;
+  isLive?: boolean;
   className?: string;
 };
 
@@ -36,83 +36,80 @@ export function QueueCommandBar({
   onRoomChange,
   onCallNext,
   canCall,
-  nextPatientLabel,
+  isLive = true,
   className,
 }: QueueCommandBarProps) {
-  const missingDoctor = !doctorId;
-  const missingRoom = !roomId;
-  const hint =
-    missingDoctor && missingRoom
-      ? "Select a doctor and room to call the next patient"
-      : missingDoctor
-        ? "Select a doctor"
-        : missingRoom
-          ? "Select a room"
-          : !nextPatientLabel
-            ? "No patients waiting"
-            : undefined;
+  const hint = !canCall
+    ? !doctorId && !roomId
+      ? "Select doctor and room"
+      : !doctorId
+        ? "Select doctor"
+        : !roomId
+          ? "Select room"
+          : "No patients waiting"
+    : undefined;
 
   return (
     <div
       className={cn(
-        "rounded-xl border border-outline-variant bg-surface-container-lowest p-4 md:p-5",
+        "rounded-xl border border-outline-variant bg-surface-container-lowest px-3 py-2 md:px-4 md:py-3",
         className
       )}
     >
-      <div className="flex flex-col lg:flex-row lg:items-end gap-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
-          <div>
-            <FormLabel>Doctor</FormLabel>
-            <Select value={doctorId} onValueChange={(v) => onDoctorChange(v ?? "")}>
-              <SelectTrigger className="w-full h-11 mt-1">
-                <SelectValue placeholder="Select doctor" />
-              </SelectTrigger>
-              <SelectContent>
-                {doctors.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    Dr. {d.first_name} {d.last_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <FormLabel>Room</FormLabel>
-            <Select value={roomId} onValueChange={(v) => onRoomChange(v ?? "")}>
-              <SelectTrigger className="w-full h-11 mt-1">
-                <SelectValue placeholder="Select room" />
-              </SelectTrigger>
-              <SelectContent>
-                {rooms.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 lg:min-w-[200px]">
-          <CareqButton
-            type="button"
-            className="w-full min-h-[44px] gap-2"
-            disabled={!canCall}
-            onClick={onCallNext}
-            title={hint}
+      <div className="flex flex-wrap items-center gap-2 md:gap-3">
+        <Select value={doctorId} onValueChange={(v) => onDoctorChange(v ?? "")}>
+          <SelectTrigger
+            className="h-11 min-w-[140px] flex-1 sm:flex-none sm:max-w-[200px] cursor-pointer"
+            aria-label="Doctor"
           >
-            <UserPlus className="h-4 w-4" aria-hidden />
-            Call next patient
-          </CareqButton>
-          {nextPatientLabel && (
-            <p className="text-label-sm text-on-surface-variant text-center lg:text-left">
-              Next: <span className="font-mono text-primary">{nextPatientLabel}</span>
-            </p>
-          )}
-          {hint && !canCall && (
-            <p className="text-label-sm text-amber-700 text-center lg:text-left" role="status">
-              {hint}
-            </p>
-          )}
+            <SelectValue placeholder="Doctor" />
+          </SelectTrigger>
+          <SelectContent>
+            {doctors.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                Dr. {d.first_name} {d.last_name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={roomId} onValueChange={(v) => onRoomChange(v ?? "")}>
+          <SelectTrigger
+            className="h-11 min-w-[120px] flex-1 sm:flex-none sm:max-w-[160px] cursor-pointer"
+            aria-label="Room"
+          >
+            <SelectValue placeholder="Room" />
+          </SelectTrigger>
+          <SelectContent>
+            {rooms.map((r) => (
+              <SelectItem key={r.id} value={r.id}>
+                {r.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <CareqButton
+          type="button"
+          className="min-h-[44px] gap-2 shrink-0 cursor-pointer"
+          disabled={!canCall}
+          onClick={onCallNext}
+          title={hint}
+          aria-disabled={!canCall}
+        >
+          <Phone className="h-4 w-4" aria-hidden />
+          Call next
+        </CareqButton>
+
+        <div className="flex items-center gap-1.5 ml-auto text-body-sm text-on-surface-variant">
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full shrink-0",
+              isLive ? "bg-status-called motion-safe:animate-pulse" : "bg-amber-500"
+            )}
+            aria-hidden
+          />
+          <span>Live</span>
         </div>
       </div>
     </div>

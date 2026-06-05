@@ -2,11 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { toast } from "sonner";
 import { format, addDays, getDay } from "date-fns";
 import { getClinicTodayYmd } from "@/lib/datetime";
-import { CheckCircle2, Printer } from "lucide-react";
 import {
   CareqCard,
   CareqButton,
@@ -14,9 +12,8 @@ import {
   FormLabel,
   FormInput,
   FormSelect,
-  FormInfo,
+  SuccessCard,
 } from "@/components/careq";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppointmentSummary } from "@/components/patient/AppointmentSummary";
 import { PatientLookupInline } from "@/components/patient/PatientLookupInline";
@@ -53,13 +50,8 @@ export function AppointmentForm() {
   const [loading, setLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [reason, setReason] = useState("");
-  const [success, setSuccess] = useState<{
-    appointmentID: string;
-    date: string;
-    time: string;
-    doctor: string;
-    type: string;
-  } | null>(null);
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [successRef, setSuccessRef] = useState<string | null>(null);
 
   useEffect(() => {
     const clinicToday = getClinicTodayYmd();
@@ -110,14 +102,16 @@ export function AppointmentForm() {
     setDate(val);
   }
 
-  async function book(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function book() {
     if (!patientId) {
       toast.error("Select a patient first via patient search");
       return;
     }
+    if (!termsAgreed) {
+      toast.error("Agree to clinic terms to continue.");
+      return;
+    }
     setLoading(true);
-    const fd = new FormData(e.currentTarget);
     const res = await fetch("/api/appointments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -127,7 +121,7 @@ export function AppointmentForm() {
         appointmentDate: date,
         appointmentTime: time,
         termsAgreement: "on",
-        reason: fd.get("reason"),
+        reason,
         patient_id: patientId,
       }),
     });
@@ -138,59 +132,17 @@ export function AppointmentForm() {
       return;
     }
 
-    const doctor = doctors.find((d) => d.id === doctorId);
-    const apptType = types.find((t) => String(t.id) === appTypeId);
-    setSuccess({
-      appointmentID: data.appointmentID,
-      date,
-      time: formatTime12h(time),
-      doctor: doctor ? `Dr. ${doctor.first_name} ${doctor.last_name}` : "",
-      type: apptType?.name ?? "",
-    });
+    setSuccessRef(data.appointmentID);
   }
 
-  if (success) {
+  if (successRef) {
     return (
-      <CareqCard className="overflow-hidden">
-        <div className="px-6 py-8 text-center bg-status-called/10">
-          <div className="icon-circle bg-status-called/15 text-status-called mx-auto mb-3">
-            <CheckCircle2 className="w-8 h-8" />
-          </div>
-          <h4 className="text-headline-sm text-foreground mb-1">Appointment Confirmed!</h4>
-          <p className="text-body-sm text-on-surface-variant">
-            Your appointment has been successfully booked.
-          </p>
-        </div>
-        <div className="px-6 py-4 space-y-2 text-body-sm">
-          <DetailRow label="Reference" value={success.appointmentID} mono />
-          <DetailRow label="Date" value={success.date} />
-          <DetailRow label="Time" value={success.time} />
-          <DetailRow label="Doctor" value={success.doctor} />
-          <DetailRow label="Type" value={success.type} />
-        </div>
-        <div className="px-6 pb-6">
-          <FormInfo message="Save this reference number. You'll need it for check-in on your visit day." />
-          <div className="flex gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => window.print()}
-            >
-              <Printer className="h-4 w-4" />
-              Print
-            </Button>
-            <CareqButton className="flex-1" asChild>
-              <Link href={`/status/${encodeURIComponent(success.appointmentID)}`}>
-                Track status
-              </Link>
-            </CareqButton>
-            <Button type="button" variant="outline" className="flex-1" asChild>
-              <Link href="/checkin?tab=appointment">Check in on visit day</Link>
-            </Button>
-          </div>
-        </div>
-      </CareqCard>
+      <SuccessCard
+        reference={successRef}
+        message="Appointment booked."
+        primaryCta={{ label: "Track appointment", href: "/my-appointments" }}
+        secondaryCta={{ label: "Book another", href: "/appointments" }}
+      />
     );
   }
 
@@ -207,7 +159,7 @@ export function AppointmentForm() {
         <div className="px-6 py-5">
           {!patientId && <PatientLookupInline />}
 
-          <form onSubmit={book} className="space-y-4">
+          <div className="space-y-4">
           <div>
             <FormLabel required>Preferred Doctor</FormLabel>
             <FormSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} required>
@@ -277,7 +229,6 @@ export function AppointmentForm() {
           <div>
             <FormLabel>Reason (optional)</FormLabel>
             <textarea
-              name="reason"
               placeholder="Brief reason for the visit"
               rows={3}
               value={reason}
@@ -286,19 +237,25 @@ export function AppointmentForm() {
             />
           </div>
 
-          <label className="flex items-start gap-2 text-body-sm cursor-pointer">
-            <input type="checkbox" name="termsAgreement" required className="mt-1 rounded" />
-            <span>I agree to the clinic terms and consent to this appointment.</span>
+          <label className="flex items-start gap-2 text-body-sm cursor-pointer min-h-[44px]">
+            <input
+              type="checkbox"
+              checked={termsAgreed}
+              onChange={(e) => setTermsAgreed(e.target.checked)}
+              className="mt-1 rounded"
+            />
+            <span>I agree to clinic terms.</span>
           </label>
 
           <CareqButton
-            type="submit"
-            className="w-full"
+            type="button"
+            className="w-full cursor-pointer"
             disabled={loading || !patientId || !doctorId || !appTypeId || !date || !time}
+            onClick={book}
           >
             {loading ? "Booking..." : "Book Appointment"}
           </CareqButton>
-          </form>
+          </div>
         </div>
       </CareqCard>
 
@@ -315,19 +272,3 @@ export function AppointmentForm() {
   );
 }
 
-function DetailRow({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex justify-between border-b border-border pb-2 last:border-0">
-      <span className="text-on-surface-variant">{label}:</span>
-      <strong className={mono ? "font-mono text-foreground" : "text-foreground"}>{value}</strong>
-    </div>
-  );
-}
