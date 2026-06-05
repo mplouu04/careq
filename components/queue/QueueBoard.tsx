@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { User } from "lucide-react";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
@@ -49,6 +50,8 @@ function priorityLabel(priority: string | undefined) {
 }
 
 export function QueueBoard({ screenId }: { screenId?: string }) {
+  const searchParams = useSearchParams();
+  const tvMode = searchParams.get("theme") === "tv";
   const [rooms, setRooms] = useState<RoomPanel[]>([]);
   const [waiting, setWaiting] = useState<WaitingItem[]>([]);
   const [avgServiceTime, setAvgServiceTime] = useState(10);
@@ -112,7 +115,12 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
   const themeColor = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-surface">
+    <div
+      className={cn(
+        "flex flex-col lg:flex-row h-screen overflow-hidden",
+        tvMode ? "bg-zinc-950" : "bg-surface"
+      )}
+    >
       {loadError && (
         <div className="absolute top-0 left-0 right-0 z-10 bg-destructive text-destructive-foreground text-center text-body-sm py-2">
           Unable to load queue data. Retrying...
@@ -120,41 +128,80 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
       )}
 
       <div
-        className="w-full lg:w-2/3 flex flex-col p-6 overflow-y-auto text-primary-foreground min-h-[50vh] lg:min-h-0"
-        style={{ backgroundColor: themeColor }}
+        className={cn(
+          "w-full lg:w-2/3 flex flex-col p-6 md:p-8 overflow-y-auto text-primary-foreground min-h-[50vh] lg:min-h-0",
+          tvMode && "lg:w-3/4"
+        )}
+        style={{ backgroundColor: tvMode ? "#0f172a" : themeColor }}
       >
         <div className="flex items-center justify-between gap-4 mb-6">
           <div className="min-w-0">
-            <h1 className="text-headline-sm font-bold truncate">{display.display_name}</h1>
+            <h1
+              className={cn(
+                "font-bold truncate",
+                tvMode ? "text-2xl md:text-3xl" : "text-headline-sm"
+              )}
+            >
+              {display.display_name}
+            </h1>
             {display.location && (
-              <p className="text-body-sm opacity-80 truncate">{display.location}</p>
+              <p className={cn("opacity-80 truncate", tvMode ? "text-lg" : "text-body-sm")}>
+                {display.location}
+              </p>
             )}
           </div>
-          <div className="text-xl font-mono shrink-0">{timeStr}</div>
+          <div
+            className={cn("font-mono shrink-0 tabular-nums", tvMode ? "text-3xl" : "text-xl")}
+          >
+            {timeStr}
+          </div>
         </div>
 
-        <h2 className="text-label-md uppercase tracking-widest text-center mb-4 opacity-90">
-          Now Serving by Room
+        <h2
+          className={cn(
+            "uppercase tracking-widest text-center mb-6 opacity-90",
+            tvMode ? "text-xl font-semibold" : "text-label-md"
+          )}
+        >
+          Now serving
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 flex-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 flex-1">
           {rooms.map((room) => (
             <div
               key={room.id}
-              className="current-patient-card text-center py-6 px-4 flex flex-col justify-center min-h-[140px]"
+              className={cn(
+                "current-patient-card text-center flex flex-col justify-center",
+                tvMode ? "py-8 px-6 min-h-[200px]" : "py-6 px-4 min-h-[140px]"
+              )}
             >
-              <p className="text-label-md font-bold text-on-surface-variant uppercase mb-2">
+              <p
+                className={cn(
+                  "font-bold uppercase mb-3",
+                  tvMode
+                    ? "text-xl text-on-surface"
+                    : "text-label-md text-on-surface-variant"
+                )}
+              >
                 {room.name}
               </p>
               {room.current ? (
                 <>
                   <div
-                    className="text-4xl font-bold mb-1"
+                    className={cn(
+                      "font-mono font-bold mb-2 leading-none",
+                      tvMode ? "text-6xl md:text-7xl" : "text-4xl"
+                    )}
                     style={{ color: themeColor }}
                   >
                     {room.current.queue_number}
                   </div>
-                  <p className="text-headline-sm text-on-surface font-medium truncate">
+                  <p
+                    className={cn(
+                      "text-on-surface font-medium truncate",
+                      tvMode ? "text-2xl" : "text-headline-sm"
+                    )}
+                  >
                     {room.current.name || "—"}
                   </p>
                   {room.current.doctor && (
@@ -179,9 +226,22 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
         </div>
       </div>
 
-      <div className="upcoming-queue-section w-full lg:w-1/3 flex flex-col p-6 overflow-y-auto bg-surface-container-lowest min-h-[40vh] lg:min-h-0">
-        <h4 className="text-headline-sm font-bold text-center text-on-surface mb-6 tracking-wide">
-          UPCOMING PATIENTS
+      <div
+        className={cn(
+          "upcoming-queue-section w-full flex flex-col p-6 md:p-8 overflow-y-auto min-h-[40vh] lg:min-h-0",
+          tvMode ? "lg:w-1/4 bg-zinc-900 text-zinc-100" : "lg:w-1/3 bg-surface-container-lowest"
+        )}
+      >
+        <h4
+          className={cn(
+            "font-bold text-center mb-6 tracking-wide",
+            tvMode ? "text-xl text-zinc-100" : "text-headline-sm text-on-surface"
+          )}
+        >
+          Up next
+          {waiting.length > 0 && (
+            <span className="ml-2 text-primary font-mono">({waiting.length})</span>
+          )}
         </h4>
         <ul className="upcoming-list">
           {waiting.length === 0 ? (
@@ -197,11 +257,24 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
               const pri = priorityLabel(q.priority);
               return (
                 <li key={q.queueId ?? q.id} className="upcoming-item">
-                  <div className="queue-number-sm" style={{ color: themeColor }}>
+                  <div
+                    className={cn(
+                      "font-mono font-bold shrink-0",
+                      tvMode ? "text-2xl text-primary" : "queue-number-sm"
+                    )}
+                    style={tvMode ? undefined : { color: themeColor }}
+                  >
                     {q.queue_number ?? q.id}
                   </div>
-                  <div className="patient-details">
-                    <div className="font-medium text-on-surface">{q.name}</div>
+                  <div className="patient-details min-w-0">
+                    <div
+                      className={cn(
+                        "font-medium truncate",
+                        tvMode ? "text-lg text-zinc-100" : "text-on-surface"
+                      )}
+                    >
+                      {q.name}
+                    </div>
                     <div className="appointment-time mt-1 flex flex-wrap gap-1 items-center">
                       <span className="position-badge">{ordinal(pos)} in line</span>
                       {display.show_wait_time && (

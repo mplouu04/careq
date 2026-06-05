@@ -445,8 +445,17 @@ export function AdminPanel() {
 
   return (
     <>
+      <header className="mb-6 pb-4 border-b border-outline-variant">
+        <h2 className="text-headline-lg font-bold text-on-surface tracking-tight">
+          Clinic settings
+        </h2>
+        <p className="text-body-md text-on-surface-variant mt-1">
+          Manage staff, rooms, appointments, and display screens.
+        </p>
+      </header>
+
       <Tabs defaultValue="staff">
-        <TabsList className="flex flex-wrap h-auto gap-1 bg-surface-container-low p-1 rounded-xl border border-outline-variant">
+        <TabsList className="sticky top-16 z-20 flex flex-wrap h-auto gap-1 bg-surface/95 backdrop-blur-sm p-1 rounded-xl border border-outline-variant mb-4">
           <TabsTrigger value="staff">Staff</TabsTrigger>
           <TabsTrigger value="types">Appointment Types</TabsTrigger>
           <TabsTrigger value="display">Display Screens</TabsTrigger>
@@ -462,11 +471,11 @@ export function AdminPanel() {
             <CardHeader>
               <CardTitle className="text-headline-sm text-on-surface">Staff Accounts</CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent className="overflow-x-auto max-h-[min(70vh,600px)]">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
+                <TableHeader className="sticky top-0 z-10 bg-surface-container-lowest">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-12">Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Active</TableHead>
@@ -742,11 +751,11 @@ export function AdminPanel() {
                 ))}
               </div>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent className="overflow-x-auto max-h-[min(70vh,560px)]">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Reference</TableHead>
+                <TableHeader className="sticky top-0 z-10 bg-surface-container-lowest">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-12">Reference</TableHead>
                     <TableHead>Patient</TableHead>
                     <TableHead>Doctor</TableHead>
                     <TableHead>Date / Time</TableHead>

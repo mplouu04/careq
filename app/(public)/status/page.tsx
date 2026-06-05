@@ -2,9 +2,9 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Clock } from "lucide-react";
+import { Search } from "lucide-react";
 import { CareqPage, CareqCard, CareqButton, PageHeader } from "@/components/careq";
-import { FormInput } from "@/components/careq";
+import { FormLabel, FormInput } from "@/components/careq";
 
 function StatusLookupInner() {
   const router = useRouter();
@@ -29,26 +29,36 @@ function StatusLookupInner() {
   return (
     <CareqPage narrow>
       <PageHeader
-        title="My Queue Status"
-        subtitle="Enter your queue or appointment reference number"
+        title="Track your queue"
+        subtitle="Enter your queue or appointment reference from check-in"
         backHref="/"
       />
-      <CareqCard className="p-8">
-        <div className="text-center mb-6">
-          <Clock className="w-12 h-12 text-primary mx-auto mb-3" aria-hidden />
+      <CareqCard className="p-6 md:p-8">
+        <div className="flex justify-center mb-6">
+          <div className="h-14 w-14 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Search className="h-7 w-7" aria-hidden />
+          </div>
         </div>
-        <div className="space-y-3">
-          <FormInput
-            type="text"
-            value={ref}
-            onChange={(e) => setRef(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === "Enter" && go()}
-            placeholder="e.g. APPT-1 or WALK-2"
-            maxLength={20}
-            className="text-center text-lg font-medium tracking-wider"
-          />
-          <CareqButton onClick={go} disabled={!ref.trim()} className="w-full">
-            Check Status
+        <div className="space-y-4 max-w-sm mx-auto">
+          <div>
+            <FormLabel htmlFor="queue-ref">Reference number</FormLabel>
+            <FormInput
+              id="queue-ref"
+              type="text"
+              value={ref}
+              onChange={(e) => setRef(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && go()}
+              placeholder="WALK-5 or APPT-12"
+              maxLength={20}
+              className="text-center text-xl font-mono tracking-wider h-12 mt-1"
+              autoComplete="off"
+            />
+            <p className="text-body-sm text-on-surface-variant mt-2 text-center">
+              Shown on your check-in confirmation
+            </p>
+          </div>
+          <CareqButton onClick={go} disabled={!ref.trim()} className="w-full min-h-[44px]">
+            View live status
           </CareqButton>
         </div>
       </CareqCard>

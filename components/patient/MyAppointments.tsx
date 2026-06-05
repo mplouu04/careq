@@ -40,7 +40,7 @@ const STATUS_VARIANT: Record<string, QueueStatusVariant> = {
   pending: "waiting",
   checked_in: "confirmed",
   cancelled: "cancelled",
-  no_show: "completed",
+  no_show: "no_show",
   in_progress: "called",
   completed: "completed",
 };
@@ -107,6 +107,7 @@ export function MyAppointments() {
               <FormLabel>Phone Number</FormLabel>
               <FormInput
                 type="tel"
+                inputMode="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="09XXXXXXXXX"
@@ -140,10 +141,12 @@ export function MyAppointments() {
           ) : (
             <div className="space-y-3">
               {appointments.map((a) => (
-                <CareqCard key={a.checkinId} className="p-4 space-y-3">
+                <CareqCard key={a.checkinId} className="p-4 md:p-5 space-y-3 border-outline-variant">
                   <div className="flex justify-between items-start gap-4">
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-foreground truncate">{a.reference}</p>
+                      <p className="font-mono text-headline-sm text-primary truncate">
+                        {a.reference}
+                      </p>
                       <p className="text-body-sm text-on-surface-variant">
                         {a.doctor} — {a.type}
                       </p>

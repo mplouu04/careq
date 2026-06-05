@@ -7,7 +7,7 @@ import {
   AlertTriangle,
   Clock,
   User,
-  Home,
+  MapPin,
   Megaphone,
   CheckCircle2,
   XCircle,
@@ -38,7 +38,7 @@ const HEADER_BG: Record<string, string> = {
   in_progress: "bg-status-called",
   completed: "bg-muted-foreground",
   cancelled: "bg-destructive",
-  no_show: "bg-amber-600",
+  no_show: "bg-status-no-show",
 };
 
 function ordinal(n: number) {
@@ -183,65 +183,110 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
             : "Cancelled";
 
   return (
-    <div className="max-w-md mx-auto">
-      <CareqCard className="overflow-hidden">
-        <div className={cn("px-6 py-8 text-center text-primary-foreground", headerBg)}>
-          <StatusBadge
-            status={statusBadgeVariant(queue.status)}
-            label={statusLabel}
-            className="mb-4 bg-white/20 text-white border-0"
-          />
-          <div className="inline-block font-bold text-headline-lg tracking-widest px-6 py-1 rounded-full bg-white/20 mb-2">
-            {queue.queue_number}
-          </div>
-          {name && <div className="text-headline-sm">{name}</div>}
-
-          {queue.status === "waiting" && position !== null && (
-            <div className="w-28 h-28 rounded-full mx-auto mt-4 flex flex-col items-center justify-center bg-white/15">
-              <span className="text-4xl font-bold leading-none">{position}</span>
-              <span className="text-label-sm uppercase tracking-wider opacity-90 mt-1">
-                {ordinal(position)} in line
+    <div className="max-w-lg mx-auto">
+      <CareqCard className="overflow-hidden border-outline-variant">
+        <div className={cn("px-6 py-6 text-primary-foreground", headerBg)}>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <StatusBadge
+              status={statusBadgeVariant(queue.status)}
+              label={statusLabel}
+              className="bg-white/20 text-white border-0"
+            />
+            {!TERMINAL.includes(queue.status) && (
+              <span className="text-label-sm text-white/90 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-white animate-pulse" aria-hidden />
+                Live
               </span>
-              {patientsAhead !== null && patientsAhead > 0 && (
-                <span className="text-body-sm opacity-90 mt-1">
-                  {patientsAhead} ahead of you
-                </span>
-              )}
-            </div>
-          )}
-
-          {queue.status === "in_progress" && (
-            <div className="mt-3 text-lg font-semibold flex items-center justify-center gap-2">
-              <Megaphone className="w-5 h-5" />
-              YOU ARE BEING CALLED
-            </div>
+            )}
+          </div>
+          <p className="text-label-sm uppercase tracking-wider text-white/80 mb-1">
+            Your queue number
+          </p>
+          <p
+            className="font-mono-careq text-[2.5rem] md:text-[3rem] font-bold leading-none tracking-tight"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {queue.queue_number}
+          </p>
+          {name && (
+            <p className="text-headline-sm mt-2 text-white/95">{name}</p>
           )}
         </div>
 
-        <div className="px-5 py-4">
+        <div className="px-5 py-5">
           {queue.status === "waiting" && (
-            <div className="space-y-1 text-body-sm">
-              {estWait !== null && (
-                <Detail icon={Clock} label={`Estimated wait: ~${estWait} min`} />
+            <>
+              {position !== null && (
+                <div
+                  className="rounded-xl border-2 border-primary bg-primary/5 p-6 text-center mb-4"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  <p className="text-label-sm text-on-surface-variant uppercase tracking-wide">
+                    Your position
+                  </p>
+                  <p className="text-[3.5rem] md:text-[4rem] leading-none font-bold text-primary font-mono-careq mt-1">
+                    {position}
+                  </p>
+                  <p className="text-body-sm text-on-surface-variant mt-1">{ordinal(position)} in line</p>
+                </div>
               )}
-              {reason && <Detail icon={ClipboardIcon} label={`Reason: ${reason}`} />}
-              <Detail icon={Clock} label="Please stay nearby. You will be called soon." />
-            </div>
+              <div
+                className={cn(
+                  "grid gap-3 mb-4",
+                  estWait !== null && patientsAhead !== null && patientsAhead > 0
+                    ? "grid-cols-2"
+                    : "grid-cols-1"
+                )}
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                {estWait !== null && (
+                  <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 text-center">
+                    <p className="text-label-sm text-on-surface-variant">Est. wait</p>
+                    <p className="text-headline-lg text-primary font-bold">~{estWait}m</p>
+                  </div>
+                )}
+                {patientsAhead !== null && patientsAhead > 0 && (
+                  <div className="col-span-2 text-body-sm text-on-surface-variant text-center">
+                    {patientsAhead} patient{patientsAhead === 1 ? "" : "s"} ahead of you
+                  </div>
+                )}
+              </div>
+              <div className="rounded-xl bg-secondary-container/50 border border-outline-variant p-4 mb-4">
+                <p className="text-body-sm text-on-surface">
+                  Keep this page open. We update automatically when your status changes.
+                  SMS reminders may be sent if configured by your clinic.
+                </p>
+              </div>
+              <div className="space-y-1 text-body-sm">
+                {reason && <Detail icon={ClipboardIcon} label={`Visit: ${reason}`} />}
+              </div>
+            </>
           )}
 
           {queue.status === "in_progress" && (
             <>
               <div className="called-banner rounded-xl p-5 text-center mb-4 bg-status-called text-white">
-                <Megaphone className="w-10 h-10 mx-auto mb-2" />
-                <div className="text-xl font-bold">Please proceed now!</div>
+                <Megaphone className="w-10 h-10 mx-auto mb-2" aria-hidden />
+                <p className="text-xl font-bold">Proceed to your room now</p>
               </div>
+              {room && (
+                <div className="rounded-xl border-2 border-primary bg-primary/5 p-4 mb-4 flex items-center gap-3">
+                  <MapPin className="h-8 w-8 text-primary shrink-0" aria-hidden />
+                  <div>
+                    <p className="text-label-sm text-on-surface-variant">Assigned room</p>
+                    <p className="text-headline-sm font-bold text-on-surface">{room}</p>
+                  </div>
+                </div>
+              )}
               <div className="space-y-1 text-body-sm">
-                {doctor && <Detail icon={User} label={`Doctor: ${doctor}`} />}
-                {room && <Detail icon={Home} label={`Room: ${room}`} />}
+                {doctor && <Detail icon={User} label={doctor} />}
                 {queue.called_at && (
                   <Detail
                     icon={Clock}
-                    label={`Called at: ${new Date(queue.called_at).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}`}
+                    label={`Called at ${new Date(queue.called_at).toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}`}
                   />
                 )}
               </div>
@@ -276,7 +321,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
 
           {queue.status === "no_show" && (
             <div className="text-center py-4">
-              <XCircle className="w-16 h-16 text-amber-600 mx-auto mb-3" />
+              <XCircle className="w-16 h-16 text-status-no-show mx-auto mb-3" />
               <h5 className="text-headline-sm text-foreground mb-1">Marked as No Show</h5>
               <p className="text-body-sm text-on-surface-variant mb-4">
                 You did not respond when called. Please see the front desk to rejoin the queue.
@@ -289,9 +334,11 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         </div>
 
         {!TERMINAL.includes(queue.status) && (
-          <div className="px-4 pb-3 text-center text-label-sm text-on-surface-variant">
-            Live updates active ·{" "}
-            {new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
+          <div
+            className="px-4 pb-3 text-center text-label-sm text-on-surface-variant border-t border-outline-variant pt-3"
+            aria-live="polite"
+          >
+            Updated {new Date().toLocaleTimeString("en-PH", { hour: "2-digit", minute: "2-digit" })}
           </div>
         )}
       </CareqCard>
@@ -302,13 +349,6 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         </Link>
       </div>
 
-      <style>{`
-        @keyframes pulse-green {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-          50% { box-shadow: 0 0 0 14px rgba(34, 197, 94, 0); }
-        }
-        .called-banner { animation: pulse-green 1.8s ease-in-out infinite; }
-      `}</style>
     </div>
   );
 }

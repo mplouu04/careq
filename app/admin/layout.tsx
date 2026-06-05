@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getStaffSession } from "@/lib/auth";
 import { StaffHeader } from "@/components/layout/StaffHeader";
+import { SkipToContent } from "@/components/layout/SkipToContent";
 
 export default async function AdminLayout({
   children,
@@ -13,8 +14,13 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen bg-background">
+      <SkipToContent />
       <StaffHeader staff={session.staff} />
-      <main className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop py-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="max-w-careq mx-auto px-margin-mobile md:px-margin-desktop py-8 outline-none"
+      >
         {children}
       </main>
     </div>

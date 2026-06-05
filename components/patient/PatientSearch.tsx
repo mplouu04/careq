@@ -15,6 +15,7 @@ import {
   FormInfo,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type Patient = {
   id: string;
@@ -116,7 +117,7 @@ export function PatientSearch() {
 
   return (
     <>
-      <CareqCard className="overflow-hidden max-w-2xl">
+      <CareqCard className="overflow-hidden w-full">
         <CareqCardHeader
           title="Find Patient"
           description="Search by name, phone, or patient number — partial matches OK"
@@ -133,6 +134,7 @@ export function PatientSearch() {
                   value={term}
                   onChange={(e) => setTerm(e.target.value)}
                   autoComplete="off"
+                  inputMode="search"
                 />
               </div>
               <div>
@@ -144,20 +146,32 @@ export function PatientSearch() {
                 />
               </div>
             </div>
+            {loading && (
+              <div className="space-y-2" aria-busy="true" aria-label="Searching">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            )}
             {searched && patients.length > 0 && !loading && (
               <ul className="border border-outline-variant rounded-lg divide-y divide-outline-variant max-h-48 overflow-y-auto">
                 {patients.map((p) => (
-                  <li
-                    key={p.id}
-                    className="px-4 py-3 hover:bg-surface-container-low cursor-pointer"
-                    onClick={() => navigate(p, "checkin")}
-                  >
-                    <span className="font-medium text-on-surface">
-                      {p.first_name} {p.last_name}
-                    </span>
-                    <span className="text-body-sm text-on-surface-variant ml-2">
-                      Patient #{p.id}
-                    </span>
+                  <li key={p.id} className="px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <span className="font-medium text-on-surface">
+                        {p.first_name} {p.last_name}
+                      </span>
+                      <span className="text-body-sm text-on-surface-variant ml-2">
+                        Patient #{p.id}
+                      </span>
+                    </div>
+                    <CareqButton
+                      type="button"
+                      size="sm"
+                      onClick={() => navigate(p, "checkin")}
+                    >
+                      Check in
+                    </CareqButton>
                   </li>
                 ))}
               </ul>

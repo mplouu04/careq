@@ -40,9 +40,14 @@ export function CheckinForm() {
   const [lookingUp, setLookingUp] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"appointment" | "walk-in">(
-    patientId ? "walk-in" : "appointment"
-  );
+  const [activeTab, setActiveTab] = useState<"appointment" | "walk-in">("appointment");
+
+  useEffect(() => {
+    const mode = params.get("tab") ?? params.get("mode");
+    if (mode === "appointment") setActiveTab("appointment");
+    else if (mode === "walk-in" || mode === "walkin") setActiveTab("walk-in");
+    else if (patientId) setActiveTab("walk-in");
+  }, [params, patientId]);
 
   useEffect(() => {
     fetch("/api/appointment-types")
@@ -138,10 +143,10 @@ export function CheckinForm() {
 
   const tabClass = (tab: "appointment" | "walk-in") =>
     cn(
-      "flex-1 py-3 text-body-sm font-medium transition-colors border-b-2",
+      "flex-1 min-h-[48px] py-3 px-2 text-body-sm font-medium transition-colors border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       activeTab === tab
-        ? "border-primary text-primary bg-card"
-        : "border-transparent text-on-surface-variant hover:text-foreground bg-muted/40"
+        ? "border-primary text-primary bg-surface-container-lowest"
+        : "border-transparent text-on-surface-variant hover:text-foreground bg-muted/30"
     );
 
   return (
@@ -211,7 +216,7 @@ export function CheckinForm() {
             </div>
 
             {refLookup && (
-              <div className="rounded-lg border border-border p-4 text-body-sm space-y-2 bg-muted/30">
+              <div className="rounded-xl border border-outline-variant p-4 text-body-sm space-y-2 bg-secondary-container/30">
                 <Row label="Patient" value={refLookup.fullname} />
                 <Row label="Appointment" value={refLookup.appointment} />
                 <Row label="Date" value={refLookup.appointment_date} />

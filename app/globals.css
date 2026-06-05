@@ -28,6 +28,7 @@
     --status-waiting: 222 100% 39%;
     --status-called: 142 76% 36%;
     --status-completed: 215 16% 47%;
+    --status-no-show: 32 95% 44%;
     --secondary-container: 214 89% 93%;
     --on-secondary-container: 215 25% 40%;
     /* Clinical Precision surface tokens (see design-system/MASTER.md) */
@@ -73,6 +74,16 @@
     @apply bg-background text-foreground font-sans antialiased;
     line-height: 1.5;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
 }
 
 /* ── Legacy aliases (migrate screens off these gradually) ───────────────── */
@@ -103,12 +114,36 @@
   @apply bg-card rounded-xl text-foreground mx-auto max-w-xl shadow-lg;
 }
 
+.font-mono-careq {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .queue-number-lg {
-  @apply text-[5rem] font-bold text-primary;
+  @apply text-[5rem] font-bold text-primary font-mono-careq;
 }
 
 .queue-number-sm {
-  @apply text-body-md font-bold text-primary bg-primary/10 inline-block py-0.5 px-4 rounded-full min-w-[60px] text-center shrink-0;
+  @apply text-body-md font-bold text-primary font-mono-careq bg-primary/10 inline-block py-0.5 px-4 rounded-full min-w-[60px] text-center shrink-0;
+}
+
+@keyframes pulse-green {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--status-called) / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 14px hsl(var(--status-called) / 0);
+  }
+}
+
+.called-banner {
+  animation: pulse-green 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .called-banner {
+    animation: none;
+  }
 }
 
 .patient-name {

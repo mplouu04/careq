@@ -14,10 +14,12 @@ import {
   FormLabel,
   FormInput,
   FormSelect,
-  FormWarning,
   FormInfo,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { AppointmentSummary } from "@/components/patient/AppointmentSummary";
+import { PatientLookupInline } from "@/components/patient/PatientLookupInline";
 
 type Doctor = { id: string; first_name: string; last_name: string };
 type ApptType = { id: string; name: string; duration: number };
@@ -49,6 +51,8 @@ export function AppointmentForm() {
   const [slots, setSlots] = useState<string[]>([]);
   const [time, setTime] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [reason, setReason] = useState("");
   const [success, setSuccess] = useState<{
     appointmentID: string;
     date: string;
@@ -84,6 +88,7 @@ export function AppointmentForm() {
       date,
       durationMinutes: String(duration),
     });
+    setSlotsLoading(true);
     fetch(`/api/doctors/availability?${params}`)
       .then((r) => (r.ok ? r.json() : { available_slots: [] }))
       .then((d) => {
@@ -93,7 +98,8 @@ export function AppointmentForm() {
           toast.error("No availability — doctor schedule may not be configured for this day.");
         }
       })
-      .catch(() => setSlots([]));
+      .catch(() => setSlots([]))
+      .finally(() => setSlotsLoading(false));
   }, [doctorId, date, appTypeId, types]);
 
   function handleDateChange(val: string) {
@@ -174,32 +180,34 @@ export function AppointmentForm() {
               <Printer className="h-4 w-4" />
               Print
             </Button>
-            <CareqButton className="flex-1" onClick={() => (window.location.href = "/")}>
-              Done
+            <CareqButton className="flex-1" asChild>
+              <Link href={`/status/${encodeURIComponent(success.appointmentID)}`}>
+                Track status
+              </Link>
             </CareqButton>
+            <Button type="button" variant="outline" className="flex-1" asChild>
+              <Link href="/checkin?tab=appointment">Check in on visit day</Link>
+            </Button>
           </div>
         </div>
       </CareqCard>
     );
   }
 
-  return (
-    <CareqCard className="overflow-hidden">
-      <CareqCardHeader
-        title="Book an Appointment"
-        description="Fill in the details below to schedule your visit."
-      />
-      <div className="px-6 py-5">
-        {!patientId && (
-          <FormWarning>
-            <Link href="/patient-search" className="text-primary hover:underline font-medium">
-              Find a patient
-            </Link>{" "}
-            before booking.
-          </FormWarning>
-        )}
+  const doctor = doctors.find((d) => d.id === doctorId);
+  const apptType = types.find((t) => String(t.id) === appTypeId);
 
-        <form onSubmit={book} className="space-y-4">
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-xl">
+      <CareqCard className="overflow-hidden lg:col-span-7">
+        <CareqCardHeader
+          title="Book an appointment"
+          description="Choose your doctor, type, and an available time slot."
+        />
+        <div className="px-6 py-5">
+          {!patientId && <PatientLookupInline />}
+
+          <form onSubmit={book} className="space-y-4">
           <div>
             <FormLabel required>Preferred Doctor</FormLabel>
             <FormSelect value={doctorId} onChange={(e) => setDoctorId(e.target.value)} required>
@@ -240,26 +248,30 @@ export function AppointmentForm() {
           </div>
 
           <div>
-            <FormLabel required>Time Slot</FormLabel>
-            <FormSelect
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              disabled={slots.length === 0}
-              required
-            >
-              <option value="">
-                {!doctorId || !date
-                  ? "Select doctor and date first"
-                  : slots.length
-                    ? "Select time"
-                    : "No slots available"}
-              </option>
-              {slots.map((s) => (
-                <option key={s} value={s}>
-                  {formatTime12h(s)}
+            <FormLabel required>Time slot</FormLabel>
+            {slotsLoading ? (
+              <Skeleton className="h-10 w-full" aria-label="Loading time slots" />
+            ) : (
+              <FormSelect
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                disabled={slots.length === 0}
+                required
+              >
+                <option value="">
+                  {!doctorId || !date
+                    ? "Select doctor and date first"
+                    : slots.length
+                      ? "Select time"
+                      : "No slots available"}
                 </option>
-              ))}
-            </FormSelect>
+                {slots.map((s) => (
+                  <option key={s} value={s}>
+                    {formatTime12h(s)}
+                  </option>
+                ))}
+              </FormSelect>
+            )}
           </div>
 
           <div>
@@ -268,6 +280,8 @@ export function AppointmentForm() {
               name="reason"
               placeholder="Brief reason for the visit"
               rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
               className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-body-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[88px]"
             />
           </div>
@@ -284,9 +298,20 @@ export function AppointmentForm() {
           >
             {loading ? "Booking..." : "Book Appointment"}
           </CareqButton>
-        </form>
+          </form>
+        </div>
+      </CareqCard>
+
+      <div className="lg:col-span-5">
+        <AppointmentSummary
+          doctorLabel={doctor ? `Dr. ${doctor.first_name} ${doctor.last_name}` : ""}
+          typeLabel={apptType?.name ?? ""}
+          date={date}
+          time={time}
+          reason={reason}
+        />
       </div>
-    </CareqCard>
+    </div>
   );
 }
 

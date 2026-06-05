@@ -11,6 +11,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "JetBrains Mono", "ui-monospace", "monospace"],
       },
       colors: {
         surface: {
@@ -62,6 +63,7 @@ const config: Config = {
         "status-waiting": "hsl(var(--status-waiting))",
         "status-called": "hsl(var(--status-called))",
         "status-completed": "hsl(var(--status-completed))",
+        "status-no-show": "hsl(var(--status-no-show))",
         "secondary-container": "hsl(var(--secondary-container))",
         "on-secondary-container": "hsl(var(--on-secondary-container))",
       },

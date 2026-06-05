@@ -162,6 +162,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       success: true,
       appointments: apptTypes ?? [],
+      patientId: patients[0]?.id ?? null,
       patientName:
         patients[0]
           ? `${patients[0].first_name} ${patients[0].last_name}`

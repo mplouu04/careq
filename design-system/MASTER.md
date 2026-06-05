@@ -17,8 +17,10 @@ Reliable, efficient, calm. Corporate/modern minimalism for healthcare queue mana
 | Outline variant | `#c3c6d7` | Borders |
 | Error | `#ba1a1a` | Destructive / errors |
 
-## Typography (Inter)
+## Typography (Inter + JetBrains Mono)
 
+- Body: **Inter** via `--font-sans`
+- Queue IDs, references, admin IDs: **JetBrains Mono** via `.font-mono-careq` / `--font-mono`
 - `headline-lg`: 32px / 700 — queue numbers, hero
 - `headline-md`: 24px / 600 — section titles
 - `headline-sm`: 20px / 600
@@ -47,6 +49,19 @@ Reliable, efficient, calm. Corporate/modern minimalism for healthcare queue mana
 | staff dashboard | `/dashboard` |
 | public queue board Tv | `/queue`, `/queue/[screenId]` |
 | admin * tabs | `/admin` |
+
+## Semantic token mapping (shadcn ↔ Clinical Precision)
+
+| Legacy / mixed | Prefer |
+|----------------|--------|
+| `text-foreground` | `text-on-surface` on patient flows |
+| `bg-card` | `bg-surface-container-lowest` |
+| `text-muted-foreground` | `text-on-surface-variant` |
+| `.careq-card` | `CareqCard` or `@apply` surface tokens |
+| `.queue-number-sm` | `.queue-number-sm` (uses `font-mono-careq`) |
+| `amber-600` no-show | `text-status-no-show` / `bg-status-no-show` |
+
+Status CSS variables: `--status-waiting`, `--status-called`, `--status-completed`, `--status-no-show`.
 
 ## Implementation
 

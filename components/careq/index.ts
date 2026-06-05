@@ -5,6 +5,8 @@ export { StatusBadge, type QueueStatusVariant } from "./status-badge";
 export { EmptyState } from "./empty-state";
 export { PageHeader } from "./page-header";
 export { ConfirmDialog } from "./confirm-dialog";
+export { StatCard } from "./stat-card";
+export { StepIndicator, type StepItem } from "./step-indicator";
 export {
   FormLabel,
   FormInput,
