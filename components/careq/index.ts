@@ -12,6 +12,7 @@ export {
   FormInput,
   FormSelect,
   FormError,
+  FormHelperText,
   FormInfo,
   FormWarning,
   CareqCardHeader,

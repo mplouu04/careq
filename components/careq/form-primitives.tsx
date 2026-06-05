@@ -41,6 +41,25 @@ export function FormSelect({
   return <select className={cn(selectClass, className)} {...props} />;
 }
 
+export function FormHelperText({
+  id,
+  children,
+  className,
+}: {
+  id?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <p
+      id={id}
+      className={cn("text-body-sm text-on-surface-variant mt-1.5", className)}
+    >
+      {children}
+    </p>
+  );
+}
+
 export function FormError({ message }: { message: string }) {
   return (
     <Alert variant="destructive" className="mb-4">

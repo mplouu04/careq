@@ -5,20 +5,42 @@ import { CareqPage, PageHeader } from "@/components/careq";
 
 export default function PatientSearchPage() {
   return (
-    <CareqPage>
-      <PatientFlowBreadcrumb flow="search" />
-      <PageHeader
-        title="Patient reception"
-        subtitle="Search for an existing patient to check in or book an appointment."
-        backHref="/visit"
-      />
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-xl">
-        <div className="lg:col-span-8">
-          <PatientSearch />
-        </div>
-        <aside className="lg:col-span-4 space-y-md">
+    <CareqPage className="pb-10">
+      <div className="max-w-3xl mx-auto">
+        <PatientFlowBreadcrumb flow="search" />
+        <PageHeader
+          title="Find your profile"
+          subtitle={
+            <>
+              <span className="block font-medium text-on-surface mb-1">
+                Step 2 · Search before check-in or booking
+              </span>
+              Returning patients: search below to check in for today&apos;s visit or schedule an
+              appointment. This is not registration — new patients should use Register.
+            </>
+          }
+          backHref="/visit"
+          backLabel="Back to visit options"
+        />
+
+        <PatientSearch />
+
+        <section
+          className="mt-8"
+          aria-labelledby="clinic-snapshot-heading"
+        >
+          <h2
+            id="clinic-snapshot-heading"
+            className="text-headline-sm text-on-surface mb-1"
+          >
+            Clinic right now
+          </h2>
+          <p className="text-body-sm text-on-surface-variant mb-4">
+            Live queue snapshot while you search — useful if you are checking in as a walk-in
+            today.
+          </p>
           <ClinicStatusBar />
-        </aside>
+        </section>
       </div>
     </CareqPage>
   );
