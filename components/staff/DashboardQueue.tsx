@@ -1,12 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   RefreshCw,
   Users,
   Clock,
   UserCheck,
   AlertCircle,
+  Activity,
+  CheckCircle2,
+  UserX,
 } from "lucide-react";
 import {
   Select,
@@ -64,6 +68,50 @@ type QueueCompleted = {
 type Doctor = { id: string; first_name: string; last_name: string };
 type Room = { id: string; name: string };
 
+type ColumnId = "waiting" | "in_progress" | "completed" | "no_show";
+
+type ColumnConfig = {
+  id: ColumnId;
+  title: string;
+  tabLabel: string;
+  headerClass: string;
+  headerIcon: LucideIcon;
+  listClass?: string;
+};
+
+const QUEUE_COLUMNS: ColumnConfig[] = [
+  {
+    id: "waiting",
+    title: "Waiting Room",
+    tabLabel: "Waiting",
+    headerClass: "bg-primary text-primary-foreground",
+    headerIcon: Users,
+  },
+  {
+    id: "in_progress",
+    title: "In Progress",
+    tabLabel: "In progress",
+    headerClass: "bg-status-called text-white",
+    headerIcon: Activity,
+  },
+  {
+    id: "completed",
+    title: "Completed",
+    tabLabel: "Done",
+    headerClass: "bg-status-completed text-white",
+    headerIcon: CheckCircle2,
+    listClass: "max-h-72 overflow-y-auto",
+  },
+  {
+    id: "no_show",
+    title: "No Show",
+    tabLabel: "No show",
+    headerClass: "bg-status-no-show text-white",
+    headerIcon: UserX,
+    listClass: "max-h-48 overflow-y-auto",
+  },
+];
+
 export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [waiting, setWaiting] = useState<QueueWaiting[]>([]);
   const [inProgress, setInProgress] = useState<QueueInProgress[]>([]);
@@ -76,14 +124,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [roomId, setRoomId] = useState("");
   const [stats, setStats] = useState({ served: 0, waiting: 0, avg: 10 });
   const [isLive, setIsLive] = useState(true);
-  const [callModalOpen, setCallModalOpen] = useState(false);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
   const [today, setToday] = useState("");
-  const [queueTab, setQueueTab] = useState<
-    "waiting" | "in_progress" | "completed" | "no_show"
-  >("waiting");
+  const [queueTab, setQueueTab] = useState<ColumnId>("waiting");
 
   const loadQueue = useCallback(async () => {
     try {
@@ -222,6 +267,117 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     setRecallRoomId(roomId || rooms[0]?.id || "");
   }
 
+  const columnCounts: Record<ColumnId, number> = {
+    waiting: waiting.length,
+    in_progress: inProgress.length,
+    completed: completed.length,
+    no_show: noShow.length,
+  };
+
+  function columnFooter(id: ColumnId): string {
+    switch (id) {
+      case "waiting":
+        return `Total waiting: ${waiting.length} patients`;
+      case "in_progress":
+        return `Total in progress: ${inProgress.length} patients`;
+      case "completed":
+        return `Total completed: ${completed.length} patients`;
+      case "no_show":
+        return `No show today: ${noShow.length}`;
+    }
+  }
+
+  function columnEmpty(id: ColumnId): React.ReactNode {
+    switch (id) {
+      case "waiting":
+        return waiting.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="No patients waiting"
+            description="Waiting room is clear."
+            className="border-0 bg-transparent py-8"
+            action={
+              <CareqButton asChild variant="outline" size="sm">
+                <Link href="/visit" target="_blank" rel="noopener noreferrer">
+                  Open check-in
+                </Link>
+              </CareqButton>
+            }
+          />
+        ) : null;
+      case "in_progress":
+        return inProgress.length === 0 ? (
+          <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
+            No patients in progress
+          </p>
+        ) : null;
+      case "completed":
+        return completed.length === 0 ? (
+          <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
+            No completions yet today
+          </p>
+        ) : null;
+      case "no_show":
+        return noShow.length === 0 ? (
+          <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
+            No no-shows today
+          </p>
+        ) : null;
+    }
+  }
+
+  function columnChildren(id: ColumnId): React.ReactNode {
+    switch (id) {
+      case "waiting":
+        return waiting.map((q) => (
+          <WaitingRow key={q.queueId} q={q} onRecall={() => openRecall(q)} />
+        ));
+      case "in_progress":
+        return inProgress.map((q) => (
+          <InProgressRow
+            key={q.queueId}
+            q={q}
+            onSkip={() => performAction("skip", q.queueId)}
+            onNoShow={() => performAction("mark_no_show", q.queueId)}
+            onDone={() => performAction("mark_done", q.queueId)}
+          />
+        ));
+      case "completed":
+        return completed.map((q, i) => (
+          <QueueListRow
+            key={q.queueId ?? i}
+            queueNumber={String(q.queue_number ?? q.id)}
+            name={q.name}
+          />
+        ));
+      case "no_show":
+        return noShow.map((q, i) => (
+          <QueueListRow
+            key={q.queueId ?? i}
+            queueNumber={String(q.queue_number ?? q.id)}
+            name={q.name}
+            highlightId
+          />
+        ));
+    }
+  }
+
+  function renderQueueColumn(col: ColumnConfig) {
+    return (
+      <QueueColumn
+        key={col.id}
+        title={col.title}
+        headerClass={col.headerClass}
+        headerIcon={col.headerIcon}
+        footer={columnFooter(col.id)}
+        listClass={col.listClass}
+        empty={columnEmpty(col.id)}
+      >
+        {columnChildren(col.id)}
+      </QueueColumn>
+    );
+  }
+
   return (
     <div>
       <div className="mb-4">
@@ -230,7 +386,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       </div>
 
       <QueueCommandBar
-        className="mb-5"
+        className="mb-4"
         doctors={doctors}
         rooms={rooms}
         doctorId={doctorId}
@@ -243,290 +399,6 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         canCall={Boolean(doctorId && roomId && nextWaiting)}
         isLive={isLive}
       />
-
-      <div
-        className="xl:hidden flex gap-1 mb-4 overflow-x-auto pb-1"
-        role="tablist"
-        aria-label="Queue columns"
-      >
-        {(
-          [
-            ["waiting", "Waiting", waiting.length],
-            ["in_progress", "In progress", inProgress.length],
-            ["completed", "Done", completed.length],
-            ["no_show", "No show", noShow.length],
-          ] as const
-        ).map(([id, label, count]) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={queueTab === id}
-            onClick={() => setQueueTab(id)}
-            className={cn(
-              "shrink-0 min-h-[44px] px-4 rounded-lg text-label-sm font-semibold transition-colors",
-              queueTab === id
-                ? "bg-primary text-primary-foreground"
-                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
-            )}
-          >
-            {label} ({count})
-          </button>
-        ))}
-      </div>
-
-      <div className="hidden xl:grid xl:grid-cols-4 gap-5 mb-5">
-        <QueueColumn
-          title="Waiting Room"
-          headerClass="bg-primary text-primary-foreground"
-          footer={`Total waiting: ${waiting.length} patients`}
-          empty={
-            waiting.length === 0 ? (
-              <EmptyState
-                icon={Users}
-                title="No patients waiting"
-                description="The waiting room is clear. New check-ins will appear here."
-                className="border-0 bg-transparent py-8"
-                action={
-                  <CareqButton asChild variant="outline" size="sm">
-                    <Link href="/visit" target="_blank" rel="noopener noreferrer">
-                      Open check-in
-                    </Link>
-                  </CareqButton>
-                }
-              />
-            ) : null
-          }
-        >
-          {waiting.map((q) => (
-            <WaitingRow key={q.queueId} q={q} onRecall={() => openRecall(q)} />
-          ))}
-        </QueueColumn>
-
-        <QueueColumn
-          title="In Progress"
-          headerClass="bg-amber-500 text-white"
-          footer={`Total in progress: ${inProgress.length} patients`}
-          empty={
-            inProgress.length === 0 ? (
-              <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-                No patients in progress
-              </p>
-            ) : null
-          }
-        >
-          {inProgress.map((q) => (
-            <li key={q.queueId} className="px-3 py-2">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="font-bold text-primary font-mono-careq">{q.queue_number ?? q.id}</span>
-                <span className="text-body-sm font-medium text-on-surface">{q.name}</span>
-              </div>
-              <p className="text-label-sm text-on-surface-variant mb-2">
-                {q.doctor} · {q.room}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => performAction("skip", q.queueId)}
-                >
-                  Skip
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="border-amber-500 text-amber-700 hover:bg-amber-50"
-                  onClick={() => performAction("mark_no_show", q.queueId)}
-                >
-                  No Show
-                </Button>
-                <CareqButton size="sm" onClick={() => performAction("mark_done", q.queueId)}>
-                  Mark Done
-                </CareqButton>
-              </div>
-            </li>
-          ))}
-        </QueueColumn>
-
-        <QueueColumn
-          title="Completed"
-          headerClass="bg-status-called text-white"
-          footer={`Total completed: ${completed.length} patients`}
-          listClass="max-h-72 overflow-y-auto"
-          empty={
-            completed.length === 0 ? (
-              <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-                No completions yet today
-              </p>
-            ) : null
-          }
-        >
-          {completed.map((q, i) => (
-            <li
-              key={q.queueId ?? i}
-              className="px-4 py-2 flex items-center justify-between gap-2"
-            >
-              <span className="font-mono text-body-sm text-on-surface-variant">{q.queue_number ?? q.id}</span>
-              <span className="text-body-sm text-on-surface truncate">{q.name}</span>
-            </li>
-          ))}
-        </QueueColumn>
-
-        <QueueColumn
-          title="No Show"
-          headerClass="bg-status-no-show text-white"
-          footer={`No show today: ${noShow.length}`}
-          listClass="max-h-48 overflow-y-auto"
-          empty={
-            noShow.length === 0 ? (
-              <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-                No no-shows today
-              </p>
-            ) : null
-          }
-        >
-          {noShow.map((q, i) => (
-            <li
-              key={q.queueId ?? i}
-              className="px-4 py-2 flex items-center justify-between gap-2"
-            >
-              <span className="font-bold text-primary">{q.queue_number ?? q.id}</span>
-              <span className="text-body-sm text-on-surface truncate">{q.name}</span>
-            </li>
-          ))}
-        </QueueColumn>
-      </div>
-
-      <div className="xl:hidden mb-5">
-        {queueTab === "waiting" && (
-          <QueueColumn
-            title="Waiting Room"
-            headerClass="bg-primary text-primary-foreground"
-            footer={`Total waiting: ${waiting.length} patients`}
-            empty={
-              waiting.length === 0 ? (
-                <EmptyState
-                  icon={Users}
-                  title="No patients waiting"
-                  description="The waiting room is clear. New check-ins will appear here."
-                  className="border-0 bg-transparent py-8"
-                  action={
-                    <CareqButton asChild variant="outline" size="sm">
-                      <Link href="/visit" target="_blank" rel="noopener noreferrer">
-                        Open check-in
-                      </Link>
-                    </CareqButton>
-                  }
-                />
-              ) : null
-            }
-          >
-            {waiting.map((q) => (
-              <WaitingRow key={q.queueId} q={q} onRecall={() => openRecall(q)} />
-            ))}
-          </QueueColumn>
-        )}
-        {queueTab === "in_progress" && (
-          <QueueColumn
-            title="In Progress"
-            headerClass="bg-amber-500 text-white"
-            footer={`Total in progress: ${inProgress.length} patients`}
-            empty={
-              inProgress.length === 0 ? (
-                <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-                  No patients in progress
-                </p>
-              ) : null
-            }
-          >
-            {inProgress.map((q) => (
-              <li key={q.queueId} className="px-3 py-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="font-bold text-primary font-mono-careq">
-                    {q.queue_number ?? q.id}
-                  </span>
-                  <span className="text-body-sm font-medium text-on-surface">{q.name}</span>
-                </div>
-                <p className="text-label-sm text-on-surface-variant mb-2">
-                  {q.doctor} · {q.room}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => performAction("skip", q.queueId)}
-                  >
-                    Skip
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="border-amber-500 text-amber-700 hover:bg-amber-50"
-                    onClick={() => performAction("mark_no_show", q.queueId)}
-                  >
-                    No Show
-                  </Button>
-                  <CareqButton size="sm" onClick={() => performAction("mark_done", q.queueId)}>
-                    Mark Done
-                  </CareqButton>
-                </div>
-              </li>
-            ))}
-          </QueueColumn>
-        )}
-        {queueTab === "completed" && (
-          <QueueColumn
-            title="Completed"
-            headerClass="bg-status-called text-white"
-            footer={`Total completed: ${completed.length} patients`}
-            listClass="max-h-72 overflow-y-auto"
-            empty={
-              completed.length === 0 ? (
-                <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-                  No completions yet today
-                </p>
-              ) : null
-            }
-          >
-            {completed.map((q, i) => (
-              <li key={q.queueId ?? i} className="px-4 py-2 flex items-center justify-between gap-2">
-                <span className="font-mono-careq text-body-sm text-on-surface-variant">
-                  {q.queue_number ?? q.id}
-                </span>
-                <span className="text-body-sm text-on-surface truncate">{q.name}</span>
-              </li>
-            ))}
-          </QueueColumn>
-        )}
-        {queueTab === "no_show" && (
-          <QueueColumn
-            title="No Show"
-            headerClass="bg-status-no-show text-white"
-            footer={`No show today: ${noShow.length}`}
-            listClass="max-h-48 overflow-y-auto"
-            empty={
-              noShow.length === 0 ? (
-                <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-                  No no-shows today
-                </p>
-              ) : null
-            }
-          >
-            {noShow.map((q, i) => (
-              <li key={q.queueId ?? i} className="px-4 py-2 flex items-center justify-between gap-2">
-                <span className="font-bold text-primary font-mono-careq">
-                  {q.queue_number ?? q.id}
-                </span>
-                <span className="text-body-sm text-on-surface truncate">{q.name}</span>
-              </li>
-            ))}
-          </QueueColumn>
-        )}
-      </div>
 
       <div className="mb-5">
         <div className="flex items-center justify-between gap-3 mb-3">
@@ -552,75 +424,39 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         </div>
       </div>
 
-      <ConfirmDialog
-        open={callModalOpen}
-        onOpenChange={setCallModalOpen}
-        title="Call Next Patient"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setCallModalOpen(false)}>
-              Cancel
-            </Button>
-            <CareqButton
-              disabled={!doctorId || !roomId || !nextWaiting}
-              onClick={() => {
-                if (nextWaiting) {
-                  performAction("call_next", nextWaiting.queueId);
-                  setCallModalOpen(false);
-                }
-              }}
-            >
-              Call Patient
-            </CareqButton>
-          </>
-        }
+      <div
+        className="xl:hidden flex gap-1 mb-4 overflow-x-auto pb-1"
+        role="tablist"
+        aria-label="Queue columns"
       >
-        <div className="space-y-4">
-          <div>
-            <FormLabel>Select Doctor</FormLabel>
-            <Select value={doctorId} onValueChange={(v) => setDoctorId(v ?? "")}>
-              <SelectTrigger className="w-full h-11">
-                <SelectValue placeholder="Select doctor" />
-              </SelectTrigger>
-              <SelectContent>
-                {doctors.map((d) => (
-                  <SelectItem key={d.id} value={d.id}>
-                    Dr. {d.first_name} {d.last_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <FormLabel>Select Room</FormLabel>
-            <Select value={roomId} onValueChange={(v) => setRoomId(v ?? "")}>
-              <SelectTrigger className="w-full h-11">
-                <SelectValue placeholder="Select room" />
-              </SelectTrigger>
-              <SelectContent>
-                {rooms.map((r) => (
-                  <SelectItem key={r.id} value={r.id}>
-                    {r.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {nextWaiting ? (
-            <p className="text-body-sm text-on-surface-variant">
-              Next patient: <strong className="text-on-surface">{nextWaiting.name}</strong> (
-              {nextWaiting.queue_number ?? nextWaiting.id})
-            </p>
-          ) : (
-            <EmptyState
-              icon={Clock}
-              title="Queue is empty"
-              description="No patients are waiting to be called."
-              className="py-6"
-            />
-          )}
-        </div>
-      </ConfirmDialog>
+        {QUEUE_COLUMNS.map((col) => (
+          <button
+            key={col.id}
+            type="button"
+            role="tab"
+            aria-selected={queueTab === col.id}
+            onClick={() => setQueueTab(col.id)}
+            className={cn(
+              "shrink-0 min-h-[44px] px-4 rounded-lg text-label-sm font-semibold transition-colors cursor-pointer",
+              queueTab === col.id
+                ? "bg-primary text-primary-foreground"
+                : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
+            )}
+          >
+            {col.tabLabel} ({columnCounts[col.id]})
+          </button>
+        ))}
+      </div>
+
+      <div className="hidden xl:grid xl:grid-cols-4 gap-5 mb-5">
+        {QUEUE_COLUMNS.map((col) => renderQueueColumn(col))}
+      </div>
+
+      <div className="xl:hidden mb-5">
+        {QUEUE_COLUMNS.filter((col) => col.id === queueTab).map((col) =>
+          renderQueueColumn(col)
+        )}
+      </div>
 
       <ConfirmDialog
         open={!!recallModal}
@@ -650,7 +486,6 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
               Cancel
             </Button>
             <CareqButton
-              className="bg-sky-500 hover:bg-sky-600"
               disabled={!recallDoctorId || !recallRoomId}
               onClick={() => {
                 if (recallModal) {
@@ -736,9 +571,89 @@ function WaitingRow({
   );
 }
 
+function InProgressRow({
+  q,
+  onSkip,
+  onNoShow,
+  onDone,
+}: {
+  q: QueueInProgress;
+  onSkip: () => void;
+  onNoShow: () => void;
+  onDone: () => void;
+}) {
+  const location = `${q.doctor} · ${q.room}`;
+  return (
+    <li className="px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
+        <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
+          {q.queue_number ?? q.id}
+        </span>
+        <span className="font-medium text-body-sm text-on-surface truncate flex-1 min-w-[6rem]">
+          {q.name}
+        </span>
+        <span
+          className="text-label-sm text-on-surface-variant truncate max-w-[7rem] hidden md:inline"
+          title={location}
+        >
+          {location}
+        </span>
+        <div className="flex gap-1.5 shrink-0 ml-auto">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onSkip}
+            className="cursor-pointer"
+          >
+            Skip
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="border-status-no-show text-status-no-show hover:bg-status-no-show/10 cursor-pointer"
+            onClick={onNoShow}
+          >
+            No Show
+          </Button>
+          <CareqButton size="sm" onClick={onDone} className="cursor-pointer">
+            Done
+          </CareqButton>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function QueueListRow({
+  queueNumber,
+  name,
+  highlightId = false,
+}: {
+  queueNumber: string;
+  name: string;
+  highlightId?: boolean;
+}) {
+  return (
+    <li className="px-3 py-2 flex items-center justify-between gap-2 min-h-[44px]">
+      <span
+        className={cn(
+          "font-mono-careq text-body-sm truncate shrink-0",
+          highlightId ? "font-bold text-primary" : "text-on-surface-variant"
+        )}
+      >
+        {queueNumber}
+      </span>
+      <span className="text-body-sm text-on-surface truncate">{name}</span>
+    </li>
+  );
+}
+
 function QueueColumn({
   title,
   headerClass,
+  headerIcon: HeaderIcon,
   footer,
   children,
   empty,
@@ -746,6 +661,7 @@ function QueueColumn({
 }: {
   title: string;
   headerClass: string;
+  headerIcon: LucideIcon;
   footer: string;
   children: React.ReactNode;
   empty?: React.ReactNode;
@@ -753,7 +669,8 @@ function QueueColumn({
 }) {
   return (
     <CareqCard className="overflow-hidden flex flex-col">
-      <div className={cn("px-4 py-3", headerClass)}>
+      <div className={cn("px-4 py-3 flex items-center gap-2", headerClass)}>
+        <HeaderIcon className="h-4 w-4 shrink-0" aria-hidden />
         <h5 className="font-semibold m-0 text-body-md">{title}</h5>
       </div>
       <ul className={cn("divide-y divide-outline-variant flex-1", listClass)}>

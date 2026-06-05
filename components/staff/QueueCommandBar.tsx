@@ -91,7 +91,10 @@ export function QueueCommandBar({
 
         <CareqButton
           type="button"
-          className="min-h-[44px] gap-2 shrink-0 cursor-pointer"
+          className={cn(
+            "min-h-[44px] gap-2 shrink-0 cursor-pointer transition-opacity",
+            !canCall && "opacity-50"
+          )}
           disabled={!canCall}
           onClick={onCallNext}
           title={hint}
@@ -101,15 +104,20 @@ export function QueueCommandBar({
           Call next
         </CareqButton>
 
-        <div className="flex items-center gap-1.5 ml-auto text-body-sm text-on-surface-variant">
+        <div
+          className="flex items-center gap-1.5 ml-auto text-body-sm text-on-surface-variant"
+          title={isLive ? "Connected" : "Reconnecting"}
+        >
           <span
             className={cn(
               "h-2 w-2 rounded-full shrink-0",
-              isLive ? "bg-status-called motion-safe:animate-pulse" : "bg-amber-500"
+              isLive
+                ? "bg-emerald-500 motion-safe:animate-pulse motion-reduce:animate-none"
+                : "bg-amber-500"
             )}
             aria-hidden
           />
-          <span>Live</span>
+          <span>{isLive ? "Live" : "Offline"}</span>
         </div>
       </div>
     </div>

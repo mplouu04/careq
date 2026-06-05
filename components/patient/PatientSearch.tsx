@@ -17,6 +17,7 @@ import {
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 type Patient = {
   id: string;
@@ -47,6 +48,7 @@ export function PatientSearch() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [verifyModal, setVerifyModal] = useState<{
     patient: Patient;
     destination: "appointments" | "checkin";
@@ -138,27 +140,34 @@ export function PatientSearch() {
       <CareqCard className="overflow-hidden w-full">
         <div className="px-5 sm:px-6 py-5 space-y-4">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 sm:gap-4 sm:items-end">
+              <div className="sm:col-span-1">
                 <FormLabel htmlFor={`${formId}-term`} required>
                   Search term
                 </FormLabel>
-                <FormInput
-                  id={`${formId}-term`}
-                  type="search"
-                  placeholder="Name, phone, or patient #"
-                  value={term}
-                  onChange={(e) => {
-                    setTerm(e.target.value);
-                    setSubmitAttempted(false);
-                  }}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  autoComplete="off"
-                  inputMode="search"
-                  aria-required="true"
-                  aria-invalid={showValidation ? true : undefined}
-                  aria-describedby={termHintId}
-                />
+                <div className="relative">
+                  <Search
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-on-surface-variant pointer-events-none"
+                    aria-hidden
+                  />
+                  <FormInput
+                    id={`${formId}-term`}
+                    type="search"
+                    placeholder="Name, phone, or patient #"
+                    value={term}
+                    onChange={(e) => {
+                      setTerm(e.target.value);
+                      setSubmitAttempted(false);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    autoComplete="off"
+                    inputMode="search"
+                    aria-required="true"
+                    aria-invalid={showValidation ? true : undefined}
+                    aria-describedby={termHintId}
+                    className="pl-9"
+                  />
+                </div>
                 <FormHelperText id={termHintId}>
                   2+ letters or phone digits.
                 </FormHelperText>
@@ -177,28 +186,31 @@ export function PatientSearch() {
                   min="1900-01-01"
                 />
               </div>
+              <CareqButton
+                type="button"
+                className={cn(
+                  "w-full sm:w-auto min-h-[44px] cursor-pointer shrink-0",
+                  "sm:min-w-[8.5rem]"
+                )}
+                disabled={loading}
+                onClick={handleSearch}
+                aria-describedby={termHintId}
+              >
+                <Search className="h-4 w-4 sm:hidden" aria-hidden />
+                {loading ? "Searching…" : "Search"}
+              </CareqButton>
             </div>
 
             {showValidation && validationMessage && <FormError message={validationMessage} />}
 
-            <CareqButton
-              type="button"
-              className="w-full min-h-[44px] cursor-pointer"
-              disabled={loading}
-              onClick={handleSearch}
-              aria-describedby={termHintId}
-            >
-              <Search className="h-4 w-4" aria-hidden />
-              {loading ? "Searching…" : "Search patient"}
-            </CareqButton>
-
-            <p
-              className="text-body-sm text-on-surface-variant text-center"
-              title="We mask phone numbers and verify identity when multiple patients match."
-            >
-              <span className="text-primary underline decoration-dotted underline-offset-2 cursor-help">
+            <p className="text-body-sm text-on-surface-variant text-center">
+              <button
+                type="button"
+                onClick={() => setPrivacyOpen(true)}
+                className="text-primary underline decoration-dotted underline-offset-2 cursor-pointer hover:decoration-solid transition-colors"
+              >
                 How we protect your data
-              </span>
+              </button>
             </p>
           </div>
 
@@ -211,7 +223,7 @@ export function PatientSearch() {
 
           {searched && !loading && (
             <section aria-labelledby={`${formId}-results-heading`}>
-              <div className="flex items-baseline justify-between gap-2 mb-3">
+              <div className="flex items-baseline justify-between gap-2 mb-2">
                 <h2 id={`${formId}-results-heading`} className="text-headline-sm text-on-surface">
                   Results
                 </h2>
@@ -230,7 +242,7 @@ export function PatientSearch() {
                 <EmptyState
                   icon={Search}
                   title="No patients found"
-                  description="Try different spelling or add date of birth."
+                  description="Try different spelling or add DOB."
                   className="py-6"
                   action={
                     <CareqButton asChild>
@@ -242,42 +254,46 @@ export function PatientSearch() {
                   }
                 />
               ) : (
-                <ul className="space-y-2" role="list">
+                <ul
+                  className="divide-y divide-outline-variant rounded-lg border border-outline-variant overflow-hidden"
+                  role="list"
+                >
                   {patients.map((p) => (
-                    <li key={p.id}>
-                      <CareqCard className="p-3 sm:p-4 border-outline-variant">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-body-md text-on-surface">
-                              {p.first_name} {p.last_name}
-                            </p>
-                            <p className="text-body-sm text-on-surface-variant">
-                              {maskPhone(p.phone)} · #{p.id}
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <CareqButton
-                              type="button"
-                              size="sm"
-                              className="min-h-[44px] flex-1 sm:flex-none cursor-pointer"
-                              onClick={() => navigate(p, "checkin")}
-                            >
-                              <LogIn className="h-4 w-4" />
-                              Check in today
-                            </CareqButton>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="min-h-[44px] flex-1 sm:flex-none rounded-xl border-primary text-primary cursor-pointer"
-                              onClick={() => navigate(p, "appointments")}
-                            >
-                              <Calendar className="h-4 w-4" />
-                              Book
-                            </Button>
-                          </div>
+                    <li
+                      key={p.id}
+                      className="px-3 py-3 sm:px-4 bg-surface-container-lowest hover:bg-surface-container-low/50 transition-colors"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-body-md text-on-surface">
+                            {p.first_name} {p.last_name}
+                          </p>
+                          <p className="text-body-sm text-on-surface-variant">
+                            {maskPhone(p.phone)} · #{p.id}
+                          </p>
                         </div>
-                      </CareqCard>
+                        <div className="flex gap-2 shrink-0">
+                          <CareqButton
+                            type="button"
+                            size="sm"
+                            className="min-h-[44px] flex-1 sm:flex-none cursor-pointer"
+                            onClick={() => navigate(p, "checkin")}
+                          >
+                            <LogIn className="h-4 w-4" />
+                            Check in today
+                          </CareqButton>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="min-h-[44px] flex-1 sm:flex-none rounded-xl border-primary text-primary cursor-pointer"
+                            onClick={() => navigate(p, "appointments")}
+                          >
+                            <Calendar className="h-4 w-4" />
+                            Book
+                          </Button>
+                        </div>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -287,12 +303,24 @@ export function PatientSearch() {
 
           <p className="text-body-sm text-on-surface-variant text-center pt-2 border-t border-outline-variant">
             New patient?{" "}
-            <Link href="/registration" className="text-primary font-medium hover:underline">
+            <Link href="/registration" className="text-primary font-medium hover:underline cursor-pointer">
               Register
             </Link>
           </p>
         </div>
       </CareqCard>
+
+      <ConfirmDialog
+        open={privacyOpen}
+        onOpenChange={setPrivacyOpen}
+        title="Your privacy"
+        description="We mask phone numbers in results. Multiple matches require last-4-digit verification before check-in or booking."
+        footer={
+          <CareqButton type="button" onClick={() => setPrivacyOpen(false)}>
+            Got it
+          </CareqButton>
+        }
+      />
 
       <ConfirmDialog
         open={!!verifyModal}
