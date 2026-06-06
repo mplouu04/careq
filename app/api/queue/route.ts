@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireStaff } from "@/lib/auth";
+import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { format } from "date-fns";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { normalizeQueueRef } from "@/lib/queue-ref";
+import { requireStaff } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -20,32 +21,6 @@ async function getRoomNameMap(): Promise<Map<number, string>> {
 function resolveRoomName(roomId: number | null | undefined, roomMap: Map<number, string>): string {
   if (roomId == null) return "";
   return roomMap.get(Number(roomId)) ?? `Room ${roomId}`;
-}
-
-/**
- * Calculate today's average service time in minutes (clinic day).
- */
-async function getAvgServiceTime(dayStart: string, dayEnd: string): Promise<number> {
-  const supabase = createAdminClient();
-
-  const { data: completed } = await supabase
-    .from("queue")
-    .select("called_at, completed_at")
-    .eq("status", "completed")
-    .gte("called_at", dayStart)
-    .lte("called_at", dayEnd)
-    .not("completed_at", "is", null)
-    .not("called_at", "is", null);
-
-  if (!completed?.length) return 10;
-
-  const total = completed.reduce((sum, row) => {
-    const start = new Date(row.called_at!).getTime();
-    const end = new Date(row.completed_at!).getTime();
-    return sum + (end - start) / 60000;
-  }, 0);
-
-  return Math.round(total / completed.length) || 10;
 }
 
 /**

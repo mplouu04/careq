@@ -1,5 +1,7 @@
 "use client";
 
+import { appointmentApi } from "@/lib/api/client";
+
 import { useState } from "react";
 import { toast } from "sonner";
 import { ClipboardList } from "lucide-react";
@@ -79,19 +81,14 @@ export function MyAppointments() {
   }
 
   async function confirmCancel(ref: string) {
-    const res = await fetch("/api/appointments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "cancel", reference: ref, phone }),
-    });
-    const data = await res.json();
     setCancelRef(null);
-    if (!res.ok) {
-      toast.error(data.error ?? "Cancel failed");
-      return;
+    try {
+      await appointmentApi.cancel(ref, phone);
+      toast.success("Appointment cancelled.");
+      await lookup();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Cancel failed");
     }
-    toast.success("Appointment cancelled.");
-    await lookup();
   }
 
   return (

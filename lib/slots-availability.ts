@@ -30,10 +30,20 @@ export async function getDoctorAvailableSlots(
     durationMinutes
   );
 
-  const { data: blocks } = await supabase
-    .from("doctor_blocks")
-    .select("start_time, end_time, block_date, day_of_week, is_recurring")
-    .eq("doctor_id", doctorId);
+  const [{ data: blocks }, { data: booked }] = await Promise.all([
+    supabase
+      .from("doctor_blocks")
+      .select("start_time, end_time, block_date, day_of_week, is_recurring")
+      .eq("doctor_id", doctorId),
+    supabase
+      .from("checkins")
+      .select("scheduled_time")
+      .eq("doctor_id", doctorId)
+      .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+      .gte("appointment_date", `${dateYmd}T00:00:00`)
+      .lte("appointment_date", `${dateYmd}T23:59:59`)
+      .not("status", "in", '("cancelled","no_show")'),
+  ]);
 
   slots = slots.filter((slot) => {
     for (const block of blocks ?? []) {
@@ -47,15 +57,6 @@ export async function getDoctorAvailableSlots(
     }
     return true;
   });
-
-  const { data: booked } = await supabase
-    .from("checkins")
-    .select("scheduled_time")
-    .eq("doctor_id", doctorId)
-    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
-    .gte("appointment_date", `${dateYmd}T00:00:00`)
-    .lte("appointment_date", `${dateYmd}T23:59:59`)
-    .not("status", "in", '("cancelled","no_show")');
 
   const bookedTimes = new Set(
     (booked ?? []).map((b) => b.scheduled_time?.slice(0, 5))

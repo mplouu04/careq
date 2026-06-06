@@ -1,112 +1,67 @@
-import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { requireStaff } from "@/lib/auth";
-
-export const dynamic = "force-dynamic";
-
-export async function GET() {
-  const auth = await requireStaff(["admin"]);
-  if ("error" in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const supabase = createAdminClient();
-  const { data } = await supabase
-    .from("display_settings")
-    .select("id, display_name, location, show_wait_time, show_priority, theme_color, is_active")
-    .order("id");
-  return NextResponse.json({ success: true, screens: data ?? [] });
-}
-
-export async function POST(request: Request) {
-  const auth = await requireStaff(["admin"]);
-  if ("error" in auth) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let body: Record<string, any>;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-  const supabase = createAdminClient();
-
-  // ── Add ──────────────────────────────────────────────────────────────────
-  if (body.action === "add") {
-    if (!body.display_name || !body.location) {
-      return NextResponse.json(
-        { error: "display_name and location are required" },
-        { status: 400 }
-      );
-    }
-    const { data, error } = await supabase
-      .from("display_settings")
-      .insert({
-        display_name: body.display_name,
-        location: body.location,
-        show_wait_time: body.show_wait_time ?? true,
-        show_priority: body.show_priority ?? true,
-        theme_color: body.theme_color ?? "#004ac6",
-        is_active: true,
-      })
-      .select("id")
-      .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true, id: data.id });
-  }
-
-  // ── Toggle is_active ──────────────────────────────────────────────────────
-  if (body.action === "toggle") {
-    if (!body.id) {
-      return NextResponse.json({ error: "Missing id" }, { status: 400 });
-    }
-    const { data: current } = await supabase
-      .from("display_settings")
-      .select("is_active")
-      .eq("id", body.id)
-      .single();
-
-    const newActive = !(current?.is_active ?? true);
-    await supabase
-      .from("display_settings")
-      .update({ is_active: newActive })
-      .eq("id", body.id);
-    return NextResponse.json({ success: true, is_active: newActive });
-  }
-
-  // ── Update ────────────────────────────────────────────────────────────────
-  if (body.action === "update") {
-    if (!body.id || !body.display_name || !body.location) {
-      return NextResponse.json(
-        { error: "id, display_name and location are required" },
-        { status: 400 }
-      );
-    }
-    const { error } = await supabase
-      .from("display_settings")
-      .update({
-        display_name: body.display_name,
-        location: body.location,
-        show_wait_time: body.show_wait_time ?? true,
-        show_priority: body.show_priority ?? true,
-        theme_color: body.theme_color ?? "#004ac6",
-        is_active: body.is_active ?? true,
-      })
-      .eq("id", body.id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ success: true });
-  }
-
-  // ── Delete (hard) ─────────────────────────────────────────────────────────
-  if (body.action === "delete") {
-    if (!body.id) {
-      return NextResponse.json({ error: "Missing id" }, { status: 400 });
-    }
-    await supabase.from("display_settings").delete().eq("id", body.id);
-    return NextResponse.json({ success: true });
-  }
-
-  return NextResponse.json({ error: "Invalid action" }, { status: 400 });
-}
+import { NextResponse } from "next/server";
+import { withStaffAuth } from "@/lib/api/with-auth";
+import { parseJsonBody } from "@/lib/api/parse-body";
+import { DisplaySettingsActionSchema } from "@/lib/schemas/admin";
+import { getClientIp } from "@/lib/rate-limit";
+import {
+  addDisplayScreen,
+  deleteDisplayScreen,
+  listDisplayScreens,
+  toggleDisplayScreen,
+  updateDisplayScreen,
+} from "@/lib/services/admin.service";
+
+export const dynamic = "force-dynamic";
+
+type StaffRequest = Request & {
+  staffSession?: { userId: string };
+};
+
+function auditContext(request: Request) {
+  const req = request as StaffRequest;
+  return { userId: req.staffSession!.userId, ip: getClientIp(request) };
+}
+
+export const GET = withStaffAuth(async () => {
+  const screens = await listDisplayScreens();
+  return NextResponse.json({ success: true, screens });
+}, ["admin"]);
+
+export const POST = withStaffAuth(async (request: Request) => {
+  const parsed = await parseJsonBody(request, DisplaySettingsActionSchema);
+  if ("error" in parsed) return parsed.error;
+
+  const body = parsed.data;
+  const audit = auditContext(request);
+
+  switch (body.action) {
+    case "add": {
+      const result = await addDisplayScreen(body, audit);
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json(result);
+    }
+
+    case "toggle": {
+      const result = await toggleDisplayScreen(body.id, audit);
+      return NextResponse.json(result);
+    }
+
+    case "update": {
+      const result = await updateDisplayScreen(body, audit);
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json(result);
+    }
+
+    case "delete": {
+      const result = await deleteDisplayScreen(body.id, audit);
+      return NextResponse.json(result);
+    }
+
+    default:
+      return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  }
+}, ["admin"]);

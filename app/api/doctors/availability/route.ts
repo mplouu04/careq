@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/doctors/availability?date=YYYY-MM-DD&doctorId=&durationMinutes=30
+ * GET /api/doctors/availability?date=YYYY-MM-DD&doctorId=<uuid>&durationMinutes=30
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -21,20 +20,10 @@ export async function GET(request: Request) {
   }
 
   if (!doctorId) {
-    const supabase = createAdminClient();
-    const { data: doctors } = await supabase
-      .from("staff")
-      .select("id")
-      .eq("role", "doctor")
-      .eq("is_active", true);
-
-    const allSlots = new Set<string>();
-    for (const doc of doctors ?? []) {
-      const slots = await getDoctorAvailableSlots(doc.id, date, durationMinutes);
-      slots.forEach((s) => allSlots.add(s));
-    }
-    const sorted = Array.from(allSlots).sort();
-    return NextResponse.json({ success: true, available_slots: sorted });
+    return NextResponse.json(
+      { error: "doctorId is required" },
+      { status: 400 }
+    );
   }
 
   const slots = await getDoctorAvailableSlots(doctorId, date, durationMinutes);

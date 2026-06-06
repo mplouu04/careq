@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { CareqButton } from "@/components/careq";
 import { Button } from "@/components/ui/button";
+import { captureException } from "@/lib/observability";
 
 export default function GlobalError({
   error,
@@ -12,7 +13,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error("[Global Error]", error);
+    captureException(error, { digest: error.digest, boundary: "global" });
   }, [error]);
 
   return (

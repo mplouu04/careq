@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { StaffRole } from "@/lib/constants";
@@ -11,15 +12,35 @@ export type StaffProfile = {
   is_active: boolean;
 };
 
-export async function getStaffSession(): Promise<{
+export const getStaffSession = cache(async (): Promise<{
   userId: string;
   staff: StaffProfile;
-} | null> {
+} | null> => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
+
+  const meta = user.app_metadata ?? {};
+  if (
+    meta.staff_role &&
+    meta.staff_first_name &&
+    meta.staff_last_name &&
+    meta.staff_active !== false
+  ) {
+    return {
+      userId: user.id,
+      staff: {
+        id: user.id,
+        first_name: String(meta.staff_first_name),
+        last_name: String(meta.staff_last_name),
+        email: user.email ?? "",
+        role: meta.staff_role as StaffRole,
+        is_active: true,
+      },
+    };
+  }
 
   const admin = createAdminClient();
   const { data: staff } = await admin
@@ -31,7 +52,7 @@ export async function getStaffSession(): Promise<{
 
   if (!staff) return null;
   return { userId: user.id, staff: staff as StaffProfile };
-}
+});
 
 export async function requireStaff(roles?: StaffRole[]) {
   const session = await getStaffSession();

@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { queueApi } from "@/lib/api/client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   RefreshCw,
@@ -34,6 +36,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { QueueCommandBar } from "@/components/staff/QueueCommandBar";
+import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 
 type QueueWaiting = {
   id: number;
@@ -123,7 +126,6 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [doctorId, setDoctorId] = useState(staff.role === "doctor" ? staff.id : "");
   const [roomId, setRoomId] = useState("");
   const [stats, setStats] = useState({ served: 0, waiting: 0, avg: 10 });
-  const [isLive, setIsLive] = useState(true);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
@@ -149,13 +151,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
 
   const loadStats = useCallback(async () => {
     try {
-      const res = await fetch("/api/queue/actions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "get_report" }),
-      });
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await queueApi.analytics();
       setStats({
         served: data.served_today ?? 0,
         waiting: data.waiting_count ?? 0,
@@ -166,6 +162,26 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     }
   }, []);
 
+  const refreshDashboard = useCallback(async () => {
+    await Promise.all([loadQueue(), loadStats()]);
+  }, [loadQueue, loadStats]);
+
+  const subscribeQueue = useMemo(
+    () => (onChange: () => void) => {
+      const supabase = createClient();
+      return supabase
+        .channel("dashboard-queue")
+        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
+    },
+    []
+  );
+
+  const { isLive } = useRealtimePoll({
+    fetchFn: refreshDashboard,
+    subscribe: subscribeQueue,
+    fallbackIntervalMs: 5000,
+  });
+
   useEffect(() => {
     setToday(
       new Date().toLocaleDateString("en-PH", {
@@ -175,8 +191,6 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         day: "numeric",
       })
     );
-    loadQueue();
-    loadStats();
     fetch("/api/doctors")
       .then((r) => (r.ok ? r.json() : { doctors: [] }))
       .then((d) => setDoctors(d.doctors ?? []))
@@ -185,24 +199,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       .then((r) => (r.ok ? r.json() : { rooms: [] }))
       .then((d) => setRooms(d.rooms ?? []))
       .catch(() => {});
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel("dashboard-queue")
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () => {
-        loadQueue();
-        loadStats();
-      })
-      .subscribe((status) => setIsLive(status === "SUBSCRIBED"));
-    const interval = setInterval(() => {
-      loadQueue();
-      loadStats();
-    }, 5000);
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
-    };
-  }, [loadQueue, loadStats]);
+  }, []);
 
   async function performAction(
     name: string,
@@ -212,51 +209,55 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   ) {
     const useDoctorId = overrideDoctorId ?? doctorId ?? doctors[0]?.id;
     const useRoomId = overrideRoomId ?? roomId ?? rooms[0]?.id;
-    const res = await fetch("/api/queue/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: name,
-        queueId,
-        doctorId: useDoctorId,
-        roomNumber: useRoomId,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Action failed");
-      return;
+    try {
+      let data: { success: boolean; message?: string };
+      switch (name) {
+        case "call_next":
+          data = await queueApi.call(queueId, useDoctorId!, useRoomId!);
+          break;
+        case "skip":
+          data = await queueApi.skip(queueId);
+          break;
+        case "mark_done":
+          data = await queueApi.done(queueId);
+          break;
+        case "mark_no_show":
+          data = await queueApi.noShow(queueId);
+          break;
+        case "recall":
+          data = await queueApi.recall(queueId, useDoctorId!, useRoomId!);
+          break;
+        default:
+          throw new Error("Unknown action");
+      }
+      toast.success(
+        name === "call_next"
+          ? "Patient called!"
+          : name === "mark_done"
+            ? "Marked as done"
+            : name === "mark_no_show"
+              ? data.message ?? "Marked as no-show"
+              : name === "skip"
+                ? "Patient skipped"
+                : "Updated"
+      );
+      loadQueue();
+      loadStats();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Action failed");
     }
-    toast.success(
-      name === "call_next"
-        ? "Patient called!"
-        : name === "mark_done"
-          ? "Marked as done"
-          : name === "mark_no_show"
-            ? data.message ?? "Marked as no-show"
-            : name === "skip"
-              ? "Patient skipped"
-              : "Updated"
-    );
-    loadQueue();
-    loadStats();
   }
 
   async function resetDaily() {
     if (!confirm("Reset today's queue? This will cancel all waiting entries.")) return;
-    const res = await fetch("/api/queue/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "reset_daily" }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Reset failed");
-      return;
+    try {
+      const data = await queueApi.resetDaily();
+      toast.success(`Queue reset. ${data.cancelled} entries cancelled.`);
+      loadQueue();
+      loadStats();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reset failed");
     }
-    toast.success(`Queue reset. ${data.cancelled} entries cancelled.`);
-    loadQueue();
-    loadStats();
   }
 
   const nextWaiting = waiting[0];

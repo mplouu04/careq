@@ -15,7 +15,8 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ success: true, doctors: data ?? [] }, {
-    headers: { "Cache-Control": "no-store" },
-  });
+  return NextResponse.json(
+    { success: true, doctors: data ?? [] },
+    { headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=240" } }
+  );
 }

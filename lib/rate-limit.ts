@@ -1,18 +1,47 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { logWarn } from "@/lib/observability";
 
 /**
  * Rate-limit check matching legacy pqms_rate_limit() behaviour.
- * @param action  action key (e.g. "patient_register")
- * @param ip      client IP
- * @param max     maximum requests in window (default 10)
- * @param windowSeconds  sliding window in seconds (default 60)
- * @returns true if within limit, false if exceeded
+ * Uses atomic PostgreSQL RPC when available.
  */
 export async function checkRateLimit(
   action: string,
   ip: string,
   max = 10,
-  windowSeconds = 60
+  windowSeconds = 60,
+  failClosed = true
+): Promise<boolean> {
+  try {
+    const supabase = createAdminClient();
+    const { data, error } = await supabase.rpc("increment_rate_limit", {
+      p_action: action,
+      p_ip: ip,
+      p_max: max,
+      p_window_seconds: windowSeconds,
+    });
+
+    if (!error) {
+      return data === true;
+    }
+
+    logWarn("[rate-limit] RPC unavailable, using fallback", { action, error: error.message });
+    return fallbackRateLimit(action, ip, max, windowSeconds, failClosed);
+  } catch (err) {
+    logWarn("[rate-limit] Unexpected error", {
+      action,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return !failClosed;
+  }
+}
+
+async function fallbackRateLimit(
+  action: string,
+  ip: string,
+  max: number,
+  windowSeconds: number,
+  failClosed: boolean
 ): Promise<boolean> {
   try {
     const supabase = createAdminClient();
@@ -28,8 +57,7 @@ export async function checkRateLimit(
       .maybeSingle();
 
     if (selectError) {
-      console.error("[rate-limit] DB select error:", selectError.message);
-      return true; // fail open on DB error
+      return !failClosed;
     }
 
     if (!existing) {
@@ -39,12 +67,6 @@ export async function checkRateLimit(
         request_count: 1,
         window_start: new Date().toISOString(),
       });
-      await supabase
-        .from("rate_limits")
-        .delete()
-        .eq("action", action)
-        .eq("ip_address", ip)
-        .lt("window_start", windowStart);
       return true;
     }
 
@@ -58,9 +80,8 @@ export async function checkRateLimit(
       .eq("id", existing.id);
 
     return true;
-  } catch (err) {
-    console.error("[rate-limit] Unexpected error:", err);
-    return true; // fail open to avoid blocking requests on infra issues
+  } catch {
+    return !failClosed;
   }
 }
 

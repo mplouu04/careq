@@ -1,0 +1,32 @@
+import { NextResponse } from "next/server";
+import { withStaffAuth } from "@/lib/api/with-auth";
+import { parseJsonBody } from "@/lib/api/parse-body";
+import { getClientIp } from "@/lib/rate-limit";
+import { QueueCallBodySchema } from "@/lib/schemas/admin";
+import { callNextPatient } from "@/lib/services/queue.service";
+
+export const dynamic = "force-dynamic";
+
+export const POST = withStaffAuth(async (request: Request, context?: { params?: Record<string, string> }) => {
+  const queueId = parseInt(context?.params?.id ?? "", 10);
+  if (Number.isNaN(queueId) || queueId <= 0) {
+    return NextResponse.json({ error: "Invalid queue id" }, { status: 400 });
+  }
+
+  const parsed = await parseJsonBody(request, QueueCallBodySchema);
+  if ("error" in parsed) return parsed.error;
+
+  const staffSession = (request as Request & { staffSession?: { userId: string } }).staffSession!;
+  const result = await callNextPatient({
+    queueId,
+    doctorId: parsed.data.doctorId,
+    roomNumber: parsed.data.roomNumber,
+    userId: staffSession.userId,
+    ip: getClientIp(request),
+  });
+
+  if ("error" in result) {
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+  return NextResponse.json({ success: true });
+});

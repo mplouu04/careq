@@ -15,14 +15,20 @@ export async function GET() {
       .select("id, name, description")
       .eq("is_active", true)
       .order("name");
-    return NextResponse.json({ success: true, rooms: data ?? [] });
+    return NextResponse.json(
+      { success: true, rooms: data ?? [] },
+      { headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=240" } }
+    );
   }
 
   const { data } = await supabase
     .from("rooms")
     .select("id, name, description, is_active")
     .order("name");
-  return NextResponse.json({ success: true, rooms: data ?? [] });
+  return NextResponse.json(
+    { success: true, rooms: data ?? [] },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 }
 
 /** POST /api/rooms — admin create or update room */
@@ -48,7 +54,10 @@ export async function POST(request: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ success: true });
+    return NextResponse.json(
+      { success: true },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   if (!body.name) {
@@ -69,5 +78,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true, id: data.id });
+  return NextResponse.json(
+    { success: true, id: data.id },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

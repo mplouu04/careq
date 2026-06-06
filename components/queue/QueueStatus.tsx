@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import {
@@ -13,6 +13,7 @@ import { CareqCard, StatusBadge, CareqButton } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Hourglass } from "lucide-react";
+import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 
 type QueueEntry = {
   id: number;
@@ -75,22 +76,21 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     }
   }, [refNumber]);
 
-  useEffect(() => {
-    load();
-    const supabase = createClient();
-    const channel = supabase
-      .channel("queue-status-" + refNumber)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () =>
-        load()
-      )
-      .subscribe();
+  const subscribeQueue = useMemo(
+    () => (onChange: () => void) => {
+      const supabase = createClient();
+      return supabase
+        .channel(`queue-status-${refNumber}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
+    },
+    [refNumber]
+  );
 
-    const interval = setInterval(load, 3000);
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
-    };
-  }, [refNumber, load]);
+  useRealtimePoll({
+    fetchFn: load,
+    subscribe: subscribeQueue,
+    fallbackIntervalMs: 5000,
+  });
 
   if (loadError) {
     return (

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
+import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -74,23 +75,7 @@ export async function GET(request: Request) {
 
   const items = (queueRows ?? []) as QueueRow[];
 
-  const { data: completed } = await supabase
-    .from("queue")
-    .select("called_at, completed_at")
-    .eq("status", "completed")
-    .gte("called_at", dayStart)
-    .lte("called_at", dayEnd)
-    .not("completed_at", "is", null);
-
-  let avgServiceTime = 10;
-  if (completed?.length) {
-    const total = completed.reduce((sum, row) => {
-      const start = new Date(row.called_at!).getTime();
-      const end = new Date(row.completed_at!).getTime();
-      return sum + (end - start) / 60000;
-    }, 0);
-    avgServiceTime = Math.round(total / completed.length) || 10;
-  }
+  const avgServiceTime = await getAvgServiceTime(dayStart, dayEnd);
 
   const mapServing = (item: QueueRow) => {
     const checkinRaw = item.checkins;

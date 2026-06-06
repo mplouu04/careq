@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
+import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 
 type DisplayConfig = {
   display_name: string;
@@ -65,7 +66,6 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
   });
   const [now, setNow] = useState<Date | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [realtimeStatus, setRealtimeStatus] = useState<RealtimeStatus>("connecting");
 
   const load = useCallback(async () => {
     try {
@@ -86,35 +86,28 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
     }
   }, [screenId]);
 
+  const subscribeQueue = useMemo(
+    () => (onChange: () => void) => {
+      const supabase = createClient();
+      return supabase
+        .channel(`queue-board-${screenId ?? "default"}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
+    },
+    [screenId]
+  );
+
+  const { isLive } = useRealtimePoll({
+    fetchFn: load,
+    subscribe: subscribeQueue,
+    fallbackIntervalMs: 15000,
+  });
+
+  const realtimeStatus: RealtimeStatus = isLive ? "connected" : loadError ? "error" : "connecting";
+
   useEffect(() => {
-    load();
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`queue-board-${screenId ?? "default"}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, () =>
-        load()
-      )
-      .subscribe((status) => {
-        if (status === "SUBSCRIBED") {
-          setRealtimeStatus("connected");
-        } else if (
-          status === "CHANNEL_ERROR" ||
-          status === "TIMED_OUT" ||
-          status === "CLOSED"
-        ) {
-          setRealtimeStatus("error");
-        }
-      });
-
-    const interval = setInterval(load, 15000);
     const clock = setInterval(() => setNow(new Date()), 1000);
-
-    return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
-      clearInterval(clock);
-    };
-  }, [load, screenId]);
+    return () => clearInterval(clock);
+  }, []);
 
   const timeStr = now
     ? now.toLocaleTimeString("en-PH", {
