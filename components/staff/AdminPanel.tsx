@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/careq";
