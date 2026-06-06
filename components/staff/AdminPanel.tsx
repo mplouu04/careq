@@ -4,22 +4,32 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConfirmDialog, StatusBadge, FormSelect, type QueueStatusVariant } from "@/components/careq";
+import { ConfirmDialog } from "@/components/careq";
+import { ADMIN_TABS } from "@/lib/admin-tokens";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+  AdminApptStatusBadge,
+  AdminButton,
+  AdminButtonLink,
+  AdminCard,
+  AdminCardTitle,
+  AdminCheckbox,
+  AdminDangerCard,
+  AdminFilterPill,
+  AdminInput,
+  AdminLabel,
+  AdminRolePill,
+  AdminSelect,
+  AdminStaffAvatar,
+  AdminStatusBadge,
+  AdminTable,
+  AdminTableBody,
+  AdminTableHead,
+  AdminTd,
+  AdminTh,
+  AdminTr,
+} from "@/components/admin/admin-ui";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getClinicTodayYmd } from "@/lib/datetime";
 
@@ -78,6 +88,8 @@ type ScheduleDay = {
   end_time: string;
 };
 
+type AdminTab = (typeof ADMIN_TABS)[number]["value"];
+
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
   checked_in: "Confirmed",
@@ -87,16 +99,8 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
-const APPT_STATUS_VARIANT: Record<string, QueueStatusVariant> = {
-  pending: "waiting",
-  checked_in: "confirmed",
-  cancelled: "cancelled",
-  no_show: "no_show",
-  in_progress: "called",
-  completed: "completed",
-};
-
 export function AdminPanel() {
+  const [activeTab, setActiveTab] = useState<AdminTab>("staff");
   const [staffList, setStaffList] = useState<StaffRow[]>([]);
   const [types, setTypes] = useState<ApptType[]>([]);
   const [settings, setSettings] = useState<DisplayScreen[]>([]);
@@ -110,13 +114,11 @@ export function AdminPanel() {
   const [schedules, setSchedules] = useState<ScheduleDay[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  // Edit staff modal
   const [editStaff, setEditStaff] = useState<StaffRow | null>(null);
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
-  // Edit type modal
   const [editType, setEditType] = useState<ApptType | null>(null);
   const [editTypeName, setEditTypeName] = useState("");
   const [editTypeDuration, setEditTypeDuration] = useState("");
@@ -150,8 +152,6 @@ export function AdminPanel() {
   useEffect(() => {
     load();
   }, [load]);
-
-  // ── Staff ──────────────────────────────────────────────────────────────────
 
   async function createStaff(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -222,8 +222,6 @@ export function AdminPanel() {
     load();
   }
 
-  // ── Appointment Types ──────────────────────────────────────────────────────
-
   async function addApptType(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -276,8 +274,6 @@ export function AdminPanel() {
     load();
   }
 
-  // ── Display Settings ───────────────────────────────────────────────────────
-
   async function addDisplay(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -311,8 +307,6 @@ export function AdminPanel() {
     toast.success("Toggled");
     load();
   }
-
-  // ── Appointments ───────────────────────────────────────────────────────────
 
   async function updateAppt(checkinId: string, action: string) {
     const res = await fetch("/api/appointments", {
@@ -432,11 +426,12 @@ export function AdminPanel() {
 
   if (initialLoading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-full max-w-lg" />
-        <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
+        <Skeleton className="h-64 rounded-xl" />
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-48" />
           {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
+            <Skeleton key={i} className="h-12 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -445,325 +440,330 @@ export function AdminPanel() {
 
   return (
     <>
-      <header className="mb-6 pb-4 border-b border-outline-variant">
-        <h2 className="text-headline-lg font-bold text-on-surface tracking-tight">
-          Clinic settings
-        </h2>
-        <p className="text-body-md text-on-surface-variant mt-1">
-          Manage staff, rooms, appointments, and display screens.
-        </p>
-      </header>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
+        {/* Sidebar */}
+        <aside className="h-fit rounded-xl border border-[#E5E7EB] bg-white p-2 lg:sticky lg:top-[68px]">
+          <nav className="flex flex-row flex-wrap gap-1 lg:flex-col" aria-label="Admin sections">
+            {ADMIN_TABS.map((tab) => (
+              <button
+                key={tab.value}
+                type="button"
+                onClick={() => setActiveTab(tab.value)}
+                className={cn(
+                  "rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors",
+                  activeTab === tab.value
+                    ? "bg-[#EFF6FF] text-[#2563EB]"
+                    : "danger" in tab && tab.danger
+                      ? "text-[#DC2626] hover:bg-[#FFF5F5]"
+                      : "text-[#374151] hover:bg-[#F9FAFB]"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-      <Tabs defaultValue="staff">
-        <TabsList className="sticky top-16 z-20 flex flex-wrap h-auto gap-1 bg-surface/95 backdrop-blur-sm p-1 rounded-xl border border-outline-variant mb-4">
-          <TabsTrigger value="staff">Staff</TabsTrigger>
-          <TabsTrigger value="types">Appointment Types</TabsTrigger>
-          <TabsTrigger value="display">Display Screens</TabsTrigger>
-          <TabsTrigger value="appointments">Appointments</TabsTrigger>
-          <TabsTrigger value="rooms">Rooms</TabsTrigger>
-          <TabsTrigger value="hours">Clinic Hours</TabsTrigger>
-          <TabsTrigger value="data">Data</TabsTrigger>
-        </TabsList>
+        {/* Content */}
+        <div className="flex flex-col gap-4">
+          {activeTab === "staff" && (
+            <>
+              <AdminCard>
+                <AdminCardTitle>Staff Accounts</AdminCardTitle>
+                <AdminTable>
+                  <AdminTableHead>
+                    <AdminTh>Name</AdminTh>
+                    <AdminTh>Email</AdminTh>
+                    <AdminTh>Role</AdminTh>
+                    <AdminTh>Active</AdminTh>
+                    <AdminTh>Actions</AdminTh>
+                  </AdminTableHead>
+                  <AdminTableBody>
+                    {staffList.map((s) => (
+                      <AdminTr key={s.id}>
+                        <AdminTd>
+                          <div className="flex items-center gap-2.5">
+                            <AdminStaffAvatar firstName={s.first_name} lastName={s.last_name} />
+                            <span className="font-medium">
+                              {s.first_name} {s.last_name}
+                            </span>
+                          </div>
+                        </AdminTd>
+                        <AdminTd>{s.email}</AdminTd>
+                        <AdminTd>
+                          <AdminRolePill>{s.role}</AdminRolePill>
+                        </AdminTd>
+                        <AdminTd>
+                          <AdminStatusBadge active={s.is_active} />
+                        </AdminTd>
+                        <AdminTd>
+                          <div className="flex gap-2">
+                            <AdminButton
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditStaff(s);
+                                setEditFirstName(s.first_name);
+                                setEditLastName(s.last_name);
+                                setEditEmail(s.email);
+                                setEditRole(s.role);
+                              }}
+                            >
+                              Edit
+                            </AdminButton>
+                            {s.is_active ? (
+                              <AdminButton
+                                variant="danger"
+                                size="sm"
+                                onClick={() => toggleStaff(s.id)}
+                              >
+                                Deactivate
+                              </AdminButton>
+                            ) : (
+                              <AdminButton
+                                variant="outline"
+                                size="sm"
+                                onClick={() => toggleStaff(s.id)}
+                              >
+                                Activate
+                              </AdminButton>
+                            )}
+                          </div>
+                        </AdminTd>
+                      </AdminTr>
+                    ))}
+                  </AdminTableBody>
+                </AdminTable>
+              </AdminCard>
 
-        {/* ── Staff tab ─────────────────────────────────────────────────── */}
-        <TabsContent value="staff" className="space-y-6">
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-headline-sm text-on-surface">Staff Accounts</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto max-h-[min(70vh,600px)]">
-              <Table>
-                <TableHeader className="sticky top-0 z-10 bg-surface-container-lowest">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-12">Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Active</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {staffList.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell>
-                        {s.first_name} {s.last_name}
-                      </TableCell>
-                      <TableCell>{s.email}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{s.role}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={s.is_active ? "default" : "secondary"}>
-                          {s.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setEditStaff(s);
-                              setEditFirstName(s.first_name);
-                              setEditLastName(s.last_name);
-                              setEditEmail(s.email);
-                              setEditRole(s.role);
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={s.is_active ? "destructive" : "outline"}
-                            onClick={() => toggleStaff(s.id)}
-                          >
-                            {s.is_active ? "Deactivate" : "Activate"}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Add New Staff</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={createStaff} className="grid sm:grid-cols-2 gap-4 max-w-2xl">
-                <div>
-                  <Label>First Name</Label>
-                  <Input name="firstName" required />
-                </div>
-                <div>
-                  <Label>Last Name</Label>
-                  <Input name="lastName" required />
-                </div>
-                <div>
-                  <Label>Email</Label>
-                  <Input name="email" type="email" required />
-                </div>
-                <div>
-                  <Label>Password (min 8 chars)</Label>
-                  <Input name="password" type="password" minLength={8} required />
-                </div>
-                <div>
-                  <Label>Role</Label>
-                  <FormSelect name="role" required>
-                    <option value="doctor">Doctor</option>
-                    <option value="nurse">Nurse</option>
-                    <option value="receptionist">Receptionist</option>
-                    <option value="admin">Admin</option>
-                  </FormSelect>
-                </div>
-                <div className="flex items-end">
-                  <Button type="submit" className="w-full">
-                    Create Staff Account
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Appointment Types tab ──────────────────────────────────────── */}
-        <TabsContent value="types" className="space-y-6">
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Appointment Types</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Duration</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Active</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {types.map((t) => (
-                    <TableRow key={t.id}>
-                      <TableCell>{t.name}</TableCell>
-                      <TableCell>{t.duration} min</TableCell>
-                      <TableCell className="text-on-surface-variant">
-                        {t.description ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={t.is_active ? "default" : "secondary"}>
-                          {t.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setEditType(t);
-                              setEditTypeName(t.name);
-                              setEditTypeDuration(String(t.duration));
-                              setEditTypeDesc(t.description ?? "");
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={t.is_active ? "destructive" : "outline"}
-                            onClick={() => toggleType(t.id)}
-                          >
-                            {t.is_active ? "Deactivate" : "Activate"}
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Add Appointment Type</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={addApptType} className="flex flex-wrap gap-4 items-end">
-                <div>
-                  <Label>Name</Label>
-                  <Input name="name" required />
-                </div>
-                <div>
-                  <Label>Duration (min)</Label>
-                  <Input name="duration" type="number" min={1} required className="w-28" />
-                </div>
-                <div>
-                  <Label>Description (optional)</Label>
-                  <Input name="description" />
-                </div>
-                <Button type="submit">Add Type</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Display Screens tab ────────────────────────────────────────── */}
-        <TabsContent value="display" className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2">
-            {settings.map((s) => (
-              <Card key={s.id}>
-                <CardContent className="pt-4 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium">{s.display_name}</p>
-                    <Badge variant={s.is_active ? "default" : "secondary"}>
-                      {s.is_active ? "Active" : "Inactive"}
-                    </Badge>
+              <AdminCard>
+                <AdminCardTitle>Add New Staff</AdminCardTitle>
+                <form onSubmit={createStaff} className="grid max-w-2xl gap-4 sm:grid-cols-2">
+                  <div>
+                    <AdminLabel>First Name</AdminLabel>
+                    <AdminInput name="firstName" required />
                   </div>
-                  <p className="text-sm text-on-surface-variant">{s.location}</p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span
-                      className="inline-block w-4 h-4 rounded"
-                      style={{ background: s.theme_color }}
-                    />
-                    <span className="text-xs">{s.theme_color}</span>
+                  <div>
+                    <AdminLabel>Last Name</AdminLabel>
+                    <AdminInput name="lastName" required />
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Button size="sm" variant="outline" asChild>
-                      <Link
+                  <div>
+                    <AdminLabel>Email</AdminLabel>
+                    <AdminInput name="email" type="email" required />
+                  </div>
+                  <div>
+                    <AdminLabel>Password (min 8 chars)</AdminLabel>
+                    <AdminInput name="password" type="password" minLength={8} required />
+                  </div>
+                  <div>
+                    <AdminLabel>Role</AdminLabel>
+                    <AdminSelect name="role" required>
+                      <option value="doctor">Doctor</option>
+                      <option value="nurse">Nurse</option>
+                      <option value="receptionist">Receptionist</option>
+                      <option value="admin">Admin</option>
+                    </AdminSelect>
+                  </div>
+                  <div className="flex items-end">
+                    <AdminButton type="submit" className="w-full">
+                      Create Staff Account
+                    </AdminButton>
+                  </div>
+                </form>
+              </AdminCard>
+            </>
+          )}
+
+          {activeTab === "types" && (
+            <>
+              <AdminCard>
+                <AdminCardTitle>Appointment Types</AdminCardTitle>
+                <AdminTable>
+                  <AdminTableHead>
+                    <AdminTh>Name</AdminTh>
+                    <AdminTh>Duration</AdminTh>
+                    <AdminTh>Description</AdminTh>
+                    <AdminTh>Active</AdminTh>
+                    <AdminTh>Actions</AdminTh>
+                  </AdminTableHead>
+                  <AdminTableBody>
+                    {types.map((t) => (
+                      <AdminTr key={t.id}>
+                        <AdminTd className="font-medium">{t.name}</AdminTd>
+                        <AdminTd>{t.duration} min</AdminTd>
+                        <AdminTd className="text-[#6B7280]">
+                          {t.description ?? "—"}
+                        </AdminTd>
+                        <AdminTd>
+                          <AdminStatusBadge active={t.is_active} />
+                        </AdminTd>
+                        <AdminTd>
+                          <div className="flex gap-2">
+                            <AdminButton
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditType(t);
+                                setEditTypeName(t.name);
+                                setEditTypeDuration(String(t.duration));
+                                setEditTypeDesc(t.description ?? "");
+                              }}
+                            >
+                              Edit
+                            </AdminButton>
+                            {t.is_active ? (
+                              <AdminButton
+                                variant="danger"
+                                size="sm"
+                                onClick={() => toggleType(t.id)}
+                              >
+                                Deactivate
+                              </AdminButton>
+                            ) : (
+                              <AdminButton
+                                variant="outline"
+                                size="sm"
+                                onClick={() => toggleType(t.id)}
+                              >
+                                Activate
+                              </AdminButton>
+                            )}
+                          </div>
+                        </AdminTd>
+                      </AdminTr>
+                    ))}
+                  </AdminTableBody>
+                </AdminTable>
+              </AdminCard>
+
+              <AdminCard>
+                <AdminCardTitle>Add Appointment Type</AdminCardTitle>
+                <form onSubmit={addApptType} className="flex flex-wrap items-end gap-4">
+                  <div>
+                    <AdminLabel>Name</AdminLabel>
+                    <AdminInput name="name" required />
+                  </div>
+                  <div>
+                    <AdminLabel>Duration (min)</AdminLabel>
+                    <AdminInput name="duration" type="number" min={1} required className="w-28" />
+                  </div>
+                  <div>
+                    <AdminLabel>Description (optional)</AdminLabel>
+                    <AdminInput name="description" />
+                  </div>
+                  <AdminButton type="submit">Add Type</AdminButton>
+                </form>
+              </AdminCard>
+            </>
+          )}
+
+          {activeTab === "display" && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {settings.map((s) => (
+                  <AdminCard key={s.id}>
+                    <div className="mb-3 flex items-center justify-between">
+                      <p className="font-semibold text-[#111827]">{s.display_name}</p>
+                      <AdminStatusBadge active={s.is_active} />
+                    </div>
+                    <p className="text-[13px] text-[#6B7280]">{s.location}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className="inline-block h-4 w-4 rounded"
+                        style={{ background: s.theme_color }}
+                      />
+                      <span className="text-xs text-[#9CA3AF]">{s.theme_color}</span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <AdminButtonLink
                         href={`/queue/${s.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        variant="outline"
                       >
-                        <ExternalLink className="h-3 w-3 mr-1" />
+                        <ExternalLink className="mr-1 h-3 w-3" />
                         Open Board
-                      </Link>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => toggleDisplay(s.id)}
-                    >
-                      {s.is_active ? "Deactivate" : "Activate"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Add Display Screen</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={addDisplay} className="flex flex-wrap gap-4 items-end">
-                <div>
-                  <Label>Display Name</Label>
-                  <Input name="displayName" required />
-                </div>
-                <div>
-                  <Label>Location</Label>
-                  <Input name="location" required />
-                </div>
-                <div>
-                  <Label>Theme Color</Label>
-                  <Input
-                    name="themeColor"
-                    type="color"
-                    defaultValue={CAREQ_DEFAULT_THEME_COLOR}
-                    className="w-16 h-9 p-1"
-                  />
-                </div>
-                <Button type="submit">Add Display</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ── Appointments tab ───────────────────────────────────────────── */}
-        <TabsContent value="appointments">
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <CardTitle>Appointments</CardTitle>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    ["upcoming", "Upcoming"],
-                    ["no_show", "No Show"],
-                    ["cancelled", "Cancelled"],
-                    ["all", "All"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    size="sm"
-                    variant={apptFilter === value ? "default" : "outline"}
-                    onClick={() => setApptFilter(value)}
-                  >
-                    {label}
-                  </Button>
+                      </AdminButtonLink>
+                      {s.is_active ? (
+                        <AdminButton
+                          variant="danger"
+                          size="sm"
+                          onClick={() => toggleDisplay(s.id)}
+                        >
+                          Deactivate
+                        </AdminButton>
+                      ) : (
+                        <AdminButton
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleDisplay(s.id)}
+                        >
+                          Activate
+                        </AdminButton>
+                      )}
+                    </div>
+                  </AdminCard>
                 ))}
               </div>
-            </CardHeader>
-            <CardContent className="overflow-x-auto max-h-[min(70vh,560px)]">
-              <Table>
-                <TableHeader className="sticky top-0 z-10 bg-surface-container-lowest">
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="h-12">Reference</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead>Doctor</TableHead>
-                    <TableHead>Date / Time</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <AdminCard>
+                <AdminCardTitle>Add Display Screen</AdminCardTitle>
+                <form onSubmit={addDisplay} className="flex flex-wrap items-end gap-4">
+                  <div>
+                    <AdminLabel>Display Name</AdminLabel>
+                    <AdminInput name="displayName" required />
+                  </div>
+                  <div>
+                    <AdminLabel>Location</AdminLabel>
+                    <AdminInput name="location" required />
+                  </div>
+                  <div>
+                    <AdminLabel>Theme Color</AdminLabel>
+                    <AdminInput
+                      name="themeColor"
+                      type="color"
+                      defaultValue={CAREQ_DEFAULT_THEME_COLOR}
+                      className="h-[34px] w-16 p-1"
+                    />
+                  </div>
+                  <AdminButton type="submit">Add Display</AdminButton>
+                </form>
+              </AdminCard>
+            </>
+          )}
+
+          {activeTab === "appointments" && (
+            <AdminCard>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <AdminCardTitle className="mb-0">Appointments</AdminCardTitle>
+                <div className="flex flex-wrap gap-2">
+                  {(
+                    [
+                      ["upcoming", "Upcoming"],
+                      ["no_show", "No Show"],
+                      ["cancelled", "Cancelled"],
+                      ["all", "All"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <AdminFilterPill
+                      key={value}
+                      active={apptFilter === value}
+                      onClick={() => setApptFilter(value)}
+                    >
+                      {label}
+                    </AdminFilterPill>
+                  ))}
+                </div>
+              </div>
+              <AdminTable className="max-h-[min(70vh,560px)] overflow-y-auto">
+                <AdminTableHead>
+                  <AdminTh>Reference</AdminTh>
+                  <AdminTh>Patient</AdminTh>
+                  <AdminTh>Doctor</AdminTh>
+                  <AdminTh>Date / Time</AdminTh>
+                  <AdminTh>Status</AdminTh>
+                  <AdminTh>Actions</AdminTh>
+                </AdminTableHead>
+                <AdminTableBody>
                   {appointments.map((a) => {
                     const p = (Array.isArray(a.patients) ? a.patients[0] : a.patients) as
                       | { first_name: string; last_name: string }
@@ -784,150 +784,145 @@ export function AdminPanel() {
                     );
 
                     return (
-                      <TableRow key={a.checkin_id}>
-                        <TableCell className="font-mono text-xs">
+                      <AdminTr key={a.checkin_id}>
+                        <AdminTd className="font-mono text-xs">
                           {a.reference_number}
-                        </TableCell>
-                        <TableCell>
+                        </AdminTd>
+                        <AdminTd>
                           {p?.first_name} {p?.last_name}
-                        </TableCell>
-                        <TableCell>
+                        </AdminTd>
+                        <AdminTd>
                           Dr. {doc?.first_name} {doc?.last_name}
-                        </TableCell>
-                        <TableCell className="text-sm">
+                        </AdminTd>
+                        <AdminTd>
                           {a.appointment_date?.slice(0, 10)} {a.scheduled_time}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge
-                            status={APPT_STATUS_VARIANT[a.status] ?? "pending"}
+                        </AdminTd>
+                        <AdminTd>
+                          <AdminApptStatusBadge
+                            status={a.status}
                             label={STATUS_LABELS[a.status] ?? a.status}
                           />
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1 flex-wrap">
+                        </AdminTd>
+                        <AdminTd>
+                          <div className="flex flex-wrap gap-1">
                             {canConfirm && (
-                              <Button
+                              <AdminButton
                                 size="sm"
                                 onClick={() => updateAppt(a.checkin_id, "confirm")}
                               >
                                 Confirm
-                              </Button>
+                              </AdminButton>
                             )}
                             {canNoShow && (
-                              <Button
-                                size="sm"
+                              <AdminButton
                                 variant="outline"
+                                size="sm"
                                 onClick={() => updateAppt(a.checkin_id, "no_show")}
                               >
                                 No-show
-                              </Button>
+                              </AdminButton>
                             )}
                             {canCancel && (
-                              <Button
+                              <AdminButton
+                                variant="danger"
                                 size="sm"
-                                variant="destructive"
                                 onClick={() => updateAppt(a.checkin_id, "cancel")}
                               >
                                 Cancel
-                              </Button>
+                              </AdminButton>
                             )}
                           </div>
-                        </TableCell>
-                      </TableRow>
+                        </AdminTd>
+                      </AdminTr>
                     );
                   })}
                   {appointments.length === 0 && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={6}
-                        className="text-center text-on-surface-variant"
-                      >
+                    <AdminTr>
+                      <AdminTd colSpan={6} className="py-8 text-center text-[#6B7280]">
                         No appointments in this view
-                      </TableCell>
-                    </TableRow>
+                      </AdminTd>
+                    </AdminTr>
                   )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                </AdminTableBody>
+              </AdminTable>
+            </AdminCard>
+          )}
 
-        {/* ── Rooms tab ──────────────────────────────────────────────────── */}
-        <TabsContent value="rooms" className="space-y-6">
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Exam Rooms</CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Active</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {roomsList.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-medium">{r.name}</TableCell>
-                      <TableCell className="text-sm text-on-surface-variant">
-                        {r.description ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={r.is_active ? "default" : "secondary"}>
-                          {r.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button size="sm" variant="outline" onClick={() => toggleRoom(r)}>
-                          {r.is_active ? "Deactivate" : "Activate"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {roomsList.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={4} className="text-center text-on-surface-variant">
-                        No rooms configured
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Add Room</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={addRoom} className="flex flex-wrap gap-4 items-end">
-                <div>
-                  <Label>Name</Label>
-                  <Input name="name" required />
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Input name="description" />
-                </div>
-                <Button type="submit">Add Room</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
+          {activeTab === "rooms" && (
+            <>
+              <AdminCard>
+                <AdminCardTitle>Exam Rooms</AdminCardTitle>
+                <AdminTable>
+                  <AdminTableHead>
+                    <AdminTh>Name</AdminTh>
+                    <AdminTh>Description</AdminTh>
+                    <AdminTh>Active</AdminTh>
+                    <AdminTh>Actions</AdminTh>
+                  </AdminTableHead>
+                  <AdminTableBody>
+                    {roomsList.map((r) => (
+                      <AdminTr key={r.id}>
+                        <AdminTd className="font-medium">{r.name}</AdminTd>
+                        <AdminTd className="text-[#6B7280]">
+                          {r.description ?? "—"}
+                        </AdminTd>
+                        <AdminTd>
+                          <AdminStatusBadge active={r.is_active} />
+                        </AdminTd>
+                        <AdminTd>
+                          {r.is_active ? (
+                            <AdminButton
+                              variant="danger"
+                              size="sm"
+                              onClick={() => toggleRoom(r)}
+                            >
+                              Deactivate
+                            </AdminButton>
+                          ) : (
+                            <AdminButton
+                              variant="outline"
+                              size="sm"
+                              onClick={() => toggleRoom(r)}
+                            >
+                              Activate
+                            </AdminButton>
+                          )}
+                        </AdminTd>
+                      </AdminTr>
+                    ))}
+                    {roomsList.length === 0 && (
+                      <AdminTr>
+                        <AdminTd colSpan={4} className="py-8 text-center text-[#6B7280]">
+                          No rooms configured
+                        </AdminTd>
+                      </AdminTr>
+                    )}
+                  </AdminTableBody>
+                </AdminTable>
+              </AdminCard>
+              <AdminCard>
+                <AdminCardTitle>Add Room</AdminCardTitle>
+                <form onSubmit={addRoom} className="flex flex-wrap items-end gap-4">
+                  <div>
+                    <AdminLabel>Name</AdminLabel>
+                    <AdminInput name="name" required />
+                  </div>
+                  <div>
+                    <AdminLabel>Description</AdminLabel>
+                    <AdminInput name="description" />
+                  </div>
+                  <AdminButton type="submit">Add Room</AdminButton>
+                </form>
+              </AdminCard>
+            </>
+          )}
 
-        {/* ── Clinic hours tab ───────────────────────────────────────────── */}
-        <TabsContent value="hours" className="space-y-6">
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Doctor Clinic Hours</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="max-w-sm">
-                <Label>Doctor</Label>
-                <FormSelect
+          {activeTab === "hours" && (
+            <AdminCard>
+              <AdminCardTitle>Doctor Clinic Hours</AdminCardTitle>
+              <div className="mb-4 max-w-sm">
+                <AdminLabel>Doctor</AdminLabel>
+                <AdminSelect
                   value={scheduleDoctorId}
                   onChange={(e) => loadDoctorSchedule(e.target.value)}
                 >
@@ -937,18 +932,17 @@ export function AdminPanel() {
                       Dr. {d.first_name} {d.last_name}
                     </option>
                   ))}
-                </FormSelect>
+                </AdminSelect>
               </div>
               {schedules.length > 0 && (
                 <div className="space-y-2">
                   {schedules.map((s, idx) => (
                     <div
                       key={s.day_of_week}
-                      className="flex flex-wrap items-center gap-3 border border-outline-variant rounded-lg p-3"
+                      className="flex flex-wrap items-center gap-3 rounded-lg border border-[#E5E7EB] p-3"
                     >
-                      <label className="flex items-center gap-2 min-w-[120px]">
-                        <input
-                          type="checkbox"
+                      <label className="flex min-w-[120px] items-center gap-2">
+                        <AdminCheckbox
                           checked={s.is_active}
                           onChange={(e) => {
                             const next = [...schedules];
@@ -956,9 +950,9 @@ export function AdminPanel() {
                             setSchedules(next);
                           }}
                         />
-                        <span className="text-sm font-medium">{s.day_name}</span>
+                        <span className="text-sm font-medium text-[#374151]">{s.day_name}</span>
                       </label>
-                      <Input
+                      <AdminInput
                         type="time"
                         className="w-32"
                         value={s.start_time}
@@ -969,8 +963,8 @@ export function AdminPanel() {
                           setSchedules(next);
                         }}
                       />
-                      <span className="text-on-surface-variant">to</span>
-                      <Input
+                      <span className="text-[#6B7280]">to</span>
+                      <AdminInput
                         type="time"
                         className="w-32"
                         value={s.end_time}
@@ -983,33 +977,28 @@ export function AdminPanel() {
                       />
                     </div>
                   ))}
-                  <Button type="button" onClick={saveDoctorSchedule}>
+                  <AdminButton type="button" onClick={saveDoctorSchedule}>
                     Save Schedule
-                  </Button>
+                  </AdminButton>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </AdminCard>
+          )}
 
-        {/* ── Data Cleanup tab ───────────────────────────────────────────── */}
-        <TabsContent value="data">
-          <Card className="border-outline-variant bg-surface-container-lowest shadow-sm">
-            <CardHeader>
-              <CardTitle>Data Cleanup</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-on-surface-variant">
+          {activeTab === "data" && (
+            <AdminDangerCard>
+              <AdminCardTitle className="text-[#DC2626]">Data Cleanup</AdminCardTitle>
+              <p className="mb-4 text-[13px] text-[#6B7280]">
                 Purge old completed and cancelled queue records from previous days. This
                 also removes orphaned check-in records with no linked queue entry.
               </p>
-              <Button variant="destructive" onClick={purgeHistory}>
+              <AdminButton variant="danger" onClick={purgeHistory}>
                 Purge Old Records
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+              </AdminButton>
+            </AdminDangerCard>
+          )}
+        </div>
+      </div>
 
       <ConfirmDialog
         open={!!editStaff}
@@ -1018,35 +1007,35 @@ export function AdminPanel() {
         className="sm:max-w-md"
         footer={
           <>
-            <Button variant="outline" onClick={() => setEditStaff(null)}>
+            <AdminButton variant="outline" onClick={() => setEditStaff(null)}>
               Cancel
-            </Button>
-            <Button onClick={updateStaff}>Save Changes</Button>
+            </AdminButton>
+            <AdminButton onClick={updateStaff}>Save Changes</AdminButton>
           </>
         }
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <Label>First Name</Label>
-            <Input value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
+            <AdminLabel>First Name</AdminLabel>
+            <AdminInput value={editFirstName} onChange={(e) => setEditFirstName(e.target.value)} />
           </div>
           <div>
-            <Label>Last Name</Label>
-            <Input value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
+            <AdminLabel>Last Name</AdminLabel>
+            <AdminInput value={editLastName} onChange={(e) => setEditLastName(e.target.value)} />
           </div>
         </div>
         <div>
-          <Label>Email</Label>
-          <Input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+          <AdminLabel>Email</AdminLabel>
+          <AdminInput type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
         </div>
         <div>
-          <Label>Role</Label>
-          <FormSelect value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+          <AdminLabel>Role</AdminLabel>
+          <AdminSelect value={editRole} onChange={(e) => setEditRole(e.target.value)}>
             <option value="doctor">Doctor</option>
             <option value="nurse">Nurse</option>
             <option value="receptionist">Receptionist</option>
             <option value="admin">Admin</option>
-          </FormSelect>
+          </AdminSelect>
         </div>
       </ConfirmDialog>
 
@@ -1057,21 +1046,21 @@ export function AdminPanel() {
         className="sm:max-w-sm"
         footer={
           <>
-            <Button variant="outline" onClick={() => setEditType(null)}>
+            <AdminButton variant="outline" onClick={() => setEditType(null)}>
               Cancel
-            </Button>
-            <Button onClick={saveEditType}>Save</Button>
+            </AdminButton>
+            <AdminButton onClick={saveEditType}>Save</AdminButton>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <Label>Name</Label>
-            <Input value={editTypeName} onChange={(e) => setEditTypeName(e.target.value)} />
+            <AdminLabel>Name</AdminLabel>
+            <AdminInput value={editTypeName} onChange={(e) => setEditTypeName(e.target.value)} />
           </div>
           <div>
-            <Label>Duration (min)</Label>
-            <Input
+            <AdminLabel>Duration (min)</AdminLabel>
+            <AdminInput
               type="number"
               min={1}
               value={editTypeDuration}
@@ -1079,8 +1068,8 @@ export function AdminPanel() {
             />
           </div>
           <div>
-            <Label>Description</Label>
-            <Input value={editTypeDesc} onChange={(e) => setEditTypeDesc(e.target.value)} />
+            <AdminLabel>Description</AdminLabel>
+            <AdminInput value={editTypeDesc} onChange={(e) => setEditTypeDesc(e.target.value)} />
           </div>
         </div>
       </ConfirmDialog>
