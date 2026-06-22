@@ -1,6 +1,6 @@
 # CAREQ Design System — Clinical Precision
 
-Source: [UI/*/DESIGN.md](../UI/landing%20page/DESIGN.md) prototypes. Use this file as the single token reference when implementing screens.
+Source: CareQ product design tokens. Use this file as the single token reference when implementing screens.
 
 ## Brand
 
