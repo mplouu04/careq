@@ -16,8 +16,7 @@ import {
   type QueueStatusVariant,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { isValidRef } from "@/lib/utils";
+import { cn, isValidRef } from "@/lib/utils";
 
 type LookupMethod = "phone" | "reference";
 
@@ -50,8 +49,10 @@ const STATUS_VARIANT: Record<string, QueueStatusVariant> = {
   completed: "completed",
 };
 
-const LOOKUP_TAB_TRIGGER_CLASS =
-  "flex-1 h-full rounded-lg border-0 py-2.5 text-body-sm font-medium text-[#6B7280] shadow-none transition-all data-active:bg-white data-active:text-[#111827] data-active:font-semibold data-active:shadow-sm hover:text-[#111827]";
+const LOOKUP_TABS: { value: LookupMethod; label: string }[] = [
+  { value: "phone", label: "By Phone & DOB" },
+  { value: "reference", label: "By Reference" },
+];
 
 function formatDobInput(raw: string): string {
   const digits = raw.replace(/\D/g, "").slice(0, 8);
@@ -88,8 +89,7 @@ export function MyAppointments() {
     setPatientName("");
   }
 
-  function handleLookupMethodChange(method: string) {
-    if (method !== "phone" && method !== "reference") return;
+  function handleLookupMethodChange(method: LookupMethod) {
     setLookupMethod(method);
     resetResults();
   }
@@ -164,7 +164,7 @@ export function MyAppointments() {
   return (
     <div className="space-y-5 max-w-xl">
       <CareqCard className="overflow-hidden">
-        <div className="px-6 py-5 space-y-5">
+        <div className="min-w-0 px-6 py-5 space-y-5">
           <div>
             <h3 className="text-headline-sm text-on-surface">Look Up Appointments</h3>
             <p className="text-body-sm text-on-surface-variant mt-0.5">
@@ -174,63 +174,88 @@ export function MyAppointments() {
             </p>
           </div>
 
-          <Tabs value={lookupMethod} onValueChange={handleLookupMethodChange}>
-            <TabsList className="mb-0 h-11 w-full rounded-xl bg-[#F3F4F6] p-1">
-              <TabsTrigger value="phone" className={LOOKUP_TAB_TRIGGER_CLASS}>
-                By Phone &amp; DOB
-              </TabsTrigger>
-              <TabsTrigger value="reference" className={LOOKUP_TAB_TRIGGER_CLASS}>
-                By Reference
-              </TabsTrigger>
-            </TabsList>
+          <div
+            className="flex w-full rounded-xl bg-[#F3F4F6] p-1"
+            role="tablist"
+            aria-label="Lookup method"
+          >
+            {LOOKUP_TABS.map((tab) => {
+              const isActive = lookupMethod === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => handleLookupMethodChange(tab.value)}
+                  className={cn(
+                    "flex-1 rounded-lg px-3 py-2.5 text-body-sm font-medium transition-all",
+                    isActive
+                      ? "bg-white text-[#111827] font-semibold shadow-sm"
+                      : "text-[#6B7280] hover:text-[#111827]"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
 
-            <TabsContent value="phone" className="mt-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <FormLabel>Phone Number</FormLabel>
-                  <FormInput
-                    type="tel"
-                    inputMode="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="09XX XXX XXXX"
-                  />
-                </div>
-                <div>
-                  <FormLabel>Date of Birth</FormLabel>
-                  <div className="relative">
-                    <FormInput
-                      type="text"
-                      inputMode="numeric"
-                      value={dob}
-                      onChange={(e) => setDob(formatDobInput(e.target.value))}
-                      placeholder="dd/mm/yyyy"
-                      maxLength={10}
-                      className="pr-10"
-                    />
-                    <Calendar
-                      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant"
-                      aria-hidden
-                    />
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-
-            <TabsContent value="reference" className="mt-5">
-              <div>
-                <FormLabel>Reference Number</FormLabel>
+          {lookupMethod === "phone" ? (
+            <div
+              className="flex flex-col gap-4 sm:flex-row sm:items-start"
+              role="tabpanel"
+              aria-label="Phone and date of birth lookup"
+            >
+              <div className="min-w-0 flex-1">
+                <FormLabel htmlFor="lookup-phone">Phone Number</FormLabel>
                 <FormInput
-                  type="text"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="APT..."
-                  className="font-mono tracking-wide"
-                  autoCapitalize="characters"
+                  id="lookup-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="09XX XXX XXXX"
                 />
               </div>
-            </TabsContent>
-          </Tabs>
+              <div className="min-w-0 flex-1">
+                <FormLabel htmlFor="lookup-dob">Date of Birth</FormLabel>
+                <div className="relative">
+                  <FormInput
+                    id="lookup-dob"
+                    type="text"
+                    inputMode="numeric"
+                    value={dob}
+                    onChange={(e) => setDob(formatDobInput(e.target.value))}
+                    placeholder="dd/mm/yyyy"
+                    maxLength={10}
+                    className="pr-10"
+                  />
+                  <Calendar
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant"
+                    aria-hidden
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div
+              className="min-w-0 w-full"
+              role="tabpanel"
+              aria-label="Reference number lookup"
+            >
+              <FormLabel htmlFor="lookup-reference">Reference Number</FormLabel>
+              <FormInput
+                id="lookup-reference"
+                type="text"
+                value={reference}
+                onChange={(e) => setReference(e.target.value)}
+                placeholder="APT..."
+                className="font-mono tracking-wide"
+                autoCapitalize="characters"
+              />
+            </div>
+          )}
 
           <CareqButton onClick={lookup} disabled={loading} className="w-full">
             <ClipboardList className="h-4 w-4" />
