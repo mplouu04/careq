@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  firstHourWithSlots,
   firstPeriodWithSlots,
+  groupSlotsByHour,
   groupSlotsByPeriod,
+  hourForSlot,
   SLOT_PERIOD_LABELS,
   type SlotPeriod,
 } from "@/lib/slot-groups";
@@ -26,7 +30,35 @@ type TimeSlotPickerProps = {
   loading?: boolean;
 };
 
-function SlotGrid({
+function SlotButton({
+  slot,
+  selected,
+  onSelect,
+}: {
+  slot: string;
+  selected: string;
+  onSelect: (slot: string) => void;
+}) {
+  const isSelected = selected === slot;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(slot)}
+      className={cn(
+        "rounded-xl px-2 py-2 text-body-sm font-medium border transition-colors min-h-[44px]",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        !isSelected &&
+          "border-outline-variant bg-white text-on-surface hover:border-primary/40 hover:bg-primary/5",
+        isSelected && "border-primary bg-primary text-white shadow-sm"
+      )}
+      aria-pressed={isSelected}
+    >
+      {formatTime12h(slot)}
+    </button>
+  );
+}
+
+function HourlySlotAccordion({
   periodSlots,
   selected,
   onSelect,
@@ -35,6 +67,17 @@ function SlotGrid({
   selected: string;
   onSelect: (slot: string) => void;
 }) {
+  const hourGroups = useMemo(() => groupSlotsByHour(periodSlots), [periodSlots]);
+  const [expandedHour, setExpandedHour] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (selected) {
+      setExpandedHour(hourForSlot(selected));
+      return;
+    }
+    setExpandedHour(firstHourWithSlots(hourGroups));
+  }, [hourGroups, selected]);
+
   if (periodSlots.length === 0) {
     return (
       <p className="text-body-sm text-on-surface-variant py-4">
@@ -44,40 +87,64 @@ function SlotGrid({
   }
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-      {periodSlots.map((slot) => {
-        const isSelected = selected === slot;
+    <div className="space-y-2">
+      {hourGroups.map((group) => {
+        const isExpanded = expandedHour === group.hour;
+        const timesLabel = group.slots.length === 1 ? "1 time" : `${group.slots.length} times`;
+
         return (
-          <button
-            key={slot}
-            type="button"
-            onClick={() => onSelect(slot)}
-            className={cn(
-              "rounded-xl px-3 py-2 text-body-sm font-medium border transition-colors min-h-[44px]",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              !isSelected &&
-                "border-outline-variant text-on-surface hover:border-primary/40 hover:bg-primary/5",
-              isSelected && "border-primary bg-primary text-white shadow-sm"
-            )}
-            aria-pressed={isSelected}
+          <div
+            key={group.hour}
+            className="rounded-xl border border-outline-variant bg-white overflow-hidden"
           >
-            {formatTime12h(slot)}
-          </button>
+            <button
+              type="button"
+              onClick={() => setExpandedHour(isExpanded ? null : group.hour)}
+              className={cn(
+                "flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors min-h-[52px]",
+                "hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+              )}
+              aria-expanded={isExpanded}
+            >
+              <span className="text-body-sm font-semibold text-on-surface">
+                {group.label}
+              </span>
+              <span className="flex items-center gap-2 shrink-0">
+                <span className="text-body-sm text-on-surface-variant">{timesLabel}</span>
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-on-surface-variant" aria-hidden />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-on-surface-variant" aria-hidden />
+                )}
+              </span>
+            </button>
+
+            {isExpanded && (
+              <div className="border-t border-outline-variant px-4 pb-4 pt-3">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                  {group.slots.map((slot) => (
+                    <SlotButton
+                      key={slot}
+                      slot={slot}
+                      selected={selected}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         );
       })}
     </div>
   );
 }
 
-function LoadingGrid() {
+function LoadingAccordion() {
   return (
-    <div
-      className="grid grid-cols-3 sm:grid-cols-4 gap-2"
-      aria-label="Loading time slots"
-      role="status"
-    >
-      {Array.from({ length: 12 }).map((_, i) => (
-        <Skeleton key={i} className="h-11 rounded-xl" />
+    <div className="space-y-2" aria-label="Loading time slots" role="status">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <Skeleton key={i} className="h-[52px] w-full rounded-xl" />
       ))}
     </div>
   );
@@ -115,7 +182,7 @@ export function TimeSlotPicker({
       )}
 
       {loading ? (
-        <LoadingGrid />
+        <LoadingAccordion />
       ) : slots.length === 0 ? (
         <p className="text-body-sm text-on-surface-variant">
           No slots available for this date.
@@ -135,8 +202,8 @@ export function TimeSlotPicker({
                 className="min-h-9 px-3 py-1.5 text-body-sm"
               >
                 {SLOT_PERIOD_LABELS[period]}
-                <span className="ml-1 text-on-surface-variant data-active:text-inherit">
-                  · {groups[period].length}
+                <span className="ml-1 text-on-surface-variant">
+                  {groups[period].length}
                 </span>
               </TabsTrigger>
             ))}
@@ -144,7 +211,7 @@ export function TimeSlotPicker({
 
           {availablePeriods.map((period) => (
             <TabsContent key={period} value={period} className="mt-0">
-              <SlotGrid
+              <HourlySlotAccordion
                 periodSlots={groups[period]}
                 selected={selected}
                 onSelect={onSelect}
