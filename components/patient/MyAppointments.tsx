@@ -17,6 +17,10 @@ import {
   type QueueStatusVariant,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isValidRef } from "@/lib/utils";
+
+type LookupMethod = "phone" | "reference";
 
 type Appointment = {
   checkinId: string;
@@ -50,15 +54,29 @@ const STATUS_VARIANT: Record<string, QueueStatusVariant> = {
 const TERMINAL_STATUSES = ["cancelled", "completed", "no_show"];
 
 export function MyAppointments() {
+  const [lookupMethod, setLookupMethod] = useState<LookupMethod>("phone");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
+  const [reference, setReference] = useState("");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patientName, setPatientName] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [cancelRef, setCancelRef] = useState<string | null>(null);
 
-  async function lookup() {
+  function resetResults() {
+    setSearched(false);
+    setAppointments([]);
+    setPatientName("");
+  }
+
+  function handleLookupMethodChange(method: string) {
+    if (method !== "phone" && method !== "reference") return;
+    setLookupMethod(method);
+    resetResults();
+  }
+
+  async function lookupByPhone() {
     if (!phone || !dob) {
       toast.error("Please enter both phone number and date of birth.");
       return;
@@ -80,6 +98,39 @@ export function MyAppointments() {
     }
   }
 
+  async function lookupByReference() {
+    const ref = reference.trim();
+    if (!ref) {
+      toast.error("Please enter your reference number.");
+      return;
+    }
+    if (!isValidRef(ref)) {
+      toast.error("Invalid reference format.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/appointments?reference=${encodeURIComponent(ref)}`);
+      const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
+      setAppointments(data.appointments ?? []);
+      setPatientName(data.patientName ?? "");
+    } catch {
+      toast.error("Unable to load appointments. Please check your connection.");
+      setAppointments([]);
+    } finally {
+      setLoading(false);
+      setSearched(true);
+    }
+  }
+
+  async function lookup() {
+    if (lookupMethod === "phone") {
+      await lookupByPhone();
+    } else {
+      await lookupByReference();
+    }
+  }
+
   async function confirmCancel(ref: string) {
     setCancelRef(null);
     try {
@@ -96,25 +147,57 @@ export function MyAppointments() {
       <CareqCard className="overflow-hidden">
         <CareqCardHeader
           title="Look Up Appointments"
-          description="Enter your phone and date of birth"
+          description={
+            lookupMethod === "phone"
+              ? "Enter your phone and date of birth"
+              : "Enter the reference code from your booking confirmation"
+          }
         />
         <div className="px-6 py-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-            <div>
-              <FormLabel>Phone Number</FormLabel>
-              <FormInput
-                type="tel"
-                inputMode="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="09XXXXXXXXX"
-              />
-            </div>
-            <div>
-              <FormLabel>Date of Birth</FormLabel>
-              <FormInput type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
-            </div>
-          </div>
+          <Tabs value={lookupMethod} onValueChange={handleLookupMethodChange}>
+            <TabsList className="mb-4 w-full">
+              <TabsTrigger value="phone" className="flex-1">
+                By Phone &amp; DOB
+              </TabsTrigger>
+              <TabsTrigger value="reference" className="flex-1">
+                By Reference
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="phone">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <FormLabel>Phone Number</FormLabel>
+                  <FormInput
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="09XXXXXXXXX"
+                  />
+                </div>
+                <div>
+                  <FormLabel>Date of Birth</FormLabel>
+                  <FormInput type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="reference">
+              <div className="mb-4">
+                <FormLabel>Reference Number</FormLabel>
+                <FormInput
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="APT..."
+                  className="font-mono"
+                  autoCapitalize="characters"
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
+
           <CareqButton onClick={lookup} disabled={loading} className="w-full">
             <ClipboardList className="h-4 w-4" />
             {loading ? "Looking up..." : "Look Up Appointments"}

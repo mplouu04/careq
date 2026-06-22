@@ -73,6 +73,60 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
   };
 }
 
+export async function lookupAppointmentByReference(reference: string) {
+  const supabase = createAdminClient();
+
+  const { data } = await supabase
+    .from("checkins")
+    .select(
+      `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
+       appointment_types(name),
+       staff:doctor_id(first_name, last_name),
+       patients(first_name, last_name)`
+    )
+    .eq("reference_number", reference)
+    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+    .maybeSingle();
+
+  if (!data) {
+    return { appointments: [], patientId: null, patientName: "" };
+  }
+
+  const patientRaw = data.patients as unknown;
+  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
+    | { first_name: string; last_name: string }
+    | null
+    | undefined;
+  const doctorRaw = data.staff as unknown;
+  const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
+    | { first_name: string; last_name: string }
+    | null
+    | undefined;
+  const typeRaw = data.appointment_types as unknown;
+  const apptType = (Array.isArray(typeRaw) ? typeRaw[0] : typeRaw) as
+    | { name: string }
+    | null
+    | undefined;
+  const apptDate = data.appointment_date ? new Date(data.appointment_date) : null;
+
+  return {
+    appointments: [
+      {
+        checkinId: data.checkin_id,
+        reference: data.reference_number,
+        date: apptDate ? format(apptDate, "MMMM d, yyyy") : "",
+        time: data.scheduled_time ? formatTime12h(data.scheduled_time.slice(0, 5)) : "",
+        doctor: doctor ? `Dr. ${doctor.first_name} ${doctor.last_name}` : "",
+        type: apptType?.name ?? "",
+        reason: data.reason ?? "",
+        status: data.status,
+      },
+    ],
+    patientId: data.patient_id != null ? String(data.patient_id) : null,
+    patientName: patient ? `${patient.first_name} ${patient.last_name}` : "",
+  };
+}
+
 export async function cancelAppointment(
   reference: string,
   phone: string,

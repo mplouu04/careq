@@ -10,17 +10,40 @@ import {
   bookAppointment,
   cancelAppointment,
   listStaffAppointments,
+  lookupAppointmentByReference,
   lookupPatientAppointments,
   staffUpdateAppointment,
 } from "@/lib/services/appointment.service";
+import { isValidRef, sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/appointments — staff list or patient self-lookup (?phone=&dob=) */
+/** GET /api/appointments — staff list or patient self-lookup (?phone=&dob= or ?reference=) */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const reference = searchParams.get("reference");
   const phone = searchParams.get("phone");
   const dob = searchParams.get("dob");
+
+  if (reference) {
+    return withRateLimit(
+      "patient_lookup",
+      async () => {
+        const ref = sanitize(reference, 30);
+        if (!isValidRef(ref)) {
+          return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
+        }
+        const result = await lookupAppointmentByReference(ref);
+        return NextResponse.json({
+          success: true,
+          appointments: result.appointments,
+          patientId: result.patientId,
+          patientName: result.patientName,
+        });
+      },
+      { max: 10, windowSeconds: 60, failClosed: true }
+    )(request);
+  }
 
   if (phone && dob) {
     return withRateLimit(

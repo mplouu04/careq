@@ -62,3 +62,7 @@ export const PatientLookupSchema = z.object({
   phone: z.string().min(1),
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
+
+export const ReferenceLookupSchema = z.object({
+  reference: z.string().min(3).max(30).regex(/^[A-Za-z0-9\-]+$/),
+});
