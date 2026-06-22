@@ -84,6 +84,9 @@ export type Database = {
           id: number;
           name: string;
           duration: number;
+          buffer_minutes: number;
+          max_concurrent: number;
+          default_priority: string;
           description: string | null;
           is_active: boolean;
         };

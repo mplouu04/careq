@@ -1,5 +1,10 @@
-import { formatInTimeZone, fromZonedTime } from "date-fns-tz";
+import { formatInTimeZone, fromZonedTime, toZonedTime } from "date-fns-tz";
 import { TIMEZONE } from "@/lib/constants";
+
+/** Current date/time as a Date whose local fields reflect the clinic timezone */
+export function getClinicNow(): Date {
+  return toZonedTime(new Date(), TIMEZONE);
+}
 
 /** Today's date YYYY-MM-DD in clinic timezone */
 export function getClinicTodayYmd(): string {

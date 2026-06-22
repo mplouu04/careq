@@ -1,12 +1,12 @@
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CHECKIN_TYPE } from "@/lib/constants";
+import { CHECKIN_TYPE, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
 import { normalizePhone, phonesMatchLast7 } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient } from "@/lib/services/patient.service";
-import { format } from "date-fns";
+import { addDays, format, parseISO } from "date-fns";
 
 export async function lookupPatientAppointments(phone: string, dob: string) {
   const supabase = createAdminClient();
@@ -153,6 +153,18 @@ export async function bookAppointment(body: {
   }
 
   const appointmentDate = body.appointmentDate;
+  const today = getClinicTodayYmd();
+  if (appointmentDate < today) {
+    return { error: "Appointment date cannot be in the past.", status: 400 as const };
+  }
+  const maxDate = format(addDays(parseISO(today), MAX_ADVANCE_BOOKING_DAYS), "yyyy-MM-dd");
+  if (appointmentDate > maxDate) {
+    return {
+      error: `Appointments can only be booked up to ${MAX_ADVANCE_BOOKING_DAYS} days in advance.`,
+      status: 400 as const,
+    };
+  }
+
   const timeRaw = body.appointmentTime.trim();
   const timeParts = timeRaw.replace(/[^0-9:]/g, "").split(":");
   const timeNorm =
@@ -163,10 +175,11 @@ export async function bookAppointment(body: {
   const appTypeId = String(body.appointmentType);
   const { data: apptTypeRow } = await supabase
     .from("appointment_types")
-    .select("duration")
+    .select("duration, buffer_minutes, default_priority, max_concurrent")
     .eq("id", appTypeId)
     .maybeSingle();
   const durationMinutes = apptTypeRow?.duration ?? 30;
+  const priority = apptTypeRow?.default_priority ?? "normal";
 
   const availableSlots = await getDoctorAvailableSlots(doctorId, appointmentDate, durationMinutes);
   if (!availableSlots.includes(timeNorm)) {
@@ -246,6 +259,12 @@ export async function bookAppointment(body: {
     }
   }
 
+  const { count: noShowCount } = await supabase
+    .from("checkins")
+    .select("checkin_id", { count: "exact", head: true })
+    .eq("patient_id", patientId)
+    .eq("status", "no_show");
+
   const isDuplicate = await hasDuplicateActiveAppointment(
     patientId,
     doctorId,
@@ -271,6 +290,7 @@ export async function bookAppointment(body: {
     timeNorm,
     reason,
     consentAppt,
+    priority,
   });
 
   if ("error" in checkin) {
@@ -284,6 +304,7 @@ export async function bookAppointment(body: {
     patient_created: patientCreated,
     patient_reused: patientReused,
     matched_by: matchedBy,
+    no_show_count: noShowCount ?? 0,
   };
 }
 
@@ -295,6 +316,7 @@ async function insertAppointmentCheckin(params: {
   timeNorm: string;
   reason: string | null;
   consentAppt: boolean;
+  priority: string;
 }) {
   const supabase = createAdminClient();
 
@@ -313,6 +335,7 @@ async function insertAppointmentCheckin(params: {
         reference_number: ref,
         type_id: CHECKIN_TYPE.APPOINTMENT,
         status: "pending",
+        priority: params.priority,
       })
       .select("checkin_id, reference_number")
       .single();
