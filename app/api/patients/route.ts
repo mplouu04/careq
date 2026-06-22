@@ -30,7 +30,7 @@ export const GET = withRateLimit(
       return NextResponse.json({ error: message }, { status: 500 });
     }
   },
-  { max: 20, windowSeconds: 60, failClosed: true }
+  { max: 30, windowSeconds: 60, failClosed: true }
 );
 
 /** POST /api/patients — register a new patient or return an existing match */

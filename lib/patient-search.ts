@@ -28,5 +28,5 @@ export function minSearchLength(term: string): boolean {
   const t = term.trim();
   if (!t) return false;
   if (isDigitsOnly(t)) return t.length >= 1;
-  return t.length >= 3;
+  return t.length >= 2;
 }

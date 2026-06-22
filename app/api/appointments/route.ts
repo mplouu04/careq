@@ -115,18 +115,21 @@ function staffUpdateHandler(body: {
   checkinId: number;
   status: "confirm" | "cancel" | "no_show";
 }) {
-  return withStaffAuth(async (request: Request) => {
-    const staffSession = (request as Request & { staffSession?: { userId: string } }).staffSession;
-    const result = await staffUpdateAppointment({
-      checkinId: body.checkinId,
-      status: body.status,
-      userId: staffSession!.userId,
-      ip: getClientIp(request),
-    });
+  return withStaffAuth(
+    async (request: Request) => {
+      const staffSession = (request as Request & { staffSession?: { userId: string } }).staffSession;
+      const result = await staffUpdateAppointment({
+        checkinId: body.checkinId,
+        status: body.status,
+        userId: staffSession!.userId,
+        ip: getClientIp(request),
+      });
 
-    if (!("success" in result)) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
-    }
-    return NextResponse.json({ success: true, status: result.status });
-  });
+      if (!("success" in result)) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json({ success: true, status: result.status });
+    },
+    ["admin"]
+  );
 }

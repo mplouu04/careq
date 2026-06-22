@@ -30,7 +30,7 @@ export function LoginForm() {
     try {
       const fd = new FormData(e.currentTarget);
       const supabase = createClient();
-      const { error: authError } = await supabase.auth.signInWithPassword({
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: fd.get("email") as string,
         password: fd.get("password") as string,
       });
@@ -42,6 +42,26 @@ export function LoginForm() {
         }
         return;
       }
+
+      const user = authData.user;
+      if (!user) {
+        setError("Password is incorrect or user not found.");
+        return;
+      }
+
+      const metadataInactive = user.app_metadata?.staff_active === false;
+      const { data: staffRow } = await supabase
+        .from("staff")
+        .select("is_active")
+        .eq("id", user.id)
+        .maybeSingle<{ is_active: boolean }>();
+
+      if (metadataInactive || staffRow?.is_active === false) {
+        await supabase.auth.signOut();
+        setError("Your account has been deactivated. Contact your clinic administrator.");
+        return;
+      }
+
       router.push(redirect);
       router.refresh();
     } catch (err) {

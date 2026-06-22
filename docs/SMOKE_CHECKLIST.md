@@ -196,9 +196,12 @@
 Migration is **complete** only when ALL of the following are true:
 
 - [ ] All 16 checklist sections pass (0 failures, 0 skips)
-- [ ] `npm test` — 49/49 automated tests pass
+- [ ] `npm test` — 91/91 automated tests pass
 - [ ] `npm run build` — exits 0 with no errors
+- [ ] `npm run test:e2e` — 9/9 public page smoke tests pass
 - [ ] No known regressions, missing features, or behavior mismatches vs. legacy CAREQ
+
+See [`docs/MIGRATION_PARITY.md`](MIGRATION_PARITY.md) for the full parity matrix and verification record.
 
 **Signed off by:** ___________________  
 **Date:** ___________________

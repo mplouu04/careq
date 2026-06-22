@@ -5,31 +5,29 @@
  * Pure unit tests — no DB / HTTP.
  */
 import { describe, it, expect } from "vitest";
+import { phonesMatchLast7 } from "../lib/phone";
 
 // ─── Phone last-7-digit matching (cancel / lookup) ──────────────────────────
 
-function last7(phone: string): string {
-  const digits = phone.replace(/\D/g, "");
-  return digits.slice(-7);
-}
-
-describe("Phone last-7 matching (cancel / patient_lookup)", () => {
+describe("phonesMatchLast7 (cancel / patient_lookup)", () => {
   it("matches when last 7 digits are the same", () => {
-    const stored = "09171234567";
-    const incoming = "1234567";
-    expect(last7(stored)).toBe(last7(incoming));
+    expect(phonesMatchLast7("09171234567", "1234567")).toBe(true);
   });
 
   it("matches when leading digits differ but last 7 match", () => {
-    const stored = "09171234567";
-    const incoming = "09001234567";
-    expect(last7(stored)).toBe(last7(incoming));
+    expect(phonesMatchLast7("09171234567", "09001234567")).toBe(true);
+  });
+
+  it("matches formatted numbers with punctuation", () => {
+    expect(phonesMatchLast7("0917-123-4567", "+63 917 123 4567")).toBe(true);
   });
 
   it("does not match on different last 7", () => {
-    const stored = "09171234567";
-    const incoming = "09171234568";
-    expect(last7(stored)).not.toBe(last7(incoming));
+    expect(phonesMatchLast7("09171234567", "09171234568")).toBe(false);
+  });
+
+  it("does not match when incoming has fewer than 7 digits", () => {
+    expect(phonesMatchLast7("09171234567", "123456")).toBe(false);
   });
 });
 

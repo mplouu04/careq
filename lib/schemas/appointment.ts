@@ -8,7 +8,7 @@ export const CancelAppointmentSchema = z.object({
 
 export const StaffUpdateAppointmentSchema = z.object({
   action: z.literal("staff_update"),
-  checkinId: z.number().int().positive(),
+  checkinId: z.coerce.number().int().positive(),
   status: z.enum(["confirm", "cancel", "no_show"]),
 });
 

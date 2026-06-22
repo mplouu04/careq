@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { logAudit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
+import { getClientIp } from "@/lib/rate-limit";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
@@ -219,6 +221,23 @@ export async function POST(request: Request) {
       .in("id", toComplete)
       .select("id");
     updated = data?.length ?? 0;
+
+    if (data?.length) {
+      const ip = getClientIp(request);
+      const userId = auth.session.userId;
+      await Promise.all(
+        data.map((row) =>
+          logAudit({
+            userId,
+            action: "queue_auto_complete",
+            tableName: "queue",
+            recordId: row.id,
+            newValues: { status: "completed", reason: "stale_20min" },
+            ipAddress: ip,
+          })
+        )
+      );
+    }
   }
 
   return NextResponse.json({ success: true, updated_records: updated });

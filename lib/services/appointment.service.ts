@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE } from "@/lib/constants";
-import { normalizePhone } from "@/lib/phone";
+import { normalizePhone, phonesMatchLast7 } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";
@@ -10,19 +10,21 @@ import { format } from "date-fns";
 
 export async function lookupPatientAppointments(phone: string, dob: string) {
   const supabase = createAdminClient();
-  const phoneNorm = normalizePhone(phone);
 
   const { data: patients } = await supabase
     .from("patients")
-    .select("id, first_name, last_name")
-    .eq("date_of_birth", dob)
-    .eq("phone_normalized", phoneNorm);
+    .select("id, first_name, last_name, phone, phone_normalized")
+    .eq("date_of_birth", dob);
 
-  if (!patients?.length) {
+  const matched = (patients ?? []).filter((p) =>
+    phonesMatchLast7(p.phone_normalized ?? p.phone ?? "", phone)
+  );
+
+  if (!matched.length) {
     return { appointments: [], patientId: null, patientName: "" };
   }
 
-  const ids = patients.map((p) => p.id);
+  const ids = matched.map((p) => p.id);
   const today = getClinicTodayYmd();
 
   const { data } = await supabase
@@ -66,8 +68,8 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
 
   return {
     appointments,
-    patientId: patients[0]?.id ?? null,
-    patientName: patients[0] ? `${patients[0].first_name} ${patients[0].last_name}` : "",
+    patientId: matched[0]?.id ?? null,
+    patientName: matched[0] ? `${matched[0].first_name} ${matched[0].last_name}` : "",
   };
 }
 
@@ -98,9 +100,7 @@ export async function cancelAppointment(
     phone: string;
     phone_normalized: string | null;
   };
-  const stored = normalizePhone(patient?.phone_normalized ?? patient?.phone ?? "");
-  const incoming = normalizePhone(phone);
-  if (stored !== incoming) {
+  if (!phonesMatchLast7(patient?.phone_normalized ?? patient?.phone ?? "", phone)) {
     return { error: "Phone number does not match.", status: 403 as const };
   }
 

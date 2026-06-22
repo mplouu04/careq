@@ -163,6 +163,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   }, []);
 
   const refreshDashboard = useCallback(async () => {
+    fetch("/api/queue/public", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto: true }),
+    }).catch(() => {});
     await Promise.all([loadQueue(), loadStats()]);
   }, [loadQueue, loadStats]);
 

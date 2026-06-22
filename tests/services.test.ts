@@ -21,6 +21,10 @@ vi.mock("@/lib/staff-metadata", () => ({
   syncStaffMetadata: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/datetime", () => ({
+  getClinicTodayYmd: () => "2026-06-06",
+}));
+
 function chain(resolved: { data?: unknown; error?: unknown; count?: number }) {
   const builder: Record<string, unknown> = {};
   const self = () => builder;
@@ -80,6 +84,101 @@ describe("appointment.service cancelAppointment", () => {
     const result = await cancelAppointment("APT20260610001", "09999999999");
 
     expect(result).toEqual({ error: "Phone number does not match.", status: 403 });
+  });
+
+  it("cancels when last 7 digits match (legacy parity)", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: {
+            checkin_id: 1,
+            status: "pending",
+            patients: { phone: "09171234567", phone_normalized: "09171234567" },
+          },
+        })
+      )
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { cancelAppointment } = await import("../lib/services/appointment.service");
+    const result = await cancelAppointment("APT20260610001", "1234567");
+
+    expect(result).toEqual({ success: true });
+  });
+});
+
+describe("appointment.service lookupPatientAppointments", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns appointments when last 7 digits match", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: [
+            {
+              id: "p1",
+              first_name: "Jane",
+              last_name: "Doe",
+              phone: "09171234567",
+              phone_normalized: "09171234567",
+            },
+            {
+              id: "p2",
+              first_name: "Other",
+              last_name: "Person",
+              phone: "09998887777",
+              phone_normalized: "09998887777",
+            },
+          ],
+        })
+      )
+      .mockReturnValueOnce(
+        chain({
+          data: [
+            {
+              checkin_id: 10,
+              reference_number: "APT20260610001",
+              scheduled_time: "09:00:00",
+              appointment_date: "2026-06-10T09:00:00",
+              status: "pending",
+              reason: null,
+              appointment_types: { name: "Consultation" },
+              staff: { first_name: "John", last_name: "Smith" },
+            },
+          ],
+        })
+      );
+
+    const { lookupPatientAppointments } = await import("../lib/services/appointment.service");
+    const result = await lookupPatientAppointments("1234567", "1990-01-01");
+
+    expect(result.patientId).toBe("p1");
+    expect(result.patientName).toBe("Jane Doe");
+    expect(result.appointments).toHaveLength(1);
+    expect(result.appointments[0].reference).toBe("APT20260610001");
+  });
+
+  it("returns empty when last 7 digits do not match any patient with DOB", async () => {
+    mockFrom.mockReturnValueOnce(
+      chain({
+        data: [
+          {
+            id: "p1",
+            first_name: "Jane",
+            last_name: "Doe",
+            phone: "09171234567",
+            phone_normalized: "09171234567",
+          },
+        ],
+      })
+    );
+
+    const { lookupPatientAppointments } = await import("../lib/services/appointment.service");
+    const result = await lookupPatientAppointments("9999999", "1990-01-01");
+
+    expect(result).toEqual({ appointments: [], patientId: null, patientName: "" });
+    expect(mockFrom).toHaveBeenCalledTimes(1);
   });
 });
 

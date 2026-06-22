@@ -31,7 +31,10 @@ export function withRateLimit(
     const ip = getClientIp(request);
     const allowed = await checkRateLimit(action, ip, max, windowSeconds, failClosed);
     if (!allowed) {
-      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: { "Retry-After": String(windowSeconds) } }
+      );
     }
     return handler(request, context);
   };
