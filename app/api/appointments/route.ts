@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { getClientIp } from "@/lib/rate-limit";
 import { withRateLimit, withStaffAuth } from "@/lib/api/with-auth";
-import { parseJsonBody } from "@/lib/api/parse-body";
 import {
   BookAppointmentSchema,
   CancelAppointmentSchema,
@@ -82,9 +81,12 @@ export async function POST(request: Request) {
 
   return withRateLimit(
     "patient_schedule",
-    async (req: Request) => {
-      const parsed = await parseJsonBody(req, BookAppointmentSchema);
-      if ("error" in parsed) return parsed.error;
+    async () => {
+      const parsed = BookAppointmentSchema.safeParse(raw);
+      if (!parsed.success) {
+        const message = parsed.error.issues[0]?.message ?? "Invalid input";
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
 
       const result = await bookAppointment(parsed.data);
       if ("error" in result && !("success" in result)) {
