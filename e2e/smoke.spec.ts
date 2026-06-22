@@ -32,12 +32,33 @@ test.describe("Public pages smoke", () => {
 
   test("my appointments page has lookup form", async ({ page }) => {
     await page.goto("/my-appointments");
-    await expect(page.locator('input[type="date"], input[name="dob"]').first()).toBeVisible();
+    await expect(page.getByRole("tablist", { name: /lookup method/i })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /phone number/i })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /date of birth/i })).toBeVisible();
+    await page.getByRole("tab", { name: /by reference/i }).click();
+    await expect(page.getByRole("textbox", { name: /reference number/i })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: /phone number/i })).toHaveCount(0);
   });
 
   test("queue status lookup page loads", async ({ page }) => {
     await page.goto("/status");
     await expect(page.getByRole("button", { name: /check status|status/i })).toBeVisible();
+  });
+
+  test("appointments booking page loads", async ({ page }) => {
+    await page.goto("/appointments");
+    await expect(page.getByRole("heading", { name: /book an appointment/i })).toBeVisible();
+  });
+
+  test("queue display board loads", async ({ page }) => {
+    await page.goto("/queue");
+    await expect(page.getByRole("heading", { name: /now serving/i })).toBeVisible();
+  });
+
+  test("login page loads staff sign-in form", async ({ page }) => {
+    await page.goto("/login");
+    await expect(page.getByRole("heading", { name: /staff portal/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /login/i })).toBeVisible();
   });
 
   test("health API responds with status payload", async ({ request }) => {
@@ -52,6 +73,12 @@ test.describe("Public pages smoke", () => {
 test.describe("Staff auth gate", () => {
   test("dashboard redirects unauthenticated users to login", async ({ page }) => {
     await page.goto("/dashboard");
+    await page.waitForURL(/login/);
+    expect(page.url()).toContain("/login");
+  });
+
+  test("admin redirects unauthenticated users to login", async ({ page }) => {
+    await page.goto("/admin");
     await page.waitForURL(/login/);
     expect(page.url()).toContain("/login");
   });

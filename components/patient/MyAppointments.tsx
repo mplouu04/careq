@@ -82,6 +82,7 @@ export function MyAppointments() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [cancelRef, setCancelRef] = useState<string | null>(null);
+  const [cancelPhone, setCancelPhone] = useState("");
 
   function resetResults() {
     setSearched(false);
@@ -150,10 +151,21 @@ export function MyAppointments() {
     }
   }
 
+  function openCancelDialog(ref: string) {
+    setCancelRef(ref);
+    setCancelPhone("");
+  }
+
   async function confirmCancel(ref: string) {
+    const phoneForCancel =
+      lookupMethod === "phone" ? phone.trim() : cancelPhone.trim();
+    if (!phoneForCancel) {
+      toast.error("Please enter your registered phone number to confirm cancellation.");
+      return;
+    }
     setCancelRef(null);
     try {
-      await appointmentApi.cancel(ref, phone);
+      await appointmentApi.cancel(ref, phoneForCancel);
       toast.success("Appointment cancelled.");
       await lookup();
     } catch (err) {
@@ -306,7 +318,7 @@ export function MyAppointments() {
                       type="button"
                       variant="outline"
                       className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => setCancelRef(a.reference)}
+                      onClick={() => openCancelDialog(a.reference)}
                     >
                       Cancel Appointment
                     </Button>
@@ -320,7 +332,12 @@ export function MyAppointments() {
 
       <ConfirmDialog
         open={!!cancelRef}
-        onOpenChange={(open) => !open && setCancelRef(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCancelRef(null);
+            setCancelPhone("");
+          }
+        }}
         title="Cancel Appointment"
         description={
           cancelRef
@@ -329,7 +346,13 @@ export function MyAppointments() {
         }
         footer={
           <>
-            <Button variant="outline" onClick={() => setCancelRef(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelRef(null);
+                setCancelPhone("");
+              }}
+            >
               Go Back
             </Button>
             <Button
@@ -340,7 +363,25 @@ export function MyAppointments() {
             </Button>
           </>
         }
-      />
+      >
+        {lookupMethod === "reference" && cancelRef && (
+          <div className="min-w-0">
+            <FormLabel htmlFor="cancel-phone">Registered Phone Number</FormLabel>
+            <FormInput
+              id="cancel-phone"
+              type="tel"
+              inputMode="tel"
+              value={cancelPhone}
+              onChange={(e) => setCancelPhone(e.target.value)}
+              placeholder="09XX XXX XXXX"
+              autoComplete="tel"
+            />
+            <p className="text-body-sm text-on-surface-variant mt-1.5">
+              Enter the phone number on file to verify this cancellation.
+            </p>
+          </div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }

@@ -77,7 +77,7 @@ export function CheckinForm() {
           setRefLookupError("");
         } else {
           setRefLookup(null);
-          setRefLookupError("Reference not found.");
+          setRefLookupError("No appointment found with this reference.");
         }
       } catch {
         setRefLookup(null);

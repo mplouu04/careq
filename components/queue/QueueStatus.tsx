@@ -112,7 +112,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       <div className="max-w-md mx-auto">
         <CareqCard className="p-6 text-center">
           <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-          <p className="text-headline-sm text-on-surface mb-1">Not found</p>
+          <p className="text-headline-sm text-on-surface mb-1">Queue entry not found</p>
           <p className="text-body-sm text-on-surface-variant mb-4 font-mono-careq">{refNumber}</p>
           <Link href="/status" className="text-primary hover:underline text-body-sm">
             Check another number

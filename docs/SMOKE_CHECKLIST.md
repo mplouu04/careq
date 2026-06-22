@@ -75,15 +75,18 @@
 
 | # | Step | Expected | Pass/Fail |
 |---|------|----------|-----------|
-| 6.1 | Navigate to `/my-appointments` | Phone + DOB form | |
+| 6.1 | Navigate to `/my-appointments` | Lookup card with tabs: "By Phone & DOB" (default) and "By Reference" | |
 | 6.2 | Submit with non-matching phone/DOB | Empty appointments list | |
 | 6.3 | Submit with correct phone + DOB | Patient name greeting; list of active appointments | |
 | 6.4 | Each appointment shows: reference, date, time, doctor, type, reason, status badge | Matches legacy field set | |
 | 6.5 | `checked_in` appointment shows badge "Confirmed" (not "checked_in") | Label mapping correct | |
 | 6.6 | Click "Cancel Appointment" on pending appointment | Confirmation modal shown | |
-| 6.7 | Confirm cancel | Status changes to Cancelled; entry refreshes | |
+| 6.7 | Confirm cancel (phone lookup) | Status changes to Cancelled; entry refreshes | |
 | 6.8 | Try to cancel already-cancelled appointment | Error: "This appointment cannot be cancelled." | |
 | 6.9 | Rate limited at 5 cancel requests/60s | 6th cancel returns 429 | |
+| 6.10 | Switch to "By Reference" tab | Reference field shown; phone/DOB fields hidden (no overlap) | |
+| 6.11 | Enter valid `APT…` reference → Look Up | Correct appointment returned with patient name greeting | |
+| 6.12 | Reference lookup → Cancel → enter registered phone → confirm | Appointment cancelled; list refreshes to Cancelled | |
 
 ## 7. Public — Queue Board (TV)
 

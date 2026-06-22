@@ -86,7 +86,7 @@ describe("appointment.service cancelAppointment", () => {
     expect(result).toEqual({ error: "Phone number does not match.", status: 403 });
   });
 
-  it("cancels when last 7 digits match (legacy parity)", async () => {
+  it("cancels by reference when phone verified at cancel time (reference lookup flow)", async () => {
     mockFrom
       .mockReturnValueOnce(
         chain({
@@ -179,6 +179,55 @@ describe("appointment.service lookupPatientAppointments", () => {
 
     expect(result).toEqual({ appointments: [], patientId: null, patientName: "" });
     expect(mockFrom).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("appointment.service lookupAppointmentByReference", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns empty when reference not found", async () => {
+    mockFrom.mockReturnValue(chain({ data: null }));
+
+    const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
+    const result = await lookupAppointmentByReference("APT-MISSING");
+
+    expect(result).toEqual({ appointments: [], patientId: null, patientName: "" });
+  });
+
+  it("returns a single appointment with patient name for valid reference", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: {
+          checkin_id: 10,
+          reference_number: "APT20260610001",
+          scheduled_time: "09:00:00",
+          appointment_date: "2026-06-10T09:00:00",
+          status: "pending",
+          reason: "Follow-up",
+          patient_id: 42,
+          appointment_types: { name: "Consultation" },
+          staff: { first_name: "John", last_name: "Smith" },
+          patients: { first_name: "Jane", last_name: "Doe" },
+        },
+      })
+    );
+
+    const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
+    const result = await lookupAppointmentByReference("APT20260610001");
+
+    expect(result.patientId).toBe("42");
+    expect(result.patientName).toBe("Jane Doe");
+    expect(result.appointments).toHaveLength(1);
+    expect(result.appointments[0]).toMatchObject({
+      checkinId: 10,
+      reference: "APT20260610001",
+      doctor: "Dr. John Smith",
+      type: "Consultation",
+      reason: "Follow-up",
+      status: "pending",
+    });
   });
 });
 

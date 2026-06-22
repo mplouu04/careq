@@ -197,6 +197,9 @@ export async function toggleStaffActive(params: {
       role: current.role as StaffRole,
       isActive: newActive,
     });
+    await supabase.auth.admin.updateUserById(params.id, {
+      ban_duration: newActive ? "none" : "876000h",
+    });
   }
 
   await logAudit({

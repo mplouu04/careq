@@ -171,6 +171,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
             )}
           </div>
           <div
+            data-testid="queue-clock"
             className={cn("font-mono shrink-0 tabular-nums", tvMode ? "text-3xl" : "text-xl")}
           >
             {timeStr}
@@ -256,7 +257,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
             tvMode ? "text-xl text-zinc-100" : "text-headline-sm text-on-surface"
           )}
         >
-          Up next
+          Upcoming
           {waiting.length > 0 && (
             <span className="ml-2 text-primary font-mono-careq">({waiting.length})</span>
           )}
