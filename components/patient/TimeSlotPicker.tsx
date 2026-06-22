@@ -13,7 +13,6 @@ import {
   type SlotPeriod,
 } from "@/lib/slot-groups";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function formatTime12h(t: string): string {
   const [hStr, mStr] = t.split(":");
@@ -170,8 +169,11 @@ export function TimeSlotPicker({
 
   useEffect(() => {
     const first = firstPeriodWithSlots(groups);
-    if (first) setActivePeriod(first);
-  }, [groups, dateLabel]);
+    if (!first) return;
+    setActivePeriod((current) =>
+      availablePeriods.includes(current) ? current : first
+    );
+  }, [groups, dateLabel, availablePeriods]);
 
   return (
     <div>
@@ -188,37 +190,36 @@ export function TimeSlotPicker({
           No slots available for this date.
         </p>
       ) : (
-        <Tabs
-          value={activePeriod}
-          onValueChange={(value) => {
-            if (value) setActivePeriod(value as SlotPeriod);
-          }}
-        >
-          <TabsList className="w-full sm:w-auto h-auto flex-wrap gap-1 p-1 mb-4">
-            {availablePeriods.map((period) => (
-              <TabsTrigger
-                key={period}
-                value={period}
-                className="min-h-9 px-3 py-1.5 text-body-sm"
-              >
-                {SLOT_PERIOD_LABELS[period]}
-                <span className="ml-1 text-on-surface-variant">
-                  {groups[period].length}
-                </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+        <>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {availablePeriods.map((period) => {
+              const isActive = activePeriod === period;
+              return (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() => setActivePeriod(period)}
+                  className={cn(
+                    "rounded-full px-4 py-2 text-body-sm font-medium border transition-colors min-h-[40px]",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    !isActive &&
+                      "border-outline-variant text-on-surface hover:border-primary/40 hover:bg-primary/5",
+                    isActive && "border-primary bg-primary text-white shadow-sm"
+                  )}
+                  aria-pressed={isActive}
+                >
+                  {SLOT_PERIOD_LABELS[period]} · {groups[period].length}
+                </button>
+              );
+            })}
+          </div>
 
-          {availablePeriods.map((period) => (
-            <TabsContent key={period} value={period} className="mt-0">
-              <HourlySlotAccordion
-                periodSlots={groups[period]}
-                selected={selected}
-                onSelect={onSelect}
-              />
-            </TabsContent>
-          ))}
-        </Tabs>
+          <HourlySlotAccordion
+            periodSlots={groups[activePeriod]}
+            selected={selected}
+            onSelect={onSelect}
+          />
+        </>
       )}
     </div>
   );
