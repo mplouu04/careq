@@ -4,11 +4,10 @@ import { appointmentApi } from "@/lib/api/client";
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ClipboardList } from "lucide-react";
+import { Calendar, ClipboardList } from "lucide-react";
 import {
   CareqCard,
   CareqButton,
-  CareqCardHeader,
   ConfirmDialog,
   EmptyState,
   FormLabel,
@@ -51,6 +50,25 @@ const STATUS_VARIANT: Record<string, QueueStatusVariant> = {
   completed: "completed",
 };
 
+const LOOKUP_TAB_TRIGGER_CLASS =
+  "flex-1 h-full rounded-lg border-0 py-2.5 text-body-sm font-medium text-[#6B7280] shadow-none transition-all data-active:bg-white data-active:text-[#111827] data-active:font-semibold data-active:shadow-sm hover:text-[#111827]";
+
+function formatDobInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function parseDobInput(value: string): string | null {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, dd, mm, yyyy] = match;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 const TERMINAL_STATUSES = ["cancelled", "completed", "no_show"];
 
 export function MyAppointments() {
@@ -77,14 +95,15 @@ export function MyAppointments() {
   }
 
   async function lookupByPhone() {
-    if (!phone || !dob) {
+    const isoDob = parseDobInput(dob);
+    if (!phone || !isoDob) {
       toast.error("Please enter both phone number and date of birth.");
       return;
     }
     setLoading(true);
     try {
       const res = await fetch(
-        `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${dob}`
+        `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${isoDob}`
       );
       const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
       setAppointments(data.appointments ?? []);
@@ -145,27 +164,28 @@ export function MyAppointments() {
   return (
     <div className="space-y-5 max-w-xl">
       <CareqCard className="overflow-hidden">
-        <CareqCardHeader
-          title="Look Up Appointments"
-          description={
-            lookupMethod === "phone"
-              ? "Enter your phone and date of birth"
-              : "Enter the reference code from your booking confirmation"
-          }
-        />
-        <div className="px-6 py-5">
+        <div className="px-6 py-5 space-y-5">
+          <div>
+            <h3 className="text-headline-sm text-on-surface">Look Up Appointments</h3>
+            <p className="text-body-sm text-on-surface-variant mt-0.5">
+              {lookupMethod === "phone"
+                ? "Enter your phone and date of birth"
+                : "Enter your appointment reference number"}
+            </p>
+          </div>
+
           <Tabs value={lookupMethod} onValueChange={handleLookupMethodChange}>
-            <TabsList className="mb-4 w-full">
-              <TabsTrigger value="phone" className="flex-1">
+            <TabsList className="mb-0 h-11 w-full rounded-xl bg-[#F3F4F6] p-1">
+              <TabsTrigger value="phone" className={LOOKUP_TAB_TRIGGER_CLASS}>
                 By Phone &amp; DOB
               </TabsTrigger>
-              <TabsTrigger value="reference" className="flex-1">
+              <TabsTrigger value="reference" className={LOOKUP_TAB_TRIGGER_CLASS}>
                 By Reference
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="phone">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+            <TabsContent value="phone" className="mt-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <FormLabel>Phone Number</FormLabel>
                   <FormInput
@@ -173,25 +193,39 @@ export function MyAppointments() {
                     inputMode="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="09XXXXXXXXX"
+                    placeholder="09XX XXX XXXX"
                   />
                 </div>
                 <div>
                   <FormLabel>Date of Birth</FormLabel>
-                  <FormInput type="date" value={dob} onChange={(e) => setDob(e.target.value)} />
+                  <div className="relative">
+                    <FormInput
+                      type="text"
+                      inputMode="numeric"
+                      value={dob}
+                      onChange={(e) => setDob(formatDobInput(e.target.value))}
+                      placeholder="dd/mm/yyyy"
+                      maxLength={10}
+                      className="pr-10"
+                    />
+                    <Calendar
+                      className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant"
+                      aria-hidden
+                    />
+                  </div>
                 </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="reference">
-              <div className="mb-4">
+            <TabsContent value="reference" className="mt-5">
+              <div>
                 <FormLabel>Reference Number</FormLabel>
                 <FormInput
                   type="text"
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                   placeholder="APT..."
-                  className="font-mono"
+                  className="font-mono tracking-wide"
                   autoCapitalize="characters"
                 />
               </div>
