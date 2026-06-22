@@ -140,8 +140,8 @@ export function PatientSearch() {
       <CareqCard className="overflow-hidden w-full">
         <div className="px-5 sm:px-6 py-5 space-y-4">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 sm:gap-4 sm:items-end">
-              <div className="sm:col-span-1">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+              <div className="flex-1 min-w-0">
                 <FormLabel htmlFor={`${formId}-term`} required>
                   Search term
                 </FormLabel>
@@ -153,7 +153,7 @@ export function PatientSearch() {
                   <FormInput
                     id={`${formId}-term`}
                     type="search"
-                    placeholder="Name, phone, or patient #"
+                    placeholder="Name, phone, or ID"
                     value={term}
                     onChange={(e) => {
                       setTerm(e.target.value);
@@ -168,11 +168,8 @@ export function PatientSearch() {
                     className="pl-9"
                   />
                 </div>
-                <FormHelperText id={termHintId}>
-                  2+ letters or phone digits.
-                </FormHelperText>
               </div>
-              <div>
+              <div className="w-full sm:w-auto sm:min-w-[11.5rem]">
                 <FormLabel htmlFor={`${formId}-dob`}>
                   Date of birth{" "}
                   <span className="text-on-surface-variant font-normal">(optional)</span>
@@ -189,7 +186,7 @@ export function PatientSearch() {
               <CareqButton
                 type="button"
                 className={cn(
-                  "w-full sm:w-auto min-h-[44px] cursor-pointer shrink-0",
+                  "w-full sm:w-auto min-h-11 cursor-pointer shrink-0",
                   "sm:min-w-[8.5rem]"
                 )}
                 disabled={loading}
@@ -200,6 +197,9 @@ export function PatientSearch() {
                 {loading ? "Searching…" : "Search"}
               </CareqButton>
             </div>
+            <FormHelperText id={termHintId}>
+              2+ letters or phone digits.
+            </FormHelperText>
 
             {showValidation && validationMessage && <FormError message={validationMessage} />}
 
