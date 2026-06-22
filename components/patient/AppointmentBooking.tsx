@@ -35,6 +35,7 @@ import { CareqButton } from "@/components/careq/careq-button";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "@/components/careq/step-indicator";
+import { TimeSlotPicker } from "@/components/patient/TimeSlotPicker";
 
 type Doctor = { id: string; first_name: string; last_name: string };
 type ApptType = { id: string; name: string; duration: number };
@@ -562,39 +563,13 @@ export function AppointmentBooking() {
 
           {state.date && (
             <div className="mt-8">
-              <h3 className="text-headline-sm text-on-surface mb-4">
-                Available times — {format(parseYmd(state.date), "EEEE, MMM d")}
-              </h3>
-              {slotsLoading ? (
-                <Skeleton className="h-10 w-full max-w-xs" aria-label="Loading time slots" />
-              ) : slots.length === 0 ? (
-                <p className="text-body-sm text-on-surface-variant">
-                  No slots available for this date.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {slots.map((slot) => {
-                    const selected = state.time === slot;
-                    return (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => patch({ time: slot })}
-                        className={cn(
-                          "rounded-full px-4 py-2 text-body-sm font-medium border transition-colors min-h-[44px]",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                          !selected &&
-                            "border-primary/30 text-on-surface hover:bg-primary/10",
-                          selected && "border-primary bg-primary text-white"
-                        )}
-                        aria-pressed={selected}
-                      >
-                        {formatTime12h(slot)}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <TimeSlotPicker
+                slots={slots}
+                selected={state.time}
+                onSelect={(slot) => patch({ time: slot })}
+                dateLabel={format(parseYmd(state.date), "EEEE, MMM d")}
+                loading={slotsLoading}
+              />
             </div>
           )}
 
