@@ -34,6 +34,8 @@ describe("patient-search helpers", () => {
     expect(minSearchLength("a")).toBe(false);
     expect(minSearchLength("ab")).toBe(true);
     expect(minSearchLength("ann")).toBe(true);
-    expect(minSearchLength("5")).toBe(true);
+    expect(minSearchLength("5")).toBe(false);
+    expect(minSearchLength("123")).toBe(false);
+    expect(minSearchLength("1234")).toBe(true);
   });
 });

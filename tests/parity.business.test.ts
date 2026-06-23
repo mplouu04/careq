@@ -201,6 +201,7 @@ describe("Rate limit config matches legacy pqms_rate_limit", () => {
     patient_lookup: { max: 10, window: 60 },
     patient_search: { max: 30, window: 60 },
     patient_schedule: { max: 30, window: 60 },
+    patient_verify: { max: 5, window: 60 },
   };
 
   it("patient_search allows 30/60s", () => {
@@ -214,6 +215,11 @@ describe("Rate limit config matches legacy pqms_rate_limit", () => {
 
   it("patient_register allows 10/60s", () => {
     expect(RATE_LIMITS.patient_register.max).toBe(10);
+  });
+
+  it("patient_verify allows 5/60s with failure lockout", () => {
+    expect(RATE_LIMITS.patient_verify.max).toBe(5);
+    expect(RATE_LIMITS.patient_verify.window).toBe(60);
   });
 });
 

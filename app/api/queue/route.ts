@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
+import { maskPatientName } from "@/lib/services/patient.service";
 import { format } from "date-fns";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { normalizeQueueRef } from "@/lib/queue-ref";
@@ -21,6 +22,29 @@ async function getRoomNameMap(): Promise<Map<number, string>> {
 function resolveRoomName(roomId: number | null | undefined, roomMap: Map<number, string>): string {
   if (roomId == null) return "";
   return roomMap.get(Number(roomId)) ?? `Room ${roomId}`;
+}
+
+function maskCheckinPatient(checkin: Record<string, unknown>): Record<string, unknown> {
+  const patientRaw = checkin.patients;
+  if (!patientRaw) return checkin;
+  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
+    | { first_name: string; last_name: string }
+    | null
+    | undefined;
+  if (!patient) return checkin;
+  return {
+    ...checkin,
+    patients: { name: maskPatientName(patient.first_name, patient.last_name) },
+  };
+}
+
+function maskQueueEntryPatient<T extends Record<string, unknown>>(entry: T): T {
+  const checkinsRaw = entry.checkins;
+  if (!checkinsRaw) return entry;
+  const maskedCheckins = Array.isArray(checkinsRaw)
+    ? checkinsRaw.map((c) => maskCheckinPatient(c as Record<string, unknown>))
+    : maskCheckinPatient(checkinsRaw as Record<string, unknown>);
+  return { ...entry, checkins: maskedCheckins };
 }
 
 /**
@@ -112,7 +136,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      queue: entry,
+      queue: maskQueueEntryPatient(entry as Record<string, unknown>),
       position,
       patients_ahead: patientsAhead,
       est_wait_minutes: estWaitMinutes,

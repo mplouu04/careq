@@ -5,7 +5,7 @@ import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
-import { resolveExistingPatient } from "@/lib/services/patient.service";
+import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
 import { addDays, format, parseISO } from "date-fns";
 
 export async function lookupPatientAppointments(phone: string, dob: string) {
@@ -13,7 +13,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
 
   const { data: patients } = await supabase
     .from("patients")
-    .select("id, first_name, last_name, phone, phone_normalized")
+    .select("id, public_id, first_name, last_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
 
   const matched = (patients ?? []).filter((p) =>
@@ -21,7 +21,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
   );
 
   if (!matched.length) {
-    return { appointments: [], patientId: null, patientName: "" };
+    return { appointments: [], publicId: null, patientName: "" };
   }
 
   const ids = matched.map((p) => p.id);
@@ -68,7 +68,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
 
   return {
     appointments,
-    patientId: matched[0]?.id ?? null,
+    publicId: matched[0]?.public_id ?? null,
     patientName: matched[0] ? `${matched[0].first_name} ${matched[0].last_name}` : "",
   };
 }
@@ -82,19 +82,19 @@ export async function lookupAppointmentByReference(reference: string) {
       `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
        appointment_types(name),
        staff:doctor_id(first_name, last_name),
-       patients(first_name, last_name)`
+       patients(first_name, last_name, public_id)`
     )
     .eq("reference_number", reference)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .maybeSingle();
 
   if (!data) {
-    return { appointments: [], patientId: null, patientName: "" };
+    return { appointments: [], publicId: null, patientName: "" };
   }
 
   const patientRaw = data.patients as unknown;
   const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-    | { first_name: string; last_name: string }
+    | { first_name: string; last_name: string; public_id: string }
     | null
     | undefined;
   const doctorRaw = data.staff as unknown;
@@ -122,7 +122,7 @@ export async function lookupAppointmentByReference(reference: string) {
         status: data.status,
       },
     ],
-    patientId: data.patient_id != null ? String(data.patient_id) : null,
+    publicId: patient?.public_id ?? null,
     patientName: patient ? `${patient.first_name} ${patient.last_name}` : "",
   };
 }
@@ -244,6 +244,7 @@ export async function bookAppointment(body: {
   }
 
   let patientId: string;
+  let patientPublicId: string;
   let patientCreated = false;
   let patientReused = false;
   let matchedBy: string | null = null;
@@ -251,15 +252,21 @@ export async function bookAppointment(body: {
   const patientIdRaw = String(body.patient_id ?? "").trim();
 
   if (patientIdRaw) {
+    const resolvedId = await resolvePatientIdFromRef(patientIdRaw);
+    if (resolvedId == null) {
+      return { error: "Patient not found.", status: 400 as const };
+    }
+
     const { data: pCheck } = await supabase
       .from("patients")
-      .select("id")
-      .eq("id", patientIdRaw)
+      .select("id, public_id")
+      .eq("id", resolvedId)
       .maybeSingle();
     if (!pCheck) {
       return { error: "Patient not found.", status: 400 as const };
     }
-    patientId = patientIdRaw;
+    patientId = String(pCheck.id);
+    patientPublicId = pCheck.public_id;
   } else {
     const phoneDigits = normalizePhone(body.phone ?? "");
     if (phoneDigits.length !== 11) {
@@ -279,6 +286,7 @@ export async function bookAppointment(body: {
 
     if (existing) {
       patientId = existing.id;
+      patientPublicId = existing.public_id;
       patientReused = true;
       matchedBy = existing.matched_by;
     } else {
@@ -295,7 +303,7 @@ export async function bookAppointment(body: {
           email: emailNorm,
           consent: Boolean(body.consent),
         })
-        .select("id")
+        .select("id, public_id")
         .single();
 
       if (pErr) {
@@ -309,6 +317,7 @@ export async function bookAppointment(body: {
         return { error: "Failed to create patient record", status: 500 as const };
       }
       patientId = String(newPatient!.id);
+      patientPublicId = newPatient!.public_id;
       patientCreated = true;
     }
   }
@@ -354,7 +363,7 @@ export async function bookAppointment(body: {
   return {
     success: true as const,
     appointmentID: checkin!.reference_number,
-    patient_id: patientId,
+    publicId: patientPublicId,
     patient_created: patientCreated,
     patient_reused: patientReused,
     matched_by: matchedBy,

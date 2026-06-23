@@ -37,7 +37,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
           success: true,
           appointments: result.appointments,
-          patientId: result.patientId,
+          publicId: result.publicId,
           patientName: result.patientName,
         });
       },
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
         return NextResponse.json({
           success: true,
           appointments: result.appointments,
-          patientId: result.patientId,
+          publicId: result.publicId,
           patientName: result.patientName,
         });
       },
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         success: true,
         appointmentID: result.appointmentID,
-        patient_id: result.patient_id,
+        publicId: result.publicId,
         patient_created: result.patient_created,
         patient_reused: result.patient_reused,
         matched_by: result.matched_by,

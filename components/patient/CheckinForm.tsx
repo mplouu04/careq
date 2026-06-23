@@ -30,7 +30,7 @@ type AppointmentPreview = {
 
 export function CheckinForm() {
   const params = useSearchParams();
-  const patientId = params.get("patientId");
+  const verifyToken = params.get("verifyToken");
 
   const [types, setTypes] = useState<ApptType[]>([]);
   const [apptType, setApptType] = useState("");
@@ -49,8 +49,8 @@ export function CheckinForm() {
     const mode = params.get("tab") ?? params.get("mode");
     if (mode === "appointment") setActiveTab("appointment");
     else if (mode === "walk-in" || mode === "walkin") setActiveTab("walk-in");
-    else if (patientId) setActiveTab("walk-in");
-  }, [params, patientId]);
+    else if (verifyToken) setActiveTab("walk-in");
+  }, [params, verifyToken]);
 
   useEffect(() => {
     fetch("/api/appointment-types")
@@ -90,8 +90,8 @@ export function CheckinForm() {
   }, [ref]);
 
   async function walkInCheckin() {
-    if (!patientId) {
-      setError("Search or register first.");
+    if (!verifyToken) {
+      setError("Verify your identity first.");
       return;
     }
     if (!apptType || !reason.trim() || !termsAgreed) {
@@ -105,7 +105,7 @@ export function CheckinForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         type: "walk-in",
-        patientId,
+        verifyToken,
         appointmentType: apptType,
         additionalinfo: reason,
         termsAgreement: "on",
@@ -177,11 +177,11 @@ export function CheckinForm() {
         </button>
         <button
           type="button"
-          disabled={!patientId}
-          onClick={() => patientId && setActiveTab("walk-in")}
+          disabled={!verifyToken}
+          onClick={() => verifyToken && setActiveTab("walk-in")}
           className={cn(
             tabClass("walk-in"),
-            !patientId && "text-on-surface-variant/50 cursor-not-allowed"
+            !verifyToken && "text-on-surface-variant/50 cursor-not-allowed"
           )}
         >
           Walk-in
@@ -232,10 +232,10 @@ export function CheckinForm() {
 
         {activeTab === "walk-in" && (
           <div className="space-y-4">
-            {!patientId && (
+            {!verifyToken && (
               <FormWarning>
                 <Link href="/patient-search" className="text-primary hover:underline">
-                  Search
+                  Verify your identity
                 </Link>{" "}
                 or{" "}
                 <Link href="/registration" className="text-primary hover:underline">
@@ -283,7 +283,7 @@ export function CheckinForm() {
             <CareqButton
               type="button"
               className="w-full cursor-pointer"
-              disabled={loading || !patientId || !apptType}
+              disabled={loading || !verifyToken || !apptType}
               onClick={walkInCheckin}
             >
               {loading ? "Checking in…" : "Check in"}

@@ -8,7 +8,7 @@ export default function PatientSearchPage() {
       <PatientFlowBreadcrumb flow="search" />
       <PageHeader
         title="Find your profile"
-        subtitle="Search, then check in or book."
+        subtitle="Enter your date of birth and phone number to verify your identity."
         backHref="/visit"
       />
       <PatientSearch />

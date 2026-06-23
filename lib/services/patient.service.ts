@@ -1,4 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { CheckinError } from "@/lib/counters";
+import { phonesMatchLast7 } from "@/lib/phone";
 import {
   escapePostgrestValue,
   ilikePattern,
@@ -7,8 +9,32 @@ import {
   splitSearchTokens,
 } from "@/lib/patient-search";
 
+const PATIENT_PUBLIC_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isPatientPublicId(value: string): boolean {
+  return PATIENT_PUBLIC_ID_RE.test(value.trim());
+}
+
+/** Resolves a public UUID or internal integer id to the patients.id row. */
+export async function resolvePatientIdFromRef(ref: string): Promise<number | null> {
+  const trimmed = ref.trim();
+  if (!trimmed) return null;
+
+  const supabase = createAdminClient();
+  const column = isPatientPublicId(trimmed) ? "public_id" : "id";
+  const { data } = await supabase
+    .from("patients")
+    .select("id")
+    .eq(column, trimmed)
+    .maybeSingle();
+
+  return data?.id ?? null;
+}
+
 export type PatientRow = {
   id: number;
+  public_id: string;
   first_name: string;
   last_name: string;
   date_of_birth: string;
@@ -24,35 +50,54 @@ export async function resolveExistingPatient(params: {
   dob: string;
   phoneNorm: string;
   emailNorm: string | null;
-}): Promise<{ id: string; matched_by: string } | null> {
+}): Promise<{ id: string; public_id: string; matched_by: string } | null> {
   const supabase = createAdminClient();
+  const select = "id, public_id";
 
   if (params.phoneNorm) {
     const { data } = await supabase
       .from("patients")
-      .select("id")
+      .select(select)
       .eq("phone_normalized", params.phoneNorm)
       .maybeSingle();
-    if (data) return { id: String(data.id), matched_by: "phone" };
+    if (data) {
+      return {
+        id: String(data.id),
+        public_id: data.public_id,
+        matched_by: "phone",
+      };
+    }
   }
 
   if (params.emailNorm) {
     const { data } = await supabase
       .from("patients")
-      .select("id")
+      .select(select)
       .eq("email", params.emailNorm)
       .maybeSingle();
-    if (data) return { id: String(data.id), matched_by: "email" };
+    if (data) {
+      return {
+        id: String(data.id),
+        public_id: data.public_id,
+        matched_by: "email",
+      };
+    }
   }
 
   const { data } = await supabase
     .from("patients")
-    .select("id")
+    .select(select)
     .ilike("first_name", params.firstName)
     .ilike("last_name", params.lastName)
     .eq("date_of_birth", params.dob)
     .maybeSingle();
-  if (data) return { id: String(data.id), matched_by: "name_dob" };
+  if (data) {
+    return {
+      id: String(data.id),
+      public_id: data.public_id,
+      matched_by: "name_dob",
+    };
+  }
 
   return null;
 }
@@ -60,7 +105,7 @@ export async function resolveExistingPatient(params: {
 export async function searchPatients(term: string, dob: string): Promise<PatientRow[]> {
   const supabase = createAdminClient();
   const select =
-    "id, first_name, last_name, date_of_birth, phone, gender, address, created_at";
+    "id, public_id, first_name, last_name, date_of_birth, phone, gender, address, created_at";
   const seen = new Map<number, PatientRow>();
 
   const addRows = (rows: PatientRow[] | null) => {
@@ -128,6 +173,7 @@ export async function searchPatients(term: string, dob: string): Promise<Patient
 export function mapPatient(p: PatientRow) {
   return {
     id: p.id,
+    public_id: p.public_id,
     first_name: p.first_name,
     last_name: p.last_name,
     dob: p.date_of_birth,
@@ -135,6 +181,102 @@ export function mapPatient(p: PatientRow) {
     gender: p.gender,
     address: p.address,
     created_at: p.created_at,
+  };
+}
+
+/** Public-safe patient fields — no phone, DOB, gender, or address. */
+export type PatientVerifyResult =
+  | { matched: true; firstName: string; verifyToken: string }
+  | { matched: false };
+
+async function createPatientSession(
+  patientId: number,
+  ip?: string | null
+): Promise<string> {
+  const supabase = createAdminClient();
+  const { data: session, error } = await supabase
+    .from("patient_sessions")
+    .insert({
+      patient_id: patientId,
+      ...(ip ? { ip } : {}),
+    })
+    .select("token")
+    .single();
+
+  if (error || !session) {
+    throw new Error(error?.message ?? "Failed to create verification session");
+  }
+
+  return session.token as string;
+}
+
+/** Validates a walk-in verify token and marks it used (single-use). */
+export async function consumePatientVerifyToken(
+  verifyToken: string
+): Promise<number> {
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: session, error } = await supabase
+    .from("patient_sessions")
+    .update({ used: true })
+    .eq("token", verifyToken)
+    .eq("used", false)
+    .gt("expires_at", now)
+    .select("patient_id")
+    .maybeSingle();
+
+  if (error) {
+    throw new CheckinError(error.message, 500);
+  }
+
+  if (!session) {
+    throw new CheckinError("Invalid or expired verification token", 403);
+  }
+
+  return session.patient_id as number;
+}
+
+export async function verifyPatientByDobAndPhone(
+  dob: string,
+  phoneLast7: string,
+  ip?: string | null
+): Promise<PatientVerifyResult> {
+  const supabase = createAdminClient();
+
+  const { data: patients } = await supabase
+    .from("patients")
+    .select("id, first_name, phone, phone_normalized")
+    .eq("date_of_birth", dob);
+
+  const matched = (patients ?? []).filter((p) =>
+    phonesMatchLast7(p.phone_normalized ?? p.phone ?? "", phoneLast7)
+  );
+
+  if (!matched.length) {
+    return { matched: false };
+  }
+
+  const patient = matched[0];
+  const verifyToken = await createPatientSession(patient.id, ip);
+
+  return {
+    matched: true,
+    firstName: patient.first_name,
+    verifyToken,
+  };
+}
+
+export function mapPublicVerification(
+  p: PatientRow,
+  verifyToken?: string
+) {
+  return {
+    publicId: p.public_id,
+    first_name: p.first_name,
+    last_name: p.last_name,
+    firstName: p.first_name,
+    ...(verifyToken !== undefined ? { verifyToken } : {}),
   };
 }
 
@@ -189,11 +331,13 @@ export async function registerPatient(body: RegisterPatientInput) {
   });
 
   if (existing) {
+    const verifyToken = await createPatientSession(Number(existing.id));
     return {
       success: true as const,
-      patient: existing.id,
+      patient: existing.public_id,
       reused_existing: true,
       matched_by: existing.matched_by,
+      verifyToken,
       message:
         "We matched your details to an existing patient profile. No new record was created.",
     };
@@ -212,7 +356,7 @@ export async function registerPatient(body: RegisterPatientInput) {
       address,
       consent: body.consent === "on" || Boolean(body.consent),
     })
-    .select("id")
+    .select("id, public_id")
     .single();
 
   if (error) {
@@ -226,9 +370,12 @@ export async function registerPatient(body: RegisterPatientInput) {
     return { error: error.message, status: 500 as const };
   }
 
+  const verifyToken = await createPatientSession(data.id);
+
   return {
     success: true as const,
-    patient: data.id,
+    patient: data.public_id,
     reused_existing: false,
+    verifyToken,
   };
 }

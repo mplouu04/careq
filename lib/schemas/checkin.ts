@@ -6,7 +6,7 @@ export const AppointmentCheckinSchema = z.object({
 
 export const WalkInCheckinSchema = z.object({
   type: z.literal("walk-in"),
-  patientId: z.union([z.string(), z.number()]),
+  verifyToken: z.string().uuid(),
   appointmentType: z.union([z.string(), z.number()]),
   additionalinfo: z.string().min(1),
   termsAgreement: z.union([z.boolean(), z.string(), z.literal("on")]),

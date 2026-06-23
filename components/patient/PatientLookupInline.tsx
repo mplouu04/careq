@@ -26,11 +26,11 @@ export function PatientLookupInline() {
         `/api/appointments?${new URLSearchParams({ phone, dob })}`
       );
       const data = res.ok ? await res.json() : {};
-      if (!data.patientId) {
+      if (!data.publicId) {
         setError("No profile found. Search or register first.");
         return;
       }
-      router.replace(`/appointments?patientId=${data.patientId}`, { scroll: false });
+      router.replace(`/appointments?publicId=${data.publicId}`, { scroll: false });
     } catch {
       setError("Lookup failed. Check your connection.");
     } finally {

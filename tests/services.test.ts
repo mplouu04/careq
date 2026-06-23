@@ -41,6 +41,7 @@ function chain(resolved: { data?: unknown; error?: unknown; count?: number }) {
     "gte",
     "lte",
     "lt",
+    "gt",
     "order",
     "limit",
     "maybeSingle",
@@ -118,6 +119,7 @@ describe("appointment.service lookupPatientAppointments", () => {
           data: [
             {
               id: "p1",
+              public_id: "550e8400-e29b-41d4-a716-446655440001",
               first_name: "Jane",
               last_name: "Doe",
               phone: "09171234567",
@@ -125,6 +127,7 @@ describe("appointment.service lookupPatientAppointments", () => {
             },
             {
               id: "p2",
+              public_id: "550e8400-e29b-41d4-a716-446655440002",
               first_name: "Other",
               last_name: "Person",
               phone: "09998887777",
@@ -153,7 +156,7 @@ describe("appointment.service lookupPatientAppointments", () => {
     const { lookupPatientAppointments } = await import("../lib/services/appointment.service");
     const result = await lookupPatientAppointments("1234567", "1990-01-01");
 
-    expect(result.patientId).toBe("p1");
+    expect(result.publicId).toBe("550e8400-e29b-41d4-a716-446655440001");
     expect(result.patientName).toBe("Jane Doe");
     expect(result.appointments).toHaveLength(1);
     expect(result.appointments[0].reference).toBe("APT20260610001");
@@ -163,13 +166,14 @@ describe("appointment.service lookupPatientAppointments", () => {
     mockFrom.mockReturnValueOnce(
       chain({
         data: [
-          {
-            id: "p1",
-            first_name: "Jane",
-            last_name: "Doe",
-            phone: "09171234567",
-            phone_normalized: "09171234567",
-          },
+            {
+              id: "p1",
+              public_id: "550e8400-e29b-41d4-a716-446655440001",
+              first_name: "Jane",
+              last_name: "Doe",
+              phone: "09171234567",
+              phone_normalized: "09171234567",
+            },
         ],
       })
     );
@@ -177,7 +181,7 @@ describe("appointment.service lookupPatientAppointments", () => {
     const { lookupPatientAppointments } = await import("../lib/services/appointment.service");
     const result = await lookupPatientAppointments("9999999", "1990-01-01");
 
-    expect(result).toEqual({ appointments: [], patientId: null, patientName: "" });
+    expect(result).toEqual({ appointments: [], publicId: null, patientName: "" });
     expect(mockFrom).toHaveBeenCalledTimes(1);
   });
 });
@@ -193,7 +197,7 @@ describe("appointment.service lookupAppointmentByReference", () => {
     const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
     const result = await lookupAppointmentByReference("APT-MISSING");
 
-    expect(result).toEqual({ appointments: [], patientId: null, patientName: "" });
+    expect(result).toEqual({ appointments: [], publicId: null, patientName: "" });
   });
 
   it("returns a single appointment with patient name for valid reference", async () => {
@@ -209,7 +213,11 @@ describe("appointment.service lookupAppointmentByReference", () => {
           patient_id: 42,
           appointment_types: { name: "Consultation" },
           staff: { first_name: "John", last_name: "Smith" },
-          patients: { first_name: "Jane", last_name: "Doe" },
+          patients: {
+            first_name: "Jane",
+            last_name: "Doe",
+            public_id: "550e8400-e29b-41d4-a716-446655440099",
+          },
         },
       })
     );
@@ -217,7 +225,7 @@ describe("appointment.service lookupAppointmentByReference", () => {
     const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
     const result = await lookupAppointmentByReference("APT20260610001");
 
-    expect(result.patientId).toBe("42");
+    expect(result.publicId).toBe("550e8400-e29b-41d4-a716-446655440099");
     expect(result.patientName).toBe("Jane Doe");
     expect(result.appointments).toHaveLength(1);
     expect(result.appointments[0]).toMatchObject({
@@ -264,6 +272,174 @@ describe("queue.service callNextPatient", () => {
     });
 
     expect(result).toEqual({ error: "Failed to call patient", status: 500 });
+  });
+});
+
+describe("patient.service verifyPatientByDobAndPhone", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns matched false when no patient matches DOB and phone", async () => {
+    mockFrom.mockReturnValue(chain({ data: [] }));
+
+    const { verifyPatientByDobAndPhone } = await import(
+      "../lib/services/patient.service"
+    );
+    const result = await verifyPatientByDobAndPhone("1990-01-01", "1234567");
+
+    expect(result).toEqual({ matched: false });
+  });
+
+  it("returns firstName and verifyToken when DOB and last 7 digits match", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: [
+            {
+              id: 42,
+              first_name: "John",
+              phone: "09171234567",
+              phone_normalized: "09171234567",
+            },
+          ],
+        })
+      )
+      .mockReturnValueOnce(
+        chain({
+          data: { token: "550e8400-e29b-41d4-a716-446655440000" },
+          error: null,
+        })
+      );
+
+    const { verifyPatientByDobAndPhone } = await import(
+      "../lib/services/patient.service"
+    );
+    const result = await verifyPatientByDobAndPhone(
+      "1990-01-01",
+      "1234567",
+      "127.0.0.1"
+    );
+
+    expect(result).toEqual({
+      matched: true,
+      firstName: "John",
+      verifyToken: "550e8400-e29b-41d4-a716-446655440000",
+    });
+  });
+
+  it("filters patients by phonesMatchLast7", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: [
+            {
+              id: 1,
+              first_name: "Wrong",
+              phone: "09179999999",
+              phone_normalized: "09179999999",
+            },
+            {
+              id: 2,
+              first_name: "Jane",
+              phone: "09171234567",
+              phone_normalized: "09171234567",
+            },
+          ],
+        })
+      )
+      .mockReturnValueOnce(
+        chain({
+          data: { token: "session-token-uuid" },
+          error: null,
+        })
+      );
+
+    const { verifyPatientByDobAndPhone } = await import(
+      "../lib/services/patient.service"
+    );
+    const result = await verifyPatientByDobAndPhone("1985-05-05", "1234567");
+
+    expect(result).toEqual({
+      matched: true,
+      firstName: "Jane",
+      verifyToken: "session-token-uuid",
+    });
+  });
+});
+
+describe("patient.service consumePatientVerifyToken", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns patient_id and marks token used when valid", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: { patient_id: 42 },
+        error: null,
+      })
+    );
+
+    const { consumePatientVerifyToken } = await import(
+      "../lib/services/patient.service"
+    );
+    const patientId = await consumePatientVerifyToken(
+      "550e8400-e29b-41d4-a716-446655440000"
+    );
+
+    expect(patientId).toBe(42);
+    expect(mockFrom).toHaveBeenCalledWith("patient_sessions");
+  });
+
+  it("throws 403 when token is invalid, expired, or already used", async () => {
+    mockFrom.mockReturnValue(chain({ data: null, error: null }));
+
+    const { consumePatientVerifyToken } = await import(
+      "../lib/services/patient.service"
+    );
+
+    await expect(
+      consumePatientVerifyToken("550e8400-e29b-41d4-a716-446655440000")
+    ).rejects.toMatchObject({
+      message: "Invalid or expired verification token",
+      status: 403,
+    });
+  });
+});
+
+describe("checkin.service checkinWalkIn", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRpc.mockResolvedValue({ data: 1, error: null });
+  });
+
+  it("resolves patient from verifyToken and creates walk-in checkin", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: { patient_id: 7 },
+          error: null,
+        })
+      )
+      .mockReturnValueOnce(
+        chain({
+          data: { checkin_id: 99 },
+          error: null,
+        })
+      )
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { checkinWalkIn } = await import("../lib/services/checkin.service");
+    const result = await checkinWalkIn({
+      verifyToken: "550e8400-e29b-41d4-a716-446655440000",
+      appointmentType: 1,
+      additionalinfo: "Headache",
+      termsAgreement: true,
+    });
+
+    expect(result.queueNumber).toBeTruthy();
+    expect(result.reference).toMatch(/^WALK/);
   });
 });
 

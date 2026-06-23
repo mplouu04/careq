@@ -1,36 +1,42 @@
 import { NextResponse } from "next/server";
-import { withRateLimit } from "@/lib/api/with-auth";
+import { withRateLimit, withStaffAuth } from "@/lib/api/with-auth";
 import { parseJsonBody } from "@/lib/api/parse-body";
 import { minSearchLength } from "@/lib/patient-search";
 import { RegisterPatientSchema } from "@/lib/schemas/patient";
-import { mapPatient, registerPatient, searchPatients } from "@/lib/services/patient.service";
+import {
+  mapPatient,
+  registerPatient,
+  searchPatients,
+} from "@/lib/services/patient.service";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/patients?term=&dob= */
-export const GET = withRateLimit(
-  "patient_search",
-  async (request: Request) => {
-    const { searchParams } = new URL(request.url);
-    const term = searchParams.get("term")?.trim() ?? "";
-    const dob = searchParams.get("dob")?.trim() ?? "";
+/** GET /api/patients?term=&dob= — staff-only free-text search */
+export const GET = withStaffAuth(
+  withRateLimit(
+    "patient_search",
+    async (request: Request) => {
+      const { searchParams } = new URL(request.url);
+      const term = searchParams.get("term")?.trim() ?? "";
+      const dob = searchParams.get("dob")?.trim() ?? "";
 
-    if (!minSearchLength(term)) {
-      return NextResponse.json({ success: true, patients: [] });
-    }
+      if (!minSearchLength(term)) {
+        return NextResponse.json({ success: true, patients: [] });
+      }
 
-    try {
-      const rows = await searchPatients(term, dob);
-      return NextResponse.json({
-        success: true,
-        patients: rows.map(mapPatient),
-      });
-    } catch (e) {
-      const message = e instanceof Error ? e.message : "Search failed";
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
-  },
-  { max: 30, windowSeconds: 60, failClosed: true }
+      try {
+        const rows = await searchPatients(term, dob);
+        return NextResponse.json({
+          success: true,
+          patients: rows.map(mapPatient),
+        });
+      } catch (e) {
+        const message = e instanceof Error ? e.message : "Search failed";
+        return NextResponse.json({ error: message }, { status: 500 });
+      }
+    },
+    { max: 30, windowSeconds: 60, failClosed: true }
+  )
 );
 
 /** POST /api/patients — register a new patient or return an existing match */

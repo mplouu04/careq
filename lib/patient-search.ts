@@ -27,6 +27,6 @@ export function ilikePattern(term: string): string {
 export function minSearchLength(term: string): boolean {
   const t = term.trim();
   if (!t) return false;
-  if (isDigitsOnly(t)) return t.length >= 1;
+  if (isDigitsOnly(t)) return t.length >= 4;
   return t.length >= 2;
 }

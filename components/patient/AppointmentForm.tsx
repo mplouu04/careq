@@ -35,7 +35,7 @@ function isWeekend(dateStr: string): boolean {
 
 export function AppointmentForm() {
   const params = useSearchParams();
-  const patientId = params.get("patientId");
+  const publicId = params.get("publicId");
 
   const [today, setToday] = useState("");
   const [maxDate, setMaxDate] = useState("");
@@ -103,7 +103,7 @@ export function AppointmentForm() {
   }
 
   async function book() {
-    if (!patientId) {
+    if (!publicId) {
       toast.error("Select a patient first via patient search");
       return;
     }
@@ -122,7 +122,7 @@ export function AppointmentForm() {
         appointmentTime: time,
         termsAgreement: "on",
         reason,
-        patient_id: patientId,
+        patient_id: publicId,
       }),
     });
     const data = await res.json();
@@ -157,7 +157,7 @@ export function AppointmentForm() {
           description="Choose your doctor, type, and an available time slot."
         />
         <div className="px-6 py-5">
-          {!patientId && <PatientLookupInline />}
+          {!publicId && <PatientLookupInline />}
 
           <div className="space-y-4">
           <div>
@@ -250,7 +250,7 @@ export function AppointmentForm() {
           <CareqButton
             type="button"
             className="w-full cursor-pointer"
-            disabled={loading || !patientId || !doctorId || !appTypeId || !date || !time}
+            disabled={loading || !publicId || !doctorId || !appTypeId || !date || !time}
             onClick={book}
           >
             {loading ? "Booking..." : "Book Appointment"}

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireStaff } from "@/lib/auth";
 import type { StaffRole } from "@/lib/constants";
-import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
+import {
+  checkRateLimit,
+  getClientIp,
+  isVerificationLockedOut,
+  PATIENT_VERIFY_RATE_LIMIT,
+} from "@/lib/rate-limit";
 
 type RouteContext = { params?: Record<string, string> };
 type RouteHandler = (request: Request, context?: RouteContext) => Promise<Response>;
@@ -14,6 +19,39 @@ export function withStaffAuth(handler: RouteHandler, roles?: StaffRole[]): Route
     }
     (request as Request & { staffSession?: typeof auth.session }).staffSession =
       auth.session;
+    return handler(request, context);
+  };
+}
+
+/** Rate limit (5/min) plus lockout gate for POST /api/patient-verify. */
+export function withPatientVerifyRateLimit(handler: RouteHandler): RouteHandler {
+  return async (request, context) => {
+    const ip = getClientIp(request);
+    const lockout = await isVerificationLockedOut(ip);
+    if (lockout.locked) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: { "Retry-After": String(lockout.retryAfterSeconds) } }
+      );
+    }
+
+    const allowed = await checkRateLimit(
+      "patient_verify",
+      ip,
+      PATIENT_VERIFY_RATE_LIMIT.max,
+      PATIENT_VERIFY_RATE_LIMIT.windowSeconds,
+      true
+    );
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        {
+          status: 429,
+          headers: { "Retry-After": String(PATIENT_VERIFY_RATE_LIMIT.windowSeconds) },
+        }
+      );
+    }
+
     return handler(request, context);
   };
 }

@@ -8,7 +8,7 @@ import {
   StaffUpdateAppointmentSchema,
 } from "../lib/schemas/appointment";
 import { CheckinBodySchema } from "../lib/schemas/checkin";
-import { RegisterPatientSchema } from "../lib/schemas/patient";
+import { RegisterPatientSchema, PatientVerifySchema } from "../lib/schemas/patient";
 import { QueueActionSchema } from "../lib/schemas/queue";
 import { StaffActionSchema } from "../lib/schemas/admin";
 
@@ -114,12 +114,24 @@ describe("CheckinBodySchema", () => {
     expect(
       CheckinBodySchema.safeParse({
         type: "walk-in",
-        patientId: 1,
+        verifyToken: "550e8400-e29b-41d4-a716-446655440000",
         appointmentType: 2,
         additionalinfo: "Headache",
         termsAgreement: true,
       }).success
     ).toBe(true);
+  });
+
+  it("rejects walk-in check-in without verifyToken", () => {
+    expect(
+      CheckinBodySchema.safeParse({
+        type: "walk-in",
+        patientId: 1,
+        appointmentType: 2,
+        additionalinfo: "Headache",
+        termsAgreement: true,
+      }).success
+    ).toBe(false);
   });
 });
 
@@ -162,9 +174,94 @@ describe("StaffActionSchema", () => {
   });
 });
 
+describe("PatientVerifySchema", () => {
+  it("accepts valid dob and 7-digit phoneLast7", () => {
+    expect(
+      PatientVerifySchema.safeParse({
+        dob: "1990-01-15",
+        phoneLast7: "1234567",
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects invalid dob format", () => {
+    expect(
+      PatientVerifySchema.safeParse({
+        dob: "01-15-1990",
+        phoneLast7: "1234567",
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects phoneLast7 that is not exactly 7 digits", () => {
+    expect(
+      PatientVerifySchema.safeParse({
+        dob: "1990-01-15",
+        phoneLast7: "123456",
+      }).success
+    ).toBe(false);
+    expect(
+      PatientVerifySchema.safeParse({
+        dob: "1990-01-15",
+        phoneLast7: "12345678",
+      }).success
+    ).toBe(false);
+  });
+});
+
 describe("maskPatientName", () => {
   it("masks to initials format", async () => {
     const { maskPatientName } = await import("../lib/services/patient.service");
     expect(maskPatientName("Juan", "Dela Cruz")).toBe("J. D***");
+  });
+});
+
+describe("mapPublicVerification", () => {
+  it("omits phone, dob, gender, and address from public responses", async () => {
+    const { mapPublicVerification } = await import("../lib/services/patient.service");
+    const row = {
+      id: 42,
+      public_id: "550e8400-e29b-41d4-a716-446655440042",
+      first_name: "John",
+      last_name: "Doe",
+      date_of_birth: "1990-01-01",
+      phone: "639171234567",
+      gender: "male",
+      address: "123 Main St",
+      created_at: "2024-01-01T00:00:00Z",
+    };
+    const result = mapPublicVerification(row);
+    expect(result).toEqual({
+      publicId: "550e8400-e29b-41d4-a716-446655440042",
+      first_name: "John",
+      last_name: "Doe",
+      firstName: "John",
+    });
+    expect(result).not.toHaveProperty("phone");
+    expect(result).not.toHaveProperty("dob");
+    expect(result).not.toHaveProperty("gender");
+    expect(result).not.toHaveProperty("address");
+  });
+
+  it("includes verifyToken when provided", async () => {
+    const { mapPublicVerification } = await import("../lib/services/patient.service");
+    const row = {
+      id: 1,
+      public_id: "550e8400-e29b-41d4-a716-446655440001",
+      first_name: "Jane",
+      last_name: "Smith",
+      date_of_birth: "1985-05-05",
+      phone: "639171234567",
+      gender: "female",
+      address: "456 Oak Ave",
+      created_at: "2024-01-01T00:00:00Z",
+    };
+    expect(mapPublicVerification(row, "token-uuid")).toEqual({
+      publicId: "550e8400-e29b-41d4-a716-446655440001",
+      first_name: "Jane",
+      last_name: "Smith",
+      firstName: "Jane",
+      verifyToken: "token-uuid",
+    });
   });
 });

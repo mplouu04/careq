@@ -117,7 +117,7 @@ function doctorInitials(d: Doctor): string {
 
 export function AppointmentBooking() {
   const params = useSearchParams();
-  const patientId = params.get("patientId");
+  const publicId = params.get("publicId");
 
   const [state, setState] = useState<BookingState>(INITIAL_STATE);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
@@ -227,7 +227,7 @@ export function AppointmentBooking() {
     state.address.trim() &&
     state.consent;
 
-  const step3Valid = patientId
+  const step3Valid = publicId
     ? state.termsAgreed
     : guestDetailsValid && state.termsAgreed;
 
@@ -247,8 +247,8 @@ export function AppointmentBooking() {
         reason: state.reason.trim() || undefined,
       };
 
-      if (patientId) {
-        payload.patient_id = patientId;
+      if (publicId) {
+        payload.patient_id = publicId;
       } else {
         payload.firstName = state.fname.trim();
         payload.lastName = state.lname.trim();
@@ -356,7 +356,7 @@ export function AppointmentBooking() {
         <p className="text-body-md text-on-surface-variant mt-2">
           Choose your doctor, pick a time, and confirm your details in a few steps.
         </p>
-        {patientId && (
+        {publicId && (
           <p className="text-body-sm text-primary mt-2">
             Booking as a registered patient.
           </p>
@@ -617,7 +617,7 @@ export function AppointmentBooking() {
               />
             </div>
 
-            {!patientId && (
+            {!publicId && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -820,7 +820,7 @@ export function AppointmentBooking() {
               icon={<User className="h-4 w-4" />}
               label="Patient"
               value={
-                patientId
+                publicId
                   ? "Registered patient (pre-selected)"
                   : `${state.fname} ${state.lname} · ${state.phone}`
               }

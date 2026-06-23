@@ -77,7 +77,7 @@ test.describe("Smoke §4 — Check-In", () => {
     await expect(page.getByRole("button", { name: /walk-in/i })).toBeVisible();
   });
 
-  test("4.2 walk-in tab disabled without patientId", async ({ page }) => {
+  test("4.2 walk-in tab disabled without verifyToken", async ({ page }) => {
     await page.goto("/checkin");
     await expect(page.getByRole("button", { name: /walk-in/i })).toBeDisabled();
   });

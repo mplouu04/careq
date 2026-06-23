@@ -29,6 +29,7 @@ export type Database = {
       patients: {
         Row: {
           id: number;
+          public_id: string;
           first_name: string;
           last_name: string;
           date_of_birth: string;

@@ -34,17 +34,21 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const [address, setAddress] = useState("");
   const [consent, setConsent] = useState(false);
   const [matchedModal, setMatchedModal] = useState<{
-    patientId: string;
+    publicId: string;
+    verifyToken?: string;
     matchedBy: string;
     message: string;
   } | null>(null);
-  const [successPatientId, setSuccessPatientId] = useState<string | null>(null);
+  const [successPublicId, setSuccessPublicId] = useState<string | null>(null);
+  const [successVerifyToken, setSuccessVerifyToken] = useState<string | null>(null);
 
-  function navigateAfterRegister(patientId: string) {
+  function navigateAfterRegister(publicId: string, token?: string) {
     if (redirectTo) {
-      router.push(`${redirectTo}?patientId=${patientId}`);
+      router.push(`${redirectTo}?publicId=${publicId}`);
+    } else if (token) {
+      router.push(`/checkin?verifyToken=${encodeURIComponent(token)}`);
     } else {
-      router.push(`/checkin?patientId=${patientId}`);
+      router.push("/patient-search");
     }
   }
 
@@ -124,7 +128,8 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
 
     if (data.reused_existing) {
       setMatchedModal({
-        patientId: String(data.patient),
+        publicId: String(data.patient),
+        verifyToken: data.verifyToken,
         matchedBy: data.matched_by ?? "existing record",
         message:
           data.message ??
@@ -133,21 +138,24 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
 
-    setSuccessPatientId(String(data.patient));
+    setSuccessPublicId(String(data.patient));
+    setSuccessVerifyToken(data.verifyToken ?? null);
   }
 
-  if (successPatientId) {
+  if (successPublicId) {
     return (
       <SuccessCard
-        reference={`Patient #${successPatientId}`}
+        reference="Registered"
         message="Registration complete."
         primaryCta={{
           label: "Check in now",
-          href: `/checkin?patientId=${successPatientId}`,
+          href: successVerifyToken
+            ? `/checkin?verifyToken=${encodeURIComponent(successVerifyToken)}`
+            : "/patient-search",
         }}
         secondaryCta={{
           label: "Book appointment",
-          href: `/appointments?patientId=${successPatientId}`,
+          href: `/appointments?publicId=${successPublicId}`,
         }}
       />
     );
@@ -370,13 +378,16 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
               <Link href="/patient-search">Find Patient</Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href={`/appointments?patientId=${matchedModal?.patientId}`}>
+              <Link href={`/appointments?publicId=${matchedModal?.publicId}`}>
                 <Calendar className="h-4 w-4" />
                 Book Appointment
               </Link>
             </Button>
             <CareqButton
-              onClick={() => matchedModal && navigateAfterRegister(matchedModal.patientId)}
+              onClick={() =>
+                matchedModal &&
+                navigateAfterRegister(matchedModal.publicId, matchedModal.verifyToken)
+              }
             >
               <LogIn className="h-4 w-4" />
               Check In Today
@@ -388,7 +399,8 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
           <div className="flex items-start gap-3 rounded-lg bg-primary/5 p-3 text-body-sm text-on-surface-variant">
             <User className="h-5 w-5 text-primary shrink-0" />
             <p>
-              <strong className="text-foreground">Patient ID:</strong> {matchedModal.patientId}{" "}
+              <strong className="text-foreground">Profile reference:</strong>{" "}
+              {matchedModal.publicId.slice(0, 8)}…{" "}
               · <strong className="text-foreground">Matched by:</strong> {matchedModal.matchedBy}
             </p>
           </div>

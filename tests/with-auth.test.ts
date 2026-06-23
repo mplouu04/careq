@@ -11,6 +11,8 @@ vi.mock("react", async (importOriginal) => {
 vi.mock("@/lib/rate-limit", () => ({
   checkRateLimit: vi.fn(),
   getClientIp: vi.fn().mockReturnValue("127.0.0.1"),
+  isVerificationLockedOut: vi.fn().mockResolvedValue({ locked: false, retryAfterSeconds: 0 }),
+  PATIENT_VERIFY_RATE_LIMIT: { max: 5, windowSeconds: 60 },
 }));
 
 describe("withRateLimit", () => {
@@ -35,5 +37,24 @@ describe("withRateLimit", () => {
 
     const body = await res.json();
     expect(body).toEqual({ error: "Too many requests" });
+  });
+
+  it("returns 429 when patient-verify lockout is active", async () => {
+    const { isVerificationLockedOut } = await import("@/lib/rate-limit");
+    vi.mocked(isVerificationLockedOut).mockResolvedValue({
+      locked: true,
+      retryAfterSeconds: 600,
+    });
+
+    const { withPatientVerifyRateLimit } = await import("@/lib/api/with-auth");
+    const handler = withPatientVerifyRateLimit(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 })
+    );
+
+    const res = await handler(
+      new Request("http://localhost/api/patient-verify", { method: "POST" })
+    );
+    expect(res.status).toBe(429);
+    expect(res.headers.get("Retry-After")).toBe("600");
   });
 });

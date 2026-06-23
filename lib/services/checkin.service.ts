@@ -3,6 +3,7 @@ import { CHECKIN_TYPE, TIMEZONE } from "@/lib/constants";
 import { sanitize } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { checkinToQueue, CheckinError, nextCounter } from "@/lib/counters";
+import { consumePatientVerifyToken } from "@/lib/services/patient.service";
 
 const TERMINAL_CHECKIN = ["cancelled", "completed", "no_show"];
 
@@ -99,11 +100,13 @@ export async function checkinAppointment(appointmentId: string) {
 }
 
 export async function checkinWalkIn(body: {
-  patientId: string | number;
+  verifyToken: string;
   appointmentType: string | number;
   additionalinfo: string;
   termsAgreement: boolean | string;
 }) {
+  const patientId = await consumePatientVerifyToken(body.verifyToken);
+
   const supabase = createAdminClient();
   const counter = await nextCounter("APT_REF");
   const ref = `WALK${formatInTimeZone(new Date(), TIMEZONE, "yyyyMMdd")}${counter}`;
@@ -113,7 +116,7 @@ export async function checkinWalkIn(body: {
   const { data: checkin, error: cErr } = await supabase
     .from("checkins")
     .insert({
-      patient_id: body.patientId,
+      patient_id: patientId,
       app_type_id: body.appointmentType,
       reason: additionalInfo,
       consent,

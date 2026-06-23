@@ -110,14 +110,14 @@ async function ensureWaitingPatient() {
     },
     { auth: false }
   );
-  if (!reg.patient) return null;
+  if (!reg.patient || !reg.verifyToken) return null;
 
   const { data: ci } = await json(
     "POST",
     "/api/checkin",
     {
       type: "walk-in",
-      patientId: reg.patient,
+      verifyToken: reg.verifyToken,
       appointmentType: 1,
       additionalinfo: "Dashboard smoke",
       termsAgreement: true,

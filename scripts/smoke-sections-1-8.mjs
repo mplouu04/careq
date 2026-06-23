@@ -250,10 +250,10 @@ async function section4() {
     address: "Walk area",
     consent: true,
   });
-  if (walkPatient.patient) {
+  if (walkPatient.patient && walkPatient.verifyToken) {
     const { res: walkin, data: wi } = await json("POST", "/api/checkin", {
       type: "walk-in",
-      patientId: walkPatient.patient,
+      verifyToken: walkPatient.verifyToken,
       appointmentType: 1,
       additionalinfo: "Walk-in smoke test",
       termsAgreement: true,
