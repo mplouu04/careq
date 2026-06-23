@@ -24,6 +24,9 @@ type VerifyMatch = {
 const NO_MATCH_MESSAGE =
   "We could not find a record matching those details. Please check your information or register as a new patient.";
 
+const API_ERROR_MESSAGE =
+  "Something went wrong. Please try again.";
+
 export function PatientSearch() {
   const router = useRouter();
   const formId = useId();
@@ -37,6 +40,7 @@ export function PatientSearch() {
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [match, setMatch] = useState<VerifyMatch | null>(null);
   const [noMatch, setNoMatch] = useState(false);
+  const [apiError, setApiError] = useState(false);
 
   const phoneDigits = phoneLast7.replace(/\D/g, "");
   const dobValid = /^\d{4}-\d{2}-\d{2}$/.test(dob);
@@ -56,6 +60,7 @@ export function PatientSearch() {
     e.preventDefault();
     setSubmitAttempted(true);
     setNoMatch(false);
+    setApiError(false);
     if (!canSubmit) return;
 
     setLoading(true);
@@ -65,7 +70,13 @@ export function PatientSearch() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dob, phoneLast7: phoneDigits }),
       });
-      const data = res.ok ? await res.json() : { matched: false };
+      if (!res.ok) {
+        setMatch(null);
+        setApiError(true);
+        return;
+      }
+
+      const data = await res.json();
 
       if (data.matched && data.firstName && data.verifyToken) {
         setMatch({ firstName: data.firstName, verifyToken: data.verifyToken });
@@ -76,7 +87,7 @@ export function PatientSearch() {
       setNoMatch(true);
     } catch {
       setMatch(null);
-      setNoMatch(true);
+      setApiError(true);
     } finally {
       setLoading(false);
     }
@@ -85,6 +96,7 @@ export function PatientSearch() {
   function resetForm() {
     setMatch(null);
     setNoMatch(false);
+    setApiError(false);
     setSubmitAttempted(false);
     setDob("");
     setPhoneLast7("");
@@ -164,6 +176,7 @@ export function PatientSearch() {
                     setDob(e.target.value);
                     setSubmitAttempted(false);
                     setNoMatch(false);
+                    setApiError(false);
                   }}
                   max={new Date().toISOString().slice(0, 10)}
                   min="1900-01-01"
@@ -188,6 +201,7 @@ export function PatientSearch() {
                     setPhoneLast7(e.target.value.replace(/\D/g, "").slice(0, 7));
                     setSubmitAttempted(false);
                     setNoMatch(false);
+                    setApiError(false);
                   }}
                   required
                   aria-required="true"
@@ -205,6 +219,7 @@ export function PatientSearch() {
             </FormHelperText>
 
             {validationMessage && <FormError message={validationMessage} />}
+            {apiError && <FormError message={API_ERROR_MESSAGE} />}
             {noMatch && <FormError message={NO_MATCH_MESSAGE} />}
 
             <CareqButton

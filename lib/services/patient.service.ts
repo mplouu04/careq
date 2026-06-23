@@ -249,8 +249,10 @@ export async function verifyPatientByDobAndPhone(
     .select("id, first_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
 
-  const matched = (patients ?? []).filter((p) =>
-    phonesMatchLast7(p.phone_normalized ?? p.phone ?? "", phoneLast7)
+  const matched = (patients ?? []).filter(
+    (p) =>
+      phonesMatchLast7(p.phone || "", phoneLast7) ||
+      phonesMatchLast7(p.phone_normalized || "", phoneLast7)
   );
 
   if (!matched.length) {
