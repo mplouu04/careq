@@ -134,14 +134,14 @@ export async function isVerificationLockedOut(
     await clearVerificationFailures(ip);
     return { locked: false, retryAfterSeconds: 0 };
   } catch (err) {
-    logWarn("[rate-limit] Lockout check failed", {
+    logWarn("[rate-limit] Lockout check failed — failing open", {
       ip,
       error: err instanceof Error ? err.message : String(err),
     });
-    return {
-      locked: true,
-      retryAfterSeconds: PATIENT_VERIFY_LOCKOUT.lockoutSeconds,
-    };
+    // Fail open: if the lockout table is unavailable we cannot confirm a lockout,
+    // so we let the request through. The subsequent checkRateLimit call (with
+    // failClosed=true) still provides rate-limit protection.
+    return { locked: false, retryAfterSeconds: 0 };
   }
 }
 
