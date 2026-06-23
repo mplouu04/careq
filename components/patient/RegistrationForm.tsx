@@ -122,6 +122,9 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     setLoading(false);
 
     if (!res.ok) {
+      if (data.code === "duplicate_phone") {
+        setStep("contact");
+      }
       setError(data.error ?? "Registration failed. Please try again.");
       return;
     }

@@ -4,7 +4,6 @@ import { useState, useId } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, LogIn, User, ArrowLeft } from "lucide-react";
-import { extractPhoneLast7 } from "@/lib/phone";
 import {
   CareqCard,
   CareqButton,
@@ -69,7 +68,7 @@ export function PatientSearch() {
       const res = await fetch("/api/patient-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dob, phoneLast7: extractPhoneLast7(phoneDigits) }),
+        body: JSON.stringify({ dob, phoneLast7: phoneDigits }),
       });
       if (!res.ok) {
         setMatch(null);

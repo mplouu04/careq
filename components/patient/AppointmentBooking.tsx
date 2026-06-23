@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -154,33 +154,43 @@ export function AppointmentBooking() {
       .finally(() => setDoctorsLoading(false));
   }, []);
 
-  useEffect(() => {
-    if (!state.doctorId || !state.date || !state.appTypeId) {
-      setSlots([]);
-      return;
-    }
-    const type = types.find((t) => String(t.id) === state.appTypeId);
-    const duration = type?.duration ?? 30;
-    const qs = new URLSearchParams({
-      doctorId: state.doctorId,
-      date: state.date,
-      durationMinutes: String(duration),
-    });
-    setSlotsLoading(true);
-    fetch(`/api/doctors/availability?${qs}`)
-      .then((r) => (r.ok ? r.json() : { available_slots: [] }))
-      .then((d) => {
-        const available = d.available_slots ?? d.slots ?? [];
+  const refetchSlots = useCallback(
+    async (doctorId: string, date: string, appTypeId: string) => {
+      if (!doctorId || !date || !appTypeId) {
+        setSlots([]);
+        return;
+      }
+      const type = types.find((t) => String(t.id) === appTypeId);
+      const duration = type?.duration ?? 30;
+      const qs = new URLSearchParams({
+        doctorId,
+        date,
+        durationMinutes: String(duration),
+        appointmentTypeId: appTypeId,
+      });
+      setSlotsLoading(true);
+      try {
+        const r = await fetch(`/api/doctors/availability?${qs}`);
+        const d = r.ok ? await r.json() : { available_slots: [] };
+        const available: string[] = d.available_slots ?? d.slots ?? [];
         setSlots(available);
         if (d.no_schedule && available.length === 0) {
           toast.error(
             "No availability — doctor schedule may not be configured for this day."
           );
         }
-      })
-      .catch(() => setSlots([]))
-      .finally(() => setSlotsLoading(false));
-  }, [state.doctorId, state.date, state.appTypeId, types]);
+      } catch {
+        setSlots([]);
+      } finally {
+        setSlotsLoading(false);
+      }
+    },
+    [types]
+  );
+
+  useEffect(() => {
+    refetchSlots(state.doctorId, state.date, state.appTypeId);
+  }, [state.doctorId, state.date, state.appTypeId, refetchSlots]);
 
   const goStep = (step: number) => {
     setState((s) => ({ ...s, step }));
@@ -268,7 +278,13 @@ export function AppointmentBooking() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error ?? "Booking failed");
+        if (data.code === "slot_unavailable") {
+          toast.error(data.error ?? "That slot was just taken. Please choose another time.");
+          await refetchSlots(state.doctorId, state.date, state.appTypeId);
+          patch({ step: 2, time: "" });
+        } else {
+          toast.error(data.error ?? "Booking failed");
+        }
         return;
       }
 

@@ -49,6 +49,7 @@ export function AppointmentForm() {
   const [time, setTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotsVersion, setSlotsVersion] = useState(0);
   const [reason, setReason] = useState("");
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [successRef, setSuccessRef] = useState<string | null>(null);
@@ -75,13 +76,14 @@ export function AppointmentForm() {
     }
     const type = types.find((t) => String(t.id) === appTypeId);
     const duration = type?.duration ?? 30;
-    const params = new URLSearchParams({
+    const qs = new URLSearchParams({
       doctorId,
       date,
       durationMinutes: String(duration),
+      ...(appTypeId ? { appointmentTypeId: appTypeId } : {}),
     });
     setSlotsLoading(true);
-    fetch(`/api/doctors/availability?${params}`)
+    fetch(`/api/doctors/availability?${qs}`)
       .then((r) => (r.ok ? r.json() : { available_slots: [] }))
       .then((d) => {
         setSlots(d.available_slots ?? d.slots ?? []);
@@ -92,7 +94,8 @@ export function AppointmentForm() {
       })
       .catch(() => setSlots([]))
       .finally(() => setSlotsLoading(false));
-  }, [doctorId, date, appTypeId, types]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doctorId, date, appTypeId, types, slotsVersion]);
 
   function handleDateChange(val: string) {
     if (isWeekend(val)) {
@@ -128,7 +131,13 @@ export function AppointmentForm() {
     const data = await res.json();
     setLoading(false);
     if (!res.ok) {
-      toast.error(data.error ?? "Booking failed");
+      if (data.code === "slot_unavailable") {
+        toast.error(data.error ?? "That slot was just taken. Please choose another time.");
+        setTime("");
+        setSlotsVersion((v) => v + 1);
+      } else {
+        toast.error(data.error ?? "Booking failed");
+      }
       return;
     }
 

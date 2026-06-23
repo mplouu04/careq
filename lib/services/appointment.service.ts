@@ -2,7 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
 import { normalizePhone, phonesMatchLast7 } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
-import { getClinicTodayYmd } from "@/lib/datetime";
+import { getClinicTodayYmd, getClinicDayStartIso } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
@@ -11,10 +11,15 @@ import { addDays, format, parseISO } from "date-fns";
 export async function lookupPatientAppointments(phone: string, dob: string) {
   const supabase = createAdminClient();
 
-  const { data: patients } = await supabase
+  const { data: patients, error: patientsError } = await supabase
     .from("patients")
     .select("id, public_id, first_name, last_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
+
+  if (patientsError) {
+    console.error("[lookupPatientAppointments] patients query failed", patientsError);
+    return { appointments: [], publicId: null, patientName: "" };
+  }
 
   const matched = (patients ?? []).filter(
     (p) =>
@@ -28,6 +33,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
 
   const ids = matched.map((p) => p.id);
   const today = getClinicTodayYmd();
+  const todayStartIso = getClinicDayStartIso(today);
 
   const { data } = await supabase
     .from("checkins")
@@ -39,7 +45,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
     .in("patient_id", ids)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .not("status", "in", '("cancelled","completed","no_show")')
-    .or(`status.eq.pending,appointment_date.gte.${today}T00:00:00`)
+    .or(`status.eq.pending,appointment_date.gte.${todayStartIso}`)
     .order("appointment_date", { ascending: true })
     .limit(20);
 
@@ -240,11 +246,12 @@ export async function bookAppointment(body: {
   const durationMinutes = apptTypeRow?.duration ?? 30;
   const priority = apptTypeRow?.default_priority ?? "normal";
 
-  const availableSlots = await getDoctorAvailableSlots(doctorId, appointmentDate, durationMinutes);
+  const availableSlots = await getDoctorAvailableSlots(doctorId, appointmentDate, durationMinutes, appTypeId);
   if (!availableSlots.includes(timeNorm)) {
     return {
       error: "This time slot is no longer available. Please choose another.",
       status: 409 as const,
+      code: "slot_unavailable" as const,
     };
   }
 
@@ -313,17 +320,37 @@ export async function bookAppointment(body: {
 
       if (pErr) {
         if (pErr.code === "23505") {
-          return {
-            error: "This email is already registered to another patient.",
-            status: 409 as const,
-            code: "duplicate_email",
-          };
+          if (pErr.message.includes("uq_patients_phone_normalized")) {
+            // Race condition: another concurrent request inserted a patient with the same phone.
+            // Recover by fetching and reusing that existing record.
+            const { data: racePatient } = await supabase
+              .from("patients")
+              .select("id, public_id")
+              .eq("phone_normalized", phoneDigits)
+              .maybeSingle();
+            if (racePatient) {
+              patientId = String(racePatient.id);
+              patientPublicId = racePatient.public_id;
+              patientReused = true;
+              matchedBy = "phone";
+            } else {
+              return { error: "Failed to create patient record", status: 500 as const };
+            }
+          } else {
+            return {
+              error: "This email is already registered to another patient.",
+              status: 409 as const,
+              code: "duplicate_email",
+            };
+          }
+        } else {
+          return { error: "Failed to create patient record", status: 500 as const };
         }
-        return { error: "Failed to create patient record", status: 500 as const };
+      } else {
+        patientId = String(newPatient!.id);
+        patientPublicId = newPatient!.public_id;
+        patientCreated = true;
       }
-      patientId = String(newPatient!.id);
-      patientPublicId = newPatient!.public_id;
-      patientCreated = true;
     }
   }
 

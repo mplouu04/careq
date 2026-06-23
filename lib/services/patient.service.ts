@@ -260,6 +260,14 @@ export async function verifyPatientByDobAndPhone(
   );
 
   if (!matched.length) {
+    if (!patients?.length) {
+      console.warn("[verifyPatientByDobAndPhone] no patients found for DOB", { dob });
+    } else {
+      console.warn("[verifyPatientByDobAndPhone] DOB matched but phone did not match", {
+        dob,
+        candidateCount: patients.length,
+      });
+    }
     return { matched: false };
   }
 
@@ -337,6 +345,14 @@ export async function registerPatient(body: RegisterPatientInput) {
   });
 
   if (existing) {
+    if (existing.matched_by === "phone") {
+      return {
+        error:
+          "This phone number is already registered to another patient. Please use a different number or ask staff to update the existing record.",
+        status: 409 as const,
+        code: "duplicate_phone" as const,
+      };
+    }
     const verifyToken = await createPatientSession(Number(existing.id));
     return {
       success: true as const,
@@ -367,6 +383,13 @@ export async function registerPatient(body: RegisterPatientInput) {
 
   if (error) {
     if (error.code === "23505") {
+      if (error.message.includes("uq_patients_phone_normalized")) {
+        return {
+          error: "This phone number is already registered to another patient.",
+          status: 409 as const,
+          code: "duplicate_phone" as const,
+        };
+      }
       return {
         error: "This email is already registered to another patient.",
         status: 409 as const,
