@@ -4,6 +4,7 @@ import { useState, useId } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UserPlus, LogIn, User, ArrowLeft } from "lucide-react";
+import { extractPhoneLast7 } from "@/lib/phone";
 import {
   CareqCard,
   CareqButton,
@@ -44,15 +45,15 @@ export function PatientSearch() {
 
   const phoneDigits = phoneLast7.replace(/\D/g, "");
   const dobValid = /^\d{4}-\d{2}-\d{2}$/.test(dob);
-  const phoneValid = /^\d{7}$/.test(phoneDigits);
+  const phoneValid = phoneDigits.length >= 7;
   const canSubmit = dobValid && phoneValid;
 
   const validationMessage = (() => {
     if (!submitAttempted) return null;
     if (!dob) return "Enter your date of birth.";
     if (!dobValid) return "Enter a valid date of birth.";
-    if (!phoneDigits) return "Enter the last 7 digits of your phone number.";
-    if (!phoneValid) return "Phone last 7 digits must be exactly 7 digits.";
+    if (!phoneDigits) return "Enter your phone number.";
+    if (!phoneValid) return "Phone number must have at least 7 digits.";
     return null;
   })();
 
@@ -68,7 +69,7 @@ export function PatientSearch() {
       const res = await fetch("/api/patient-verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dob, phoneLast7: phoneDigits }),
+        body: JSON.stringify({ dob, phoneLast7: extractPhoneLast7(phoneDigits) }),
       });
       if (!res.ok) {
         setMatch(null);
@@ -187,18 +188,18 @@ export function PatientSearch() {
               </div>
               <div>
                 <FormLabel htmlFor={`${formId}-phone`} required>
-                  Last 7 digits of phone
+                  Phone number
                 </FormLabel>
                 <FormInput
                   id={`${formId}-phone`}
-                  type="text"
-                  inputMode="numeric"
-                  autoComplete="off"
-                  maxLength={7}
-                  placeholder="1234567"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  maxLength={15}
+                  placeholder="09XX XXX XXXX"
                   value={phoneLast7}
                   onChange={(e) => {
-                    setPhoneLast7(e.target.value.replace(/\D/g, "").slice(0, 7));
+                    setPhoneLast7(e.target.value.replace(/\D/g, ""));
                     setSubmitAttempted(false);
                     setNoMatch(false);
                     setApiError(false);
@@ -215,7 +216,7 @@ export function PatientSearch() {
               Use the date of birth on your patient record.
             </FormHelperText>
             <FormHelperText id={phoneHintId}>
-              Enter the last 7 digits of the phone number we have on file.
+              Enter your full mobile number or just the last 7 digits.
             </FormHelperText>
 
             {validationMessage && <FormError message={validationMessage} />}

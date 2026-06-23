@@ -193,19 +193,35 @@ describe("PatientVerifySchema", () => {
     ).toBe(false);
   });
 
-  it("rejects phoneLast7 that is not exactly 7 digits", () => {
+  it("rejects phoneLast7 with fewer than 7 digits", () => {
     expect(
       PatientVerifySchema.safeParse({
         dob: "1990-01-15",
         phoneLast7: "123456",
       }).success
     ).toBe(false);
-    expect(
-      PatientVerifySchema.safeParse({
-        dob: "1990-01-15",
-        phoneLast7: "12345678",
-      }).success
-    ).toBe(false);
+  });
+
+  it("accepts a full 11-digit Philippine number and extracts last 7", () => {
+    const result = PatientVerifySchema.safeParse({
+      dob: "1990-01-15",
+      phoneLast7: "09170950299",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.phoneLast7).toBe("0950299");
+    }
+  });
+
+  it("accepts an 8-digit input and normalizes to last 7", () => {
+    const result = PatientVerifySchema.safeParse({
+      dob: "1990-01-15",
+      phoneLast7: "12345678",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.phoneLast7).toBe("2345678");
+    }
   });
 });
 

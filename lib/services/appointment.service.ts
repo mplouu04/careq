@@ -16,8 +16,10 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
     .select("id, public_id, first_name, last_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
 
-  const matched = (patients ?? []).filter((p) =>
-    phonesMatchLast7(p.phone_normalized ?? p.phone ?? "", phone)
+  const matched = (patients ?? []).filter(
+    (p) =>
+      phonesMatchLast7(p.phone || "", phone) ||
+      phonesMatchLast7(p.phone_normalized || "", phone)
   );
 
   if (!matched.length) {
@@ -154,7 +156,10 @@ export async function cancelAppointment(
     phone: string;
     phone_normalized: string | null;
   };
-  if (!phonesMatchLast7(patient?.phone_normalized ?? patient?.phone ?? "", phone)) {
+  if (
+    !phonesMatchLast7(patient?.phone || "", phone) &&
+    !phonesMatchLast7(patient?.phone_normalized || "", phone)
+  ) {
     return { error: "Phone number does not match.", status: 403 as const };
   }
 

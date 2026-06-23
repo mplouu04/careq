@@ -244,10 +244,14 @@ export async function verifyPatientByDobAndPhone(
 ): Promise<PatientVerifyResult> {
   const supabase = createAdminClient();
 
-  const { data: patients } = await supabase
+  const { data: patients, error } = await supabase
     .from("patients")
     .select("id, first_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 
   const matched = (patients ?? []).filter(
     (p) =>
