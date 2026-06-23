@@ -23,6 +23,7 @@ vi.mock("@/lib/staff-metadata", () => ({
 
 vi.mock("@/lib/datetime", () => ({
   getClinicTodayYmd: () => "2026-06-06",
+  getClinicDayStartIso: (ymd: string) => `${ymd}T16:00:00.000Z`,
 }));
 
 function chain(resolved: { data?: unknown; error?: unknown; count?: number }) {
