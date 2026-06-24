@@ -4,6 +4,7 @@ import { withRateLimit, withStaffAuth } from "@/lib/api/with-auth";
 import {
   BookAppointmentSchema,
   CancelAppointmentSchema,
+  PatientLookupSchema,
   StaffUpdateAppointmentSchema,
 } from "@/lib/schemas/appointment";
 import {
@@ -46,10 +47,17 @@ export async function GET(request: Request) {
   }
 
   if (phone && dob) {
+    const parsed = PatientLookupSchema.safeParse({ phone, dob });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 }
+      );
+    }
     return withRateLimit(
       "patient_lookup",
       async () => {
-        const result = await lookupPatientAppointments(phone, dob);
+        const result = await lookupPatientAppointments(parsed.data.phone, parsed.data.dob);
         return NextResponse.json({
           success: true,
           appointments: result.appointments,

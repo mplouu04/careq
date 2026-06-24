@@ -24,9 +24,6 @@ type VerifyMatch = {
 const NO_MATCH_MESSAGE =
   "We could not find a record matching those details. Please check your information or register as a new patient.";
 
-const API_ERROR_MESSAGE =
-  "Something went wrong. Please try again.";
-
 export function PatientSearch() {
   const router = useRouter();
   const formId = useId();
@@ -34,15 +31,16 @@ export function PatientSearch() {
   const phoneHintId = `${formId}-phone-hint`;
 
   const [dob, setDob] = useState("");
-  const [phoneLast7, setPhoneLast7] = useState("");
+  const [phoneInput, setPhoneInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [privacyOpen, setPrivacyOpen] = useState(false);
   const [match, setMatch] = useState<VerifyMatch | null>(null);
   const [noMatch, setNoMatch] = useState(false);
   const [apiError, setApiError] = useState(false);
+  const [apiErrorMessage, setApiErrorMessage] = useState("");
 
-  const phoneDigits = phoneLast7.replace(/\D/g, "");
+  const phoneDigits = phoneInput.replace(/\D/g, "");
   const dobValid = /^\d{4}-\d{2}-\d{2}$/.test(dob);
   const phoneValid = phoneDigits.length >= 7;
   const canSubmit = dobValid && phoneValid;
@@ -56,11 +54,17 @@ export function PatientSearch() {
     return null;
   })();
 
+  function setApiErrorWith(message: string) {
+    setApiError(true);
+    setApiErrorMessage(message);
+  }
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     setSubmitAttempted(true);
     setNoMatch(false);
     setApiError(false);
+    setApiErrorMessage("");
     if (!canSubmit) return;
 
     setLoading(true);
@@ -70,9 +74,31 @@ export function PatientSearch() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ dob, phoneLast7: phoneDigits }),
       });
+
+      if (res.status === 429) {
+        const retryAfter = Number(res.headers.get("Retry-After") ?? 0);
+        const minutes = Math.ceil(retryAfter / 60);
+        setMatch(null);
+        setApiErrorWith(
+          minutes > 0
+            ? `Too many attempts. Please wait ${minutes} minute${minutes !== 1 ? "s" : ""} before trying again.`
+            : "Too many attempts. Please try again later."
+        );
+        return;
+      }
+
+      if (res.status === 400) {
+        const body = await res.json().catch(() => ({}));
+        setMatch(null);
+        setApiErrorWith(
+          (body as { error?: string }).error ?? "Invalid input. Please check your details."
+        );
+        return;
+      }
+
       if (!res.ok) {
         setMatch(null);
-        setApiError(true);
+        setApiErrorWith("Something went wrong. Please try again.");
         return;
       }
 
@@ -87,7 +113,7 @@ export function PatientSearch() {
       setNoMatch(true);
     } catch {
       setMatch(null);
-      setApiError(true);
+      setApiErrorWith("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -97,9 +123,10 @@ export function PatientSearch() {
     setMatch(null);
     setNoMatch(false);
     setApiError(false);
+    setApiErrorMessage("");
     setSubmitAttempted(false);
     setDob("");
-    setPhoneLast7("");
+    setPhoneInput("");
   }
 
   function confirmIdentity() {
@@ -177,8 +204,9 @@ export function PatientSearch() {
                     setSubmitAttempted(false);
                     setNoMatch(false);
                     setApiError(false);
+                    setApiErrorMessage("");
                   }}
-                  max={new Date().toISOString().slice(0, 10)}
+                  max={new Date().toLocaleDateString("en-CA")}
                   min="1900-01-01"
                   required
                   aria-required="true"
@@ -196,12 +224,13 @@ export function PatientSearch() {
                   autoComplete="tel"
                   maxLength={15}
                   placeholder="09XX XXX XXXX"
-                  value={phoneLast7}
+                  value={phoneInput}
                   onChange={(e) => {
-                    setPhoneLast7(e.target.value.replace(/\D/g, ""));
+                    setPhoneInput(e.target.value.replace(/\D/g, ""));
                     setSubmitAttempted(false);
                     setNoMatch(false);
                     setApiError(false);
+                    setApiErrorMessage("");
                   }}
                   required
                   aria-required="true"
@@ -219,7 +248,7 @@ export function PatientSearch() {
             </FormHelperText>
 
             {validationMessage && <FormError message={validationMessage} />}
-            {apiError && <FormError message={API_ERROR_MESSAGE} />}
+            {apiError && <FormError message={apiErrorMessage} />}
             {noMatch && <FormError message={NO_MATCH_MESSAGE} />}
 
             <CareqButton

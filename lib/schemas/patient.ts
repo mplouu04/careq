@@ -22,5 +22,5 @@ export const PatientVerifySchema = z.object({
   phoneLast7: z
     .string()
     .transform((s) => extractPhoneLast7(s))
-    .refine((s) => /^\d{7}$/.test(s), "Phone must contain at least 7 digits"),
+    .refine((s) => /^\d{7}$/.test(s), "Phone must produce exactly 7 digits after normalization"),
 });
