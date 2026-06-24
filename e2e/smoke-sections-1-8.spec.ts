@@ -66,6 +66,7 @@ test.describe("Smoke §3 — Appointment Booking", () => {
   });
 
   test("3.3 calendar limits booking to 30 days ahead", async ({ page }) => {
+    test.skip(!LIVE_AUTH, "requires live Supabase credentials (doctors list needs real DB)");
     await page.goto("/appointments");
     await page.getByRole("button", { name: /dr\./i }).first().click();
     await page.getByRole("button", { name: /general consultation/i }).click();
@@ -127,6 +128,7 @@ test.describe("Smoke §8 — Staff Login", () => {
   });
 
   test("8.2 wrong credentials show error", async ({ page }) => {
+    test.skip(!LIVE_AUTH, "requires live Supabase credentials (auth error message needs real DB)");
     await page.goto("/login");
     await page.getByLabel(/email address/i).fill("wrong@clinic.com");
     await page.locator("#loginPassword").fill("wrongpassword");
