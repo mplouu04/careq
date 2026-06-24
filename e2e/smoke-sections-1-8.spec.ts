@@ -3,6 +3,10 @@ import { test, expect } from "@playwright/test";
 const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL ?? "admin@clinic.com";
 const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD ?? "admin123";
 
+const LIVE_AUTH =
+  !!process.env.SMOKE_ADMIN_EMAIL &&
+  process.env.SMOKE_ADMIN_EMAIL !== "admin@clinic.com";
+
 test.describe("Smoke §1 — Registration", () => {
   test("1.1 visit fork shows returning and first-visit options", async ({ page }) => {
     await page.goto("/visit");
@@ -131,6 +135,7 @@ test.describe("Smoke §8 — Staff Login", () => {
   });
 
   test("8.3 correct credentials redirect to dashboard", async ({ page }) => {
+    test.skip(!LIVE_AUTH, "requires live Supabase credentials (set SMOKE_ADMIN_EMAIL)");
     await page.goto("/login");
     await page.getByLabel(/email address/i).fill(ADMIN_EMAIL);
     await page.locator("#loginPassword").fill(ADMIN_PASSWORD);
@@ -140,6 +145,7 @@ test.describe("Smoke §8 — Staff Login", () => {
   });
 
   test("8.4 logged-in user visiting /login redirects to dashboard", async ({ page }) => {
+    test.skip(!LIVE_AUTH, "requires live Supabase credentials (set SMOKE_ADMIN_EMAIL)");
     await page.goto("/login");
     await page.getByLabel(/email address/i).fill(ADMIN_EMAIL);
     await page.locator("#loginPassword").fill(ADMIN_PASSWORD);

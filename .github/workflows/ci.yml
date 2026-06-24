@@ -41,3 +41,5 @@ jobs:
           CRON_SECRET: placeholder-cron-secret
           NEXT_PUBLIC_APP_URL: http://localhost:3000
           CI: true
+          SMOKE_ADMIN_EMAIL: ${{ secrets.SMOKE_ADMIN_EMAIL }}
+          SMOKE_ADMIN_PASSWORD: ${{ secrets.SMOKE_ADMIN_PASSWORD }}

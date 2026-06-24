@@ -3,6 +3,10 @@ import { test, expect } from "@playwright/test";
 const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL ?? "admin@clinic.com";
 const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD ?? "admin123";
 
+const LIVE_AUTH =
+  !!process.env.SMOKE_ADMIN_EMAIL &&
+  process.env.SMOKE_ADMIN_EMAIL !== "admin@clinic.com";
+
 async function loginAsAdmin(page: import("@playwright/test").Page) {
   await page.goto("/login");
   await page.getByLabel(/email address/i).fill(ADMIN_EMAIL);
@@ -14,6 +18,7 @@ async function loginAsAdmin(page: import("@playwright/test").Page) {
 test.describe.configure({ mode: "serial" });
 
 test.describe("Smoke §9 — Dashboard", () => {
+  test.skip(!LIVE_AUTH, "requires live Supabase credentials (set SMOKE_ADMIN_EMAIL)");
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
   });
@@ -30,6 +35,7 @@ test.describe("Smoke §9 — Dashboard", () => {
 });
 
 test.describe("Smoke §10–15 — Admin panel", () => {
+  test.skip(!LIVE_AUTH, "requires live Supabase credentials (set SMOKE_ADMIN_EMAIL)");
   test.beforeEach(async ({ page }) => {
     await loginAsAdmin(page);
     await page.goto("/admin");
@@ -82,6 +88,7 @@ test.describe("Smoke §16 — Security", () => {
   });
 
   test("16.2 non-admin cannot access admin panel", async ({ page, request }) => {
+    test.skip(!LIVE_AUTH, "requires live Supabase credentials (set SMOKE_ADMIN_EMAIL)");
     const staffEmail = `e2e_staff_${Date.now()}@test.com`;
     const staffPassword = "password123";
 
