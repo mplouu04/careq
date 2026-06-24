@@ -43,18 +43,16 @@ test.describe("Smoke §1 — Registration", () => {
 });
 
 test.describe("Smoke §2 — Patient Search", () => {
-  test("2.1 search form with term and optional DOB", async ({ page }) => {
+  test("2.1 identity verification form has date of birth and phone fields", async ({ page }) => {
     await page.goto("/patient-search");
-    await expect(page.getByLabel(/search/i).first()).toBeVisible();
     await expect(page.getByLabel(/date of birth/i)).toBeVisible();
+    await expect(page.getByLabel(/phone/i)).toBeVisible();
   });
 
-  test("2.2 single character does not search", async ({ page }) => {
+  test("2.2 submitting empty form shows validation error", async ({ page }) => {
     await page.goto("/patient-search");
-    const term = page.getByLabel(/search/i).first();
-    await term.fill("a");
-    await page.getByRole("button", { name: /search/i }).click();
-    await expect(page.getByText(/at least 2 characters/i)).toBeVisible();
+    await page.getByRole("button", { name: /continue/i }).click();
+    await expect(page.getByText(/enter your date of birth/i)).toBeVisible();
   });
 });
 

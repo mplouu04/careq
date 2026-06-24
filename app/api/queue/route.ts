@@ -10,13 +10,17 @@ import { requireStaff } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 async function getRoomNameMap(): Promise<Map<number, string>> {
-  const supabase = createAdminClient();
-  const { data } = await supabase.from("rooms").select("id, name").eq("is_active", true);
-  const map = new Map<number, string>();
-  for (const r of data ?? []) {
-    map.set(r.id, r.name);
+  try {
+    const supabase = createAdminClient();
+    const { data } = await supabase.from("rooms").select("id, name").eq("is_active", true);
+    const map = new Map<number, string>();
+    for (const r of data ?? []) {
+      map.set(r.id, r.name);
+    }
+    return map;
+  } catch {
+    return new Map();
   }
-  return map;
 }
 
 function resolveRoomName(roomId: number | null | undefined, roomMap: Map<number, string>): string {
@@ -63,6 +67,7 @@ export async function GET(request: Request) {
 
   // ── Public single-entry lookup ─────────────────────────────────────────────
   if (refRaw) {
+    try {
     const ref = normalizeQueueRef(refRaw);
     const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
          called_by_staff:called_by(first_name, last_name),
@@ -143,6 +148,9 @@ export async function GET(request: Request) {
       doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
       room: resolveRoomName(entry.room_id, roomMap),
     });
+    } catch {
+      return NextResponse.json({ success: false, error: "Queue entry not found" });
+    }
   }
 
   // ── Staff dashboard queue ──────────────────────────────────────────────────

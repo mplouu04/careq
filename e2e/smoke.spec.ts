@@ -22,7 +22,7 @@ test.describe("Public pages smoke", () => {
 
   test("patient search page loads", async ({ page }) => {
     await page.goto("/patient-search");
-    await expect(page.getByPlaceholder(/search|name|patient/i).first()).toBeVisible();
+    await expect(page.getByLabel(/date of birth/i)).toBeVisible();
   });
 
   test("check-in page has appointment tab", async ({ page }) => {
