@@ -16,8 +16,15 @@ test.describe("Smoke §1 — Registration", () => {
 
   test("1.2 first visit link opens registration wizard", async ({ page }) => {
     await page.goto("/visit");
-    await page.getByRole("link", { name: /first visit/i }).click();
-    await expect(page).toHaveURL(/\/registration/);
+    await page.waitForLoadState("networkidle");
+    const registrationLink = page.getByRole("link", {
+      name: /first visit.*quick registration/i,
+    });
+    await registrationLink.scrollIntoViewIfNeeded();
+    await Promise.all([
+      page.waitForURL(/\/registration/, { timeout: 15000 }),
+      registrationLink.click(),
+    ]);
     await expect(page.getByRole("button", { name: /next/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /visit/i })).toBeVisible();
   });

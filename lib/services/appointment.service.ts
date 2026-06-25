@@ -534,8 +534,8 @@ export async function listStaffAppointments(filter: string) {
       .order("appointment_date", { ascending: true });
   }
 
-  const { data } = await query;
-  return data ?? [];
+  const { data, error } = await query;
+  return { appointments: data ?? [], error };
 }
 
 export async function staffUpdateAppointment(params: {

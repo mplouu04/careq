@@ -1,7 +1,7 @@
 /**
  * Service layer unit tests with mocked Supabase admin client.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockFrom = vi.fn();
 const mockRpc = vi.fn();
@@ -308,6 +308,118 @@ describe("queue.service callNextPatient", () => {
   });
 });
 
+describe("queue.service markDone", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("updates queue and linked checkin to completed", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: { id: 1, checkin_id: 42 }, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { markDone } = await import("../lib/services/queue.service");
+    const result = await markDone({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({ success: true });
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).toContain("checkins");
+  });
+
+  it("returns 500 when queue row is not in_progress", async () => {
+    mockFrom.mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { markDone } = await import("../lib/services/queue.service");
+    const result = await markDone({ queueId: 99, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({ error: "Failed to mark done", status: 500 });
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).not.toContain("checkins");
+  });
+
+  it("skips checkin update when checkin_id is null", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: { id: 1, checkin_id: null }, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { markDone } = await import("../lib/services/queue.service");
+    const result = await markDone({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({ success: true });
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).not.toContain("checkins");
+  });
+
+  it("returns 500 when queue update errors", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: { id: 1, checkin_id: 5 }, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: { message: "db error" } }));
+
+    const { markDone } = await import("../lib/services/queue.service");
+    const result = await markDone({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({ error: "Failed to mark done", status: 500 });
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).not.toContain("checkins");
+  });
+});
+
+describe("queue.service completeQueueEntries", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 0 immediately for empty ids array without touching DB", async () => {
+    const { completeQueueEntries } = await import("../lib/services/queue.service");
+    const count = await completeQueueEntries([]);
+
+    expect(count).toBe(0);
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it("marks queue rows and linked checkins completed", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: [{ checkin_id: 10 }, { checkin_id: 20 }] }))
+      .mockReturnValueOnce(chain({ data: [{ id: 1 }, { id: 2 }] }))
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { completeQueueEntries } = await import("../lib/services/queue.service");
+    const count = await completeQueueEntries([1, 2]);
+
+    expect(count).toBe(2);
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).toContain("checkins");
+  });
+
+  it("skips checkins update when all checkin_ids are null", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: [{ checkin_id: null }, { checkin_id: null }] }))
+      .mockReturnValueOnce(chain({ data: [{ id: 1 }, { id: 2 }] }));
+
+    const { completeQueueEntries } = await import("../lib/services/queue.service");
+    const count = await completeQueueEntries([1, 2]);
+
+    expect(count).toBe(2);
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).not.toContain("checkins");
+  });
+
+  it("only syncs checkins with non-null ids (mixed case)", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: [{ checkin_id: 5 }, { checkin_id: null }] }))
+      .mockReturnValueOnce(chain({ data: [{ id: 1 }, { id: 2 }] }))
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { completeQueueEntries } = await import("../lib/services/queue.service");
+    const count = await completeQueueEntries([1, 2]);
+
+    expect(count).toBe(2);
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).toContain("checkins");
+  });
+});
+
 describe("patient.service verifyPatientByDobAndPhone", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -546,6 +658,72 @@ describe("admin.service toggleStaffActive", () => {
       error: "You cannot deactivate your own account",
       status: 400,
     });
+  });
+});
+
+describe("queue-metrics getQueueReport", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-07T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function mockReportQueries(historyRows: { completed_at: string }[] = []) {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: [] }))
+      .mockReturnValueOnce(chain({ data: null, count: 2 }))
+      .mockReturnValueOnce(chain({ data: historyRows }));
+  }
+
+  it("defaults to 7 days of history", async () => {
+    mockReportQueries();
+
+    const { getQueueReport } = await import("../lib/services/queue-metrics");
+    const report = await getQueueReport("2026-06-07T00:00:00Z");
+
+    expect(report.history).toHaveLength(7);
+    expect(report.history[0]?.date).toBe("2026-06-01");
+    expect(report.history[6]?.date).toBe("2026-06-07");
+  });
+
+  it("respects custom historyDays parameter", async () => {
+    mockReportQueries();
+
+    const { getQueueReport } = await import("../lib/services/queue-metrics");
+    const report = await getQueueReport("2026-06-07T00:00:00Z", 14);
+
+    expect(report.history).toHaveLength(14);
+    expect(report.history[0]?.date).toBe("2026-05-25");
+    expect(report.history[13]?.date).toBe("2026-06-07");
+  });
+});
+
+describe("queue.service getAnalyticsReport", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-07T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("passes days through to getQueueReport", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: [] }))
+      .mockReturnValueOnce(chain({ data: null, count: 0 }))
+      .mockReturnValueOnce(chain({ data: [] }));
+
+    const { getAnalyticsReport } = await import("../lib/services/queue.service");
+    const report = await getAnalyticsReport(3);
+
+    expect(report.history).toHaveLength(3);
+    expect(report.success).toBe(true);
   });
 });
 

@@ -10,6 +10,8 @@ import { getClientIp } from "@/lib/rate-limit";
 
 import { logAudit } from "@/lib/audit";
 
+import { captureException } from "@/lib/observability";
+
 
 
 export const dynamic = "force-dynamic";
@@ -56,7 +58,15 @@ export async function GET() {
 
 
 
-  const { data } = await query;
+  const { data, error } = await query;
+
+  if (error) {
+    captureException(error, { route: "/api/appointment-types" });
+    return NextResponse.json(
+      { error: "Failed to load appointment types" },
+      { status: 500 }
+    );
+  }
 
   const cacheHeader = staffMode
 

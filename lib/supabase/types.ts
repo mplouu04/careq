@@ -67,9 +67,10 @@ export type Database = {
           appointment_date: string | null;
           actual_checkin_time: string | null;
           reason: string | null;
-          status: string | null;
+          status: string;
           priority: string;
           consent: boolean;
+          reminder_sent_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -190,9 +191,85 @@ export type Database = {
         Insert: Omit<Database["public"]["Tables"]["rate_limits"]["Row"], "id"> & { id?: number };
         Update: Partial<Database["public"]["Tables"]["rate_limits"]["Insert"]>;
       };
+      daily_counters: {
+        Row: {
+          counter_date: string;
+          counter_key: string;
+          last_value: number;
+        };
+        Insert: Database["public"]["Tables"]["daily_counters"]["Row"];
+        Update: Partial<Database["public"]["Tables"]["daily_counters"]["Insert"]>;
+      };
+      patient_sessions: {
+        Row: {
+          token: string;
+          patient_id: number;
+          expires_at: string;
+          used: boolean;
+          ip: string | null;
+        };
+        Insert: Omit<Database["public"]["Tables"]["patient_sessions"]["Row"], "token"> & {
+          token?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["patient_sessions"]["Insert"]>;
+      };
+      reminder_failures: {
+        Row: {
+          id: number;
+          checkin_id: number | null;
+          reference_number: string;
+          recipient_email: string | null;
+          error_message: string;
+          retryable: boolean;
+          created_at: string;
+          resolved_at: string | null;
+        };
+        Insert: Omit<Database["public"]["Tables"]["reminder_failures"]["Row"], "id" | "created_at"> & {
+          id?: number;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["reminder_failures"]["Insert"]>;
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      get_queue_waiting_position: {
+        Args: {
+          p_queue_id: number;
+          p_day_start: string;
+          p_day_end: string;
+        };
+        Returns: number;
+      };
+      purge_old_logs: {
+        Args: { p_days?: number };
+        Returns: {
+          rate_limits_deleted: number;
+          audit_deleted: number;
+          sessions_deleted: number;
+        }[];
+      };
+      purge_expired_patient_sessions: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      increment_rate_limit: {
+        Args: {
+          p_action: string;
+          p_ip: string;
+          p_max: number;
+          p_window_seconds: number;
+        };
+        Returns: boolean;
+      };
+      next_counter: {
+        Args: {
+          p_date: string;
+          p_key: string;
+        };
+        Returns: number;
+      };
+    };
     Enums: Record<string, never>;
   };
 };

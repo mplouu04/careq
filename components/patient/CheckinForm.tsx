@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { clearVerifyToken, readVerifyToken, storeVerifyToken } from "@/lib/verify-session";
+import { toast } from "sonner";
 import {
   CareqCard,
   CareqButton,
@@ -63,9 +64,12 @@ export function CheckinForm() {
 
   useEffect(() => {
     fetch("/api/appointment-types")
-      .then((r) => (r.ok ? r.json() : { types: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load appointment types");
+        return r.json();
+      })
       .then((d) => setTypes(d.types ?? []))
-      .catch(() => {});
+      .catch(() => toast.error("Unable to load visit types."));
   }, []);
 
   useEffect(() => {

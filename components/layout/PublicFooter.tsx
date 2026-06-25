@@ -22,7 +22,7 @@ export function PublicFooter() {
           href="/visit"
           className="text-body-sm text-on-surface-variant hover:text-primary transition-colors"
         >
-          Contact Clinic
+          Check in
         </Link>
       </div>
     </footer>

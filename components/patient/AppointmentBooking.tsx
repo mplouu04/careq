@@ -144,14 +144,18 @@ export function AppointmentBooking() {
   useEffect(() => {
     setDoctorsLoading(true);
     Promise.all([
-      fetch("/api/doctors")
-        .then((r) => (r.ok ? r.json() : { doctors: [] }))
-        .then((d) => setDoctors(d.doctors ?? [])),
-      fetch("/api/appointment-types")
-        .then((r) => (r.ok ? r.json() : { types: [] }))
-        .then((d) => setTypes(d.types ?? [])),
+      fetch("/api/doctors").then(async (r) => {
+        if (!r.ok) throw new Error("doctors");
+        const d = await r.json();
+        setDoctors(d.doctors ?? []);
+      }),
+      fetch("/api/appointment-types").then(async (r) => {
+        if (!r.ok) throw new Error("types");
+        const d = await r.json();
+        setTypes(d.types ?? []);
+      }),
     ])
-      .catch(() => toast.error("Failed to load booking options"))
+      .catch(() => toast.error("Unable to load booking options. Please refresh the page."))
       .finally(() => setDoctorsLoading(false));
   }, []);
 
@@ -172,7 +176,12 @@ export function AppointmentBooking() {
       setSlotsLoading(true);
       try {
         const r = await fetch(`/api/doctors/availability?${qs}`);
-        const d = r.ok ? await r.json() : { available_slots: [] };
+        if (!r.ok) {
+          setSlots([]);
+          toast.error("Unable to load available time slots.");
+          return;
+        }
+        const d = await r.json();
         const available: string[] = d.available_slots ?? d.slots ?? [];
         setSlots(available);
         if (d.no_schedule && available.length === 0) {
@@ -182,6 +191,7 @@ export function AppointmentBooking() {
         }
       } catch {
         setSlots([]);
+        toast.error("Unable to load available time slots.");
       } finally {
         setSlotsLoading(false);
       }

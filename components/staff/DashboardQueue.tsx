@@ -2,7 +2,7 @@
 
 import { queueApi } from "@/lib/api/client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   RefreshCw,
@@ -132,11 +132,18 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [recallRoomId, setRecallRoomId] = useState("");
   const [today, setToday] = useState("");
   const [queueTab, setQueueTab] = useState<ColumnId>("waiting");
+  const queueLoadedRef = useRef(false);
+  const statsLoadedRef = useRef(false);
 
   const loadQueue = useCallback(async () => {
     try {
       const res = await fetch("/api/queue");
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (!queueLoadedRef.current) {
+          toast.error("Unable to load queue. Please refresh the page.");
+        }
+        return;
+      }
       const data = await res.json();
       if (data.appointment) {
         setWaiting(data.appointment.waiting ?? []);
@@ -145,8 +152,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         setNoShow(data.appointment.noShow ?? []);
         setAvgServiceTime(data.appointment.avg_service_time ?? 10);
       }
+      queueLoadedRef.current = true;
     } catch {
-      // Retry on next poll
+      if (!queueLoadedRef.current) {
+        toast.error("Unable to load queue. Please check your connection.");
+      }
     }
   }, []);
 
@@ -159,8 +169,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         avg: data.avg_service_time ?? 10,
       });
       setHistory(data.history ?? []);
+      statsLoadedRef.current = true;
     } catch {
-      // Retry on next poll
+      if (!statsLoadedRef.current) {
+        toast.error("Unable to load queue statistics.");
+      }
     }
   }, []);
 
@@ -221,13 +234,19 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       })
     );
     fetch("/api/doctors")
-      .then((r) => (r.ok ? r.json() : { doctors: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load doctors");
+        return r.json();
+      })
       .then((d) => setDoctors(d.doctors ?? []))
-      .catch(() => {});
+      .catch(() => toast.error("Unable to load doctors."));
     fetch("/api/rooms")
-      .then((r) => (r.ok ? r.json() : { rooms: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load rooms");
+        return r.json();
+      })
       .then((d) => setRooms(d.rooms ?? []))
-      .catch(() => {});
+      .catch(() => toast.error("Unable to load rooms."));
   }, []);
 
   async function performAction(

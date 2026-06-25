@@ -10,6 +10,7 @@ import { normalizeQueueRef } from "@/lib/queue-ref";
 import { requireStaff } from "@/lib/auth";
 import { getClientIp } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit";
+import { captureException } from "@/lib/observability";
 
 export const dynamic = "force-dynamic";
 
@@ -95,10 +96,8 @@ async function publicQueueRefHandler(request: Request) {
   const dayStart = getClinicDayStartIso();
   const dayEnd = getClinicDayEndIso();
   const supabase = createAdminClient();
-
-  try {
-    const ref = normalizeQueueRef(refRaw);
-    const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+  const ref = normalizeQueueRef(refRaw);
+  const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
          called_by_staff:called_by(first_name, last_name),
          checkins!inner(
            checkin_id, reference_number, reason, type_id,
@@ -107,87 +106,117 @@ async function publicQueueRefHandler(request: Request) {
            staff:doctor_id(first_name, last_name)
          )`;
 
-    const [{ data: byNumber }, { data: byRef }, roomMap] = await Promise.all([
-      supabase
-        .from("queue")
-        .select(queueSelect)
-        .eq("queue_number", ref)
-        .gte("created_at", dayStart)
-        .lte("created_at", dayEnd)
-        .maybeSingle(),
-      supabase
-        .from("checkins")
-        .select("checkin_id")
-        .eq("reference_number", ref)
-        .maybeSingle(),
-      getRoomNameMap(supabase),
+  const [byNumberRes, byRefRes, roomMap] = await Promise.all([
+    supabase
+      .from("queue")
+      .select(queueSelect)
+      .eq("queue_number", ref)
+      .gte("created_at", dayStart)
+      .lte("created_at", dayEnd)
+      .maybeSingle(),
+    supabase
+      .from("checkins")
+      .select("checkin_id")
+      .eq("reference_number", ref)
+      .maybeSingle(),
+    getRoomNameMap(supabase),
+  ]);
+
+  if (byNumberRes.error) {
+    captureException(byNumberRes.error, { route: "/api/queue", ref });
+    return NextResponse.json(
+      { success: false, error: "Failed to load queue status" },
+      { status: 500 }
+    );
+  }
+  if (byRefRes.error) {
+    captureException(byRefRes.error, { route: "/api/queue", ref });
+    return NextResponse.json(
+      { success: false, error: "Failed to load queue status" },
+      { status: 500 }
+    );
+  }
+
+  let entry = byNumberRes.data;
+  if (!entry && byRefRes.data) {
+    const entryByCheckinRes = await supabase
+      .from("queue")
+      .select(queueSelect)
+      .eq("checkin_id", byRefRes.data.checkin_id)
+      .gte("created_at", dayStart)
+      .lte("created_at", dayEnd)
+      .maybeSingle();
+    if (entryByCheckinRes.error) {
+      captureException(entryByCheckinRes.error, { route: "/api/queue", ref });
+      return NextResponse.json(
+        { success: false, error: "Failed to load queue status" },
+        { status: 500 }
+      );
+    }
+    entry = entryByCheckinRes.data;
+  }
+
+  if (!entry) {
+    return NextResponse.json(
+      { success: false, error: "Queue entry not found" },
+      { status: 404 }
+    );
+  }
+
+  let position: number | null = null;
+  let estWaitMinutes: number | null = null;
+  let patientsAhead: number | null = null;
+
+  if (entry.status === "waiting") {
+    const [posRes, avg] = await Promise.all([
+      supabase.rpc("get_queue_waiting_position", {
+        p_queue_id: entry.id,
+        p_day_start: dayStart,
+        p_day_end: dayEnd,
+      }),
+      getAvgServiceTime(dayStart, dayEnd, supabase),
     ]);
 
-    let entry = byNumber;
-    if (!entry && byRef) {
-      const { data: entryByCheckin } = await supabase
-        .from("queue")
-        .select(queueSelect)
-        .eq("checkin_id", byRef.checkin_id)
-        .gte("created_at", dayStart)
-        .lte("created_at", dayEnd)
-        .maybeSingle();
-      entry = entryByCheckin;
+    if (posRes.error) {
+      captureException(posRes.error, { route: "/api/queue", ref, queueId: entry.id });
+      return NextResponse.json(
+        { success: false, error: "Failed to load queue status" },
+        { status: 500 }
+      );
     }
 
-    if (!entry) {
-      return NextResponse.json({ success: false, error: "Queue entry not found" });
+    const resolvedPos = typeof posRes.data === "number" ? posRes.data : 0;
+    if (resolvedPos > 0) {
+      position = resolvedPos;
+      patientsAhead = resolvedPos - 1;
+      estWaitMinutes = resolvedPos * avg;
     }
-
-    let position: number | null = null;
-    let estWaitMinutes: number | null = null;
-    let patientsAhead: number | null = null;
-
-    if (entry.status === "waiting") {
-      const [{ data: pos }, avg] = await Promise.all([
-        supabase.rpc("get_queue_waiting_position", {
-          p_queue_id: entry.id,
-          p_day_start: dayStart,
-          p_day_end: dayEnd,
-        }),
-        getAvgServiceTime(dayStart, dayEnd, supabase),
-      ]);
-
-      const resolvedPos = typeof pos === "number" ? pos : 0;
-      if (resolvedPos > 0) {
-        position = resolvedPos;
-        patientsAhead = resolvedPos - 1;
-        estWaitMinutes = resolvedPos * avg;
-      }
-    }
-
-    const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
-    const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
-
-    void logAudit({
-      userId: null,
-      action: "queue_status_lookup",
-      tableName: "queue",
-      recordId: entry.id,
-      newValues: { ref },
-      ipAddress: getClientIp(request),
-    });
-
-    return NextResponse.json({
-      success: true,
-      queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
-      position,
-      patients_ahead: patientsAhead,
-      est_wait_minutes: estWaitMinutes,
-      doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
-      room: resolveRoomName(entry.room_id, roomMap),
-    });
-  } catch {
-    return NextResponse.json({ success: false, error: "Queue entry not found" });
   }
+
+  const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
+  const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
+    | { first_name: string; last_name: string }
+    | null
+    | undefined;
+
+  void logAudit({
+    userId: null,
+    action: "queue_status_lookup",
+    tableName: "queue",
+    recordId: entry.id,
+    newValues: { ref },
+    ipAddress: getClientIp(request),
+  });
+
+  return NextResponse.json({
+    success: true,
+    queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
+    position,
+    patients_ahead: patientsAhead,
+    est_wait_minutes: estWaitMinutes,
+    doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
+    room: resolveRoomName(entry.room_id, roomMap),
+  });
 }
 
 async function staffQueueHandler() {
@@ -201,7 +230,7 @@ async function staffQueueHandler() {
   }
 
   // Round-trip 1: rooms, queue join, and avg service time all fire in parallel
-  const [roomMap, { data: allRows }, avgServiceTime] = await Promise.all([
+  const [roomMap, queueRes, avgServiceTime] = await Promise.all([
     getRoomNameMap(supabase),
     supabase
       .from("queue")
@@ -221,7 +250,12 @@ async function staffQueueHandler() {
     getAvgServiceTime(dayStart, dayEnd, supabase),
   ]);
 
-  const rows = allRows ?? [];
+  if (queueRes.error) {
+    captureException(queueRes.error, { route: "/api/queue" });
+    return NextResponse.json({ error: "Failed to load queue" }, { status: 500 });
+  }
+
+  const rows = queueRes.data ?? [];
 
   let waitingPosition = 0;
   const waiting = [];

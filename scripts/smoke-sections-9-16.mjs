@@ -676,7 +676,7 @@ async function main() {
   loadEnv();
 
   try {
-    const health = await fetch(`${BASE}/api/health`);
+    const health = await fetch(`${BASE}/api/health?detail=1`);
     const h = await health.json();
     if (h.checks?.database !== "ok") {
       console.error("Database not connected — aborting");

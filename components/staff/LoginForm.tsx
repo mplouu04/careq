@@ -112,15 +112,6 @@ export function LoginForm() {
         </div>
       </div>
 
-      <label className="flex items-center gap-2 text-body-sm text-on-surface-variant cursor-pointer min-h-[44px]">
-        <input
-          type="checkbox"
-          name="remember"
-          className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-        />
-        Keep me signed in on this device
-      </label>
-
       <CareqButton type="submit" disabled={loading} className="w-full min-h-[44px]">
         {loading ? (
           <>

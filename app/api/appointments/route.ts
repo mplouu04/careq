@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getClientIp } from "@/lib/rate-limit";
 import { withRateLimit, withStaffAuth } from "@/lib/api/with-auth";
 import { logAudit } from "@/lib/audit";
+import { captureException } from "@/lib/observability";
 import {
   BookAppointmentSchema,
   CancelAppointmentSchema,
@@ -93,7 +94,11 @@ export async function GET(request: Request) {
 
 const staffListHandler = withStaffAuth(async (request: Request) => {
   const filter = new URL(request.url).searchParams.get("filter") ?? "upcoming";
-  const appointments = await listStaffAppointments(filter);
+  const { appointments, error } = await listStaffAppointments(filter);
+  if (error) {
+    captureException(error, { route: "/api/appointments", filter });
+    return NextResponse.json({ error: "Failed to load appointments" }, { status: 500 });
+  }
   return NextResponse.json({ success: true, appointments });
 });
 

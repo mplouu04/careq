@@ -8,6 +8,8 @@ import { getClientIp } from "@/lib/rate-limit";
 
 import { logAudit } from "@/lib/audit";
 
+import { captureException } from "@/lib/observability";
+
 
 
 export const dynamic = "force-dynamic";
@@ -261,7 +263,7 @@ export const POST = withStaffAuth(async (request: Request) => {
 
         if (existing) {
 
-          await supabase
+          const { error: updateError } = await supabase
 
             .from("doctor_schedules")
 
@@ -277,9 +279,18 @@ export const POST = withStaffAuth(async (request: Request) => {
 
             .eq("id", existing.id);
 
+          if (updateError) {
+            captureException(updateError, {
+              route: "/api/admin/doctors",
+              action: "schedule_upsert",
+              doctorId: body.doctorId,
+            });
+            return NextResponse.json({ error: updateError.message }, { status: 500 });
+          }
+
         } else {
 
-          await supabase.from("doctor_schedules").insert({
+          const { error: insertError } = await supabase.from("doctor_schedules").insert({
 
             doctor_id: body.doctorId,
 
@@ -292,6 +303,15 @@ export const POST = withStaffAuth(async (request: Request) => {
             is_active: row.is_active,
 
           });
+
+          if (insertError) {
+            captureException(insertError, {
+              route: "/api/admin/doctors",
+              action: "schedule_upsert",
+              doctorId: body.doctorId,
+            });
+            return NextResponse.json({ error: insertError.message }, { status: 500 });
+          }
 
         }
 

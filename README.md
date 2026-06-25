@@ -21,18 +21,28 @@ Modern rebuild of the Patient Queue Management System using **Next.js 14**, **Su
    - `supabase/migrations/002_seed.sql`
    - `supabase/migrations/003_booking_and_queue.sql`
    - `supabase/migrations/003_fix_staff_user_trigger.sql`
+   - `supabase/migrations/003_improvements.sql`
    - `supabase/migrations/004_atomic_counters.sql`
    - `supabase/migrations/005_rate_limit_rpc.sql`
    - `supabase/migrations/006_checkin_transaction.sql`
    - `supabase/migrations/007_indexes_and_reminders.sql`
-3. Enable **Realtime** on the `queue` table (done in migration)
+   - `supabase/migrations/008_patient_sessions.sql`
+   - `supabase/migrations/009_patients_public_id.sql`
+   - `supabase/migrations/010_unique_phone_normalized.sql`
+   - `supabase/migrations/011_backfill_phone_normalized.sql`
+   - `supabase/migrations/012_checkins_realtime.sql`
+   - `supabase/migrations/013_queue_replica_identity.sql`
+   - `supabase/migrations/014_queue_perf_indexes.sql`
+   - `supabase/migrations/015_audit_remediation.sql`
+3. Enable **Realtime** on the `queue` and `checkins` tables (done by migrations)
 4. Create admin user in **Authentication → Users**:
    - Email: `admin@clinic.com`
    - Password: `admin123` (change immediately)
-   - User metadata:
+   - Set **`app_metadata`** (not user_metadata) via Supabase dashboard or service-role API:
      ```json
-     { "role": "admin", "first_name": "Admin", "last_name": "User" }
+     { "staff_role": "admin", "staff_first_name": "Admin", "staff_last_name": "User" }
      ```
+   - The `handle_new_staff_user()` trigger (migration 015) reads `app_metadata` and inserts into `staff`.
 
 ### 2. Environment
 

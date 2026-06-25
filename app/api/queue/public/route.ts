@@ -7,6 +7,7 @@ import { getClientIp } from "@/lib/rate-limit";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
+import { completeQueueEntries } from "@/lib/services/queue.service";
 
 export const dynamic = "force-dynamic";
 
@@ -148,26 +149,18 @@ export async function POST(request: Request) {
 
   let updated = 0;
   if (toComplete.length) {
-    const { data } = await supabase
-      .from("queue")
-      .update({
-        status: "completed",
-        completed_at: new Date().toISOString(),
-      })
-      .in("id", toComplete)
-      .select("id");
-    updated = data?.length ?? 0;
+    updated = await completeQueueEntries(toComplete);
 
-    if (data?.length) {
+    if (updated) {
       const ip = getClientIp(request);
       const userId = auth.session.userId;
       await Promise.all(
-        data.map((row) =>
+        toComplete.map((id) =>
           logAudit({
             userId,
             action: "queue_auto_complete",
             tableName: "queue",
-            recordId: row.id,
+            recordId: id,
             newValues: { status: "completed", reason: "stale_20min" },
             ipAddress: ip,
           })

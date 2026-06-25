@@ -29,8 +29,9 @@ export async function getAvgServiceTime(
   return Math.round(total / completed.length) || 10;
 }
 
-export async function getQueueReport(dayStart: string) {
+export async function getQueueReport(dayStart: string, historyDays = 7) {
   const supabase = createAdminClient();
+  const span = Math.max(1, historyDays);
 
   const { data: completed } = await supabase
     .from("queue")
@@ -55,7 +56,7 @@ export async function getQueueReport(dayStart: string) {
     .eq("status", "waiting")
     .gte("created_at", dayStart);
 
-  const startDate = format(subDays(new Date(), 6), "yyyy-MM-dd");
+  const startDate = format(subDays(new Date(), span - 1), "yyyy-MM-dd");
   const { data: historyRows } = await supabase
     .from("queue")
     .select("completed_at")
@@ -64,8 +65,8 @@ export async function getQueueReport(dayStart: string) {
     .not("completed_at", "is", null);
 
   const countsByDay = new Map<string, number>();
-  for (let i = 0; i < 7; i++) {
-    const d = format(subDays(new Date(), 6 - i), "yyyy-MM-dd");
+  for (let i = 0; i < span; i++) {
+    const d = format(subDays(new Date(), span - 1 - i), "yyyy-MM-dd");
     countsByDay.set(d, 0);
   }
 

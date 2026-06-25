@@ -182,19 +182,36 @@ export async function markDone(params: {
   ip: string;
 }) {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+
+  const { data: row } = await supabase
+    .from("queue")
+    .select("id, checkin_id")
+    .eq("id", params.queueId)
+    .eq("status", "in_progress")
+    .maybeSingle();
+
+  if (!row) {
+    return { error: "Failed to mark done", status: 500 as const };
+  }
+
+  const { error } = await supabase
     .from("queue")
     .update({
       status: "completed",
       completed_at: new Date().toISOString(),
     })
     .eq("id", params.queueId)
-    .eq("status", "in_progress")
-    .select("id")
-    .maybeSingle();
+    .eq("status", "in_progress");
 
-  if (error || !data) {
+  if (error) {
     return { error: "Failed to mark done", status: 500 as const };
+  }
+
+  if (row.checkin_id) {
+    await supabase
+      .from("checkins")
+      .update({ status: "completed" })
+      .eq("checkin_id", row.checkin_id);
   }
 
   await logAudit({
@@ -208,9 +225,39 @@ export async function markDone(params: {
   return { success: true as const };
 }
 
-export async function getAnalyticsReport() {
+export async function completeQueueEntries(ids: number[]): Promise<number> {
+  if (!ids.length) return 0;
+  const supabase = createAdminClient();
+
+  const { data: rows } = await supabase
+    .from("queue")
+    .select("checkin_id")
+    .in("id", ids);
+
+  const { data } = await supabase
+    .from("queue")
+    .update({ status: "completed", completed_at: new Date().toISOString() })
+    .in("id", ids)
+    .select("id");
+
+  const checkinIds = (rows ?? [])
+    .map((r: { checkin_id: number | null }) => r.checkin_id)
+    .filter((id): id is number => id != null);
+
+  if (checkinIds.length) {
+    await supabase
+      .from("checkins")
+      .update({ status: "completed" })
+      .in("checkin_id", checkinIds);
+  }
+
+  return data?.length ?? 0;
+}
+
+export async function getAnalyticsReport(days = 7) {
   const dayStart = getClinicDayStartIso();
-  const report = await getQueueReport(dayStart);
+  const historyDays = Number.isFinite(days) && days >= 1 ? days : 7;
+  const report = await getQueueReport(dayStart, historyDays);
   return { success: true as const, ...report };
 }
 
