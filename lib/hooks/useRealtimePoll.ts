@@ -18,12 +18,12 @@ export function useRealtimePoll({
   fallbackIntervalMs = 5000,
   maxBackoffMs = 30000,
 }: UseRealtimePollOptions) {
-  const [isLive, setIsLive] = useState(true);
+  const [isLive, setIsLive] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const backoffRef = useRef(fallbackIntervalMs);
   const mountedRef = useRef(true);
-  const liveRef = useRef(true);
+  const liveRef = useRef(false);
 
   const debouncedFetch = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -62,6 +62,9 @@ export function useRealtimePoll({
   useEffect(() => {
     mountedRef.current = true;
     fetchFn().catch(() => {});
+    // Start polling immediately — the WebSocket is not yet confirmed live.
+    // Polling stops only once SUBSCRIBED is received.
+    startFallbackPolling();
 
     const channel = subscribe(() => {
       if (!mountedRef.current) return;
@@ -76,7 +79,7 @@ export function useRealtimePoll({
       if (live) {
         backoffRef.current = fallbackIntervalMs;
         stopFallbackPolling();
-      } else {
+      } else if (!pollRef.current) {
         startFallbackPolling();
       }
     });

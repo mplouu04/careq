@@ -146,6 +146,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [position, setPosition] = useState<number | null>(null);
   const [estWait, setEstWait] = useState<number | null>(null);
   const [room, setRoom] = useState("");
+  const [doctor, setDoctor] = useState("");
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
@@ -205,6 +206,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       setPosition(data.position ?? null);
       setEstWait(data.est_wait_minutes ?? null);
       setRoom(data.room ?? "");
+      setDoctor(data.doctor ?? "");
     } catch {
       setLoadError(true);
     }
@@ -220,10 +222,10 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     [refNumber]
   );
 
-  useRealtimePoll({
+  const { isLive } = useRealtimePoll({
     fetchFn: load,
     subscribe: subscribeQueue,
-    fallbackIntervalMs: 5000,
+    fallbackIntervalMs: 2000,
   });
 
   if (loadError) {
@@ -316,6 +318,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
             <>
               <div className="called-banner rounded-lg p-4 mb-4 bg-status-called text-white">
                 <p className="text-headline-md font-semibold">{room || "Your room"}</p>
+                {doctor && <p className="text-body-sm mt-1 opacity-90">{doctor}</p>}
                 <p className="text-body-sm mt-1">Please proceed</p>
               </div>
             </>
@@ -356,7 +359,21 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         </div>
       </CareqCard>
 
-      <div className="text-center mt-4">
+      <div className="text-center mt-3">
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 text-label-sm px-2 py-1 rounded-full",
+            isLive ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"
+          )}
+        >
+          <span
+            className={cn("w-1.5 h-1.5 rounded-full", isLive ? "bg-green-500" : "bg-amber-500")}
+          />
+          {isLive ? "Live updates" : "Connecting..."}
+        </span>
+      </div>
+
+      <div className="text-center mt-3">
         <Link href="/status" className="text-body-sm text-primary hover:underline">
           Check another number
         </Link>
