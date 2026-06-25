@@ -1,7 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatInTimeZone } from "date-fns-tz";
 import { TIMEZONE } from "@/lib/constants";
-import { format } from "date-fns";
 
 export type CounterKey = "APPT" | "WALK" | "APT_REF";
 
@@ -28,7 +27,8 @@ export async function nextQueueNumber(prefix: "APPT" | "WALK"): Promise<string> 
 
 export async function nextAppointmentReference(appointmentDate: string): Promise<string> {
   const n = await nextCounter("APT_REF");
-  return `APT${format(new Date(appointmentDate), "yyyyMMdd")}${n}`;
+  const ymd = appointmentDate.replace(/\D/g, "").slice(0, 8);
+  return `APT${ymd}${n}`;
 }
 
 export async function checkinToQueue(

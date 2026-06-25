@@ -140,22 +140,34 @@ export function MyAppointments() {
       toast.error("Please enter your registered phone number.");
       return;
     }
-    if (!isValidRef(ref)) {
+    const normalizedRef = ref.toUpperCase().replace(/[\s-]/g, "");
+    if (!isValidRef(normalizedRef)) {
       toast.error("Invalid reference format.");
       return;
     }
     setLoading(true);
     try {
       const params = new URLSearchParams({
-        reference: ref,
+        reference: normalizedRef,
         phone: phoneForLookup,
       });
       const res = await fetch(`/api/appointments?${params.toString()}`);
-      const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "Unable to look up appointments.");
+        setAppointments([]);
+        setPatientName("");
+        return;
+      }
       const appts: Appointment[] = data.appointments ?? [];
       setAppointments(appts);
       setCheckinIds(new Set(appts.map((a) => String(a.checkinId))));
       setPatientName(data.patientName ?? "");
+      if (appts.length === 0) {
+        toast.error(
+          "No appointment found. Check your reference number and registered phone (must match the number on file)."
+        );
+      }
     } catch {
       toast.error("Unable to load appointments. Please check your connection.");
       setAppointments([]);

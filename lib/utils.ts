@@ -20,3 +20,8 @@ export function isValidEmail(email: string): boolean {
 export function isValidRef(ref: string): boolean {
   return /^[A-Za-z0-9\-]{3,30}$/.test(ref);
 }
+
+/** Normalize appointment refs: trim, uppercase, remove spaces/hyphens (APT-202606297 → APT202606297). */
+export function normalizeAppointmentReference(raw: string): string {
+  return raw.trim().toUpperCase().replace(/[\s-]/g, "");
+}

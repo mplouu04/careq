@@ -276,6 +276,74 @@ describe("appointment.service lookupAppointmentByReference", () => {
     );
 
     const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
+    const result = await lookupAppointmentByReference("apt20260610001", "1234567");
+
+    expect(result.patientName).toBe("Jane Doe");
+    expect(result.appointments[0].reference).toBe("APT20260610001");
+  });
+
+  it("loads patient phone from patients table when embed is missing", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: {
+            checkin_id: 10,
+            reference_number: "APT202606297",
+            scheduled_time: "09:00:00",
+            appointment_date: "2026-06-29T09:00:00",
+            status: "pending",
+            reason: null,
+            patient_id: 42,
+            appointment_types: { name: "Consultation" },
+            staff: { first_name: "John", last_name: "Smith" },
+            patients: null,
+          },
+        })
+      )
+      .mockReturnValueOnce(
+        chain({
+          data: {
+            first_name: "Jane",
+            last_name: "Doe",
+            public_id: "550e8400-e29b-41d4-a716-446655440099",
+            phone: "09502994754",
+            phone_normalized: "09502994754",
+          },
+        })
+      );
+
+    const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
+    const result = await lookupAppointmentByReference("APT202606297", "09502994754");
+
+    expect(result.patientName).toBe("Jane Doe");
+    expect(result.appointments).toHaveLength(1);
+  });
+
+  it("returns a single appointment with patient name when phone matches (embedded patient)", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: {
+          checkin_id: 10,
+          reference_number: "APT20260610001",
+          scheduled_time: "09:00:00",
+          appointment_date: "2026-06-10T09:00:00",
+          status: "pending",
+          reason: "Follow-up",
+          patient_id: 42,
+          appointment_types: { name: "Consultation" },
+          staff: { first_name: "John", last_name: "Smith" },
+          patients: {
+            first_name: "Jane",
+            last_name: "Doe",
+            public_id: "550e8400-e29b-41d4-a716-446655440099",
+            phone: "09171234567",
+            phone_normalized: "09171234567",
+          },
+        },
+      })
+    );
+
+    const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
     const result = await lookupAppointmentByReference("APT20260610001", "1234567");
 
     expect(result.publicId).toBe("550e8400-e29b-41d4-a716-446655440099");

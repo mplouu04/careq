@@ -18,7 +18,7 @@ import {
   lookupPatientAppointments,
   staffUpdateAppointment,
 } from "@/lib/services/appointment.service";
-import { isValidRef, sanitize } from "@/lib/utils";
+import { isValidRef, normalizeAppointmentReference, sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
     return withRateLimit(
       "patient_lookup",
       async () => {
-        const ref = sanitize(parsed.data.reference, 30);
+        const ref = normalizeAppointmentReference(sanitize(parsed.data.reference, 30));
         if (!isValidRef(ref)) {
           return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
         }

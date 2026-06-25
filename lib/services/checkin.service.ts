@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, TIMEZONE } from "@/lib/constants";
 import { phonesMatchLast7 } from "@/lib/phone";
-import { sanitize } from "@/lib/utils";
+import { normalizeAppointmentReference, sanitize } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { checkinToQueue, CheckinError, nextCounter } from "@/lib/counters";
 import { consumePatientVerifyToken } from "@/lib/services/patient.service";
@@ -20,6 +20,7 @@ function patientPhoneMatches(
 
 export async function lookupAppointmentForCheckin(ref: string, phone: string) {
   const supabase = createAdminClient();
+  const normalizedRef = normalizeAppointmentReference(ref);
   const { data } = await supabase
     .from("checkins")
     .select(
@@ -28,7 +29,7 @@ export async function lookupAppointmentForCheckin(ref: string, phone: string) {
        staff:doctor_id(first_name, last_name),
        appointment_types(name)`
     )
-    .eq("reference_number", ref)
+    .eq("reference_number", normalizedRef)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .maybeSingle();
 

@@ -7,6 +7,7 @@ import { nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
 import { addDays, format, parseISO } from "date-fns";
+import { normalizeAppointmentReference } from "@/lib/utils";
 
 /** Pending always shows; other active statuses only from start of clinic day onward. */
 export function isActiveAppointmentForLookup(
@@ -112,8 +113,10 @@ function patientPhoneMatches(
 
 export async function lookupAppointmentByReference(reference: string, phone: string) {
   const supabase = createAdminClient();
+  const ref = normalizeAppointmentReference(reference);
+  const phoneInput = phone.trim();
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("checkins")
     .select(
       `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
@@ -121,16 +124,21 @@ export async function lookupAppointmentByReference(reference: string, phone: str
        staff:doctor_id(first_name, last_name),
        patients(first_name, last_name, public_id, phone, phone_normalized)`
     )
-    .eq("reference_number", reference)
+    .eq("reference_number", ref)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .maybeSingle();
+
+  if (error) {
+    console.error("[lookupAppointmentByReference] query failed", error);
+    return { appointments: [], publicId: null, patientName: "" };
+  }
 
   if (!data) {
     return { appointments: [], publicId: null, patientName: "" };
   }
 
   const patientRaw = data.patients as unknown;
-  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
+  let patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
     | {
         first_name: string;
         last_name: string;
@@ -140,6 +148,19 @@ export async function lookupAppointmentByReference(reference: string, phone: str
       }
     | null
     | undefined;
+
+  if (!patient && data.patient_id) {
+    const { data: patientRow, error: patientError } = await supabase
+      .from("patients")
+      .select("first_name, last_name, public_id, phone, phone_normalized")
+      .eq("id", data.patient_id)
+      .maybeSingle();
+    if (patientError) {
+      console.error("[lookupAppointmentByReference] patient query failed", patientError);
+    } else {
+      patient = patientRow ?? undefined;
+    }
+  }
   const doctorRaw = data.staff as unknown;
   const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
     | { first_name: string; last_name: string }
@@ -152,7 +173,7 @@ export async function lookupAppointmentByReference(reference: string, phone: str
     | undefined;
   const apptDate = data.appointment_date ? new Date(data.appointment_date) : null;
 
-  if (!patientPhoneMatches(patient, phone)) {
+  if (!patientPhoneMatches(patient, phoneInput)) {
     return { appointments: [], publicId: null, patientName: "" };
   }
 
@@ -180,10 +201,11 @@ export async function cancelAppointment(
   audit?: { ip: string }
 ) {
   const supabase = createAdminClient();
+  const ref = normalizeAppointmentReference(reference);
   const { data: checkin } = await supabase
     .from("checkins")
     .select("checkin_id, status, patients(phone, phone_normalized)")
-    .eq("reference_number", reference)
+    .eq("reference_number", ref)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .maybeSingle();
 
