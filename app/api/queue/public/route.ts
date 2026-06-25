@@ -25,8 +25,6 @@ type QueueRow = {
   room_id: number | null;
   skip_count?: number;
   called_at: string | null;
-  called_by_staff?: unknown;
-  checkins?: unknown;
 };
 
 export async function GET(request: Request) {
@@ -58,16 +56,7 @@ export async function GET(request: Request) {
     supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
     supabase
       .from("queue")
-      .select(
-        `id, queue_number, status, priority, room_id, skip_count, called_at,
-         called_by_staff:called_by(first_name, last_name),
-         checkins!inner(
-           checkin_id,
-           patients(first_name, last_name),
-           appointment_types(name),
-           staff:doctor_id(first_name, last_name)
-         )`
-      )
+      .select("id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)")
       .gte("created_at", dayStart)
       .lte("created_at", dayEnd)
       .in("status", ["waiting", "in_progress"])
@@ -79,48 +68,10 @@ export async function GET(request: Request) {
 
   const avgServiceTime = await getAvgServiceTime(dayStart, dayEnd);
 
-  const mapServing = (item: QueueRow) => {
-    const checkinRaw = item.checkins;
-    const checkin = (Array.isArray(checkinRaw) ? checkinRaw[0] : checkinRaw) as {
-      patients?: unknown;
-      appointment_types?: unknown;
-      staff?: unknown;
-    } | null;
-
-    const patientRaw = checkin?.patients;
-    const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
-
-    const calledByRaw = item.called_by_staff;
-    const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
-
-    const checkinDoctorRaw = checkin?.staff;
-    const checkinDoctor = (Array.isArray(checkinDoctorRaw) ? checkinDoctorRaw[0] : checkinDoctorRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
-
-    const doctorSource =
-      item.status === "in_progress" && calledBy ? calledBy : checkinDoctor;
-
-    return {
-      queue_number: item.queue_number,
-      name: patient ? `${patient.first_name} ${patient.last_name}` : "",
-      doctor: doctorSource
-        ? `Dr. ${doctorSource.first_name} ${doctorSource.last_name}`
-        : "",
-    };
-  };
-
-  const inProgressByRoom = new Map<number, ReturnType<typeof mapServing>>();
+  const inProgressByRoom = new Map<number, { queue_number: string }>();
   for (const item of items.filter((q) => q.status === "in_progress")) {
     if (item.room_id != null) {
-      inProgressByRoom.set(Number(item.room_id), mapServing(item));
+      inProgressByRoom.set(Number(item.room_id), { queue_number: item.queue_number });
     }
   }
 
@@ -131,42 +82,23 @@ export async function GET(request: Request) {
     current: inProgressByRoom.get(room.id) ?? null,
   }));
 
-  const waiting = items.filter((q) => q.status === "waiting");
-
-  const mapWaiting = (item: QueueRow, pos: number) => {
-    const base = mapServing(item);
-    return {
-      id: item.queue_number,
-      queueId: item.id,
-      ...base,
-      reason: "",
-      status: item.status,
-      priority: item.priority ?? "normal",
-      position: pos,
-      est_wait_minutes: pos * avgServiceTime,
-    };
-  };
-
-  const waitingMapped = waiting.map((q, i) => {
-    const checkinRaw = q.checkins;
-    const checkin = (Array.isArray(checkinRaw) ? checkinRaw[0] : checkinRaw) as {
-      appointment_types?: unknown;
-    } | null;
-    const apptTypeRaw = checkin?.appointment_types;
-    const apptType = (Array.isArray(apptTypeRaw) ? apptTypeRaw[0] : apptTypeRaw) as
-      | { name: string }
-      | null
-      | undefined;
-    const row = mapWaiting(q, i + 1);
-    return { ...row, reason: apptType?.name ?? "" };
-  });
+  const waitingMapped = items
+    .filter((q) => q.status === "waiting")
+    .map((q, i) => ({
+      id: q.queue_number,
+      queueId: q.id,
+      queue_number: q.queue_number,
+      priority: q.priority ?? "normal",
+      position: i + 1,
+      est_wait_minutes: (i + 1) * avgServiceTime,
+    }));
 
   const nowServing = items
     .filter((q) => q.status === "in_progress")
     .map((q) => ({
       id: q.queue_number,
       queueId: q.id,
-      ...mapServing(q),
+      queue_number: q.queue_number,
       room_id: q.room_id,
       status: q.status,
     }));

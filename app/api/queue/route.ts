@@ -28,27 +28,35 @@ function resolveRoomName(roomId: number | null | undefined, roomMap: Map<number,
   return roomMap.get(Number(roomId)) ?? `Room ${roomId}`;
 }
 
-function maskCheckinPatient(checkin: Record<string, unknown>): Record<string, unknown> {
+function sanitizeCheckinForPublic(checkin: Record<string, unknown>): Record<string, unknown> {
   const patientRaw = checkin.patients;
-  if (!patientRaw) return checkin;
   const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
     | { first_name: string; last_name: string }
     | null
     | undefined;
-  if (!patient) return checkin;
   return {
-    ...checkin,
-    patients: { name: maskPatientName(patient.first_name, patient.last_name) },
+    checkin_id: checkin.checkin_id,
+    reference_number: checkin.reference_number,
+    type_id: checkin.type_id,
+    appointment_types: checkin.appointment_types,
+    ...(patient
+      ? { patients: { name: maskPatientName(patient.first_name, patient.last_name) } }
+      : {}),
+    // staff and reason intentionally omitted — doctor name is in top-level `doctor` field
   };
 }
 
-function maskQueueEntryPatient<T extends Record<string, unknown>>(entry: T): T {
-  const checkinsRaw = entry.checkins;
-  if (!checkinsRaw) return entry;
-  const maskedCheckins = Array.isArray(checkinsRaw)
-    ? checkinsRaw.map((c) => maskCheckinPatient(c as Record<string, unknown>))
-    : maskCheckinPatient(checkinsRaw as Record<string, unknown>);
-  return { ...entry, checkins: maskedCheckins };
+function sanitizeQueueEntryForPublic(entry: Record<string, unknown>): Record<string, unknown> {
+  const { called_by_staff: _staff, checkins: checkinsRaw, ...rest } = entry;
+  const sanitizedCheckins = !checkinsRaw
+    ? undefined
+    : Array.isArray(checkinsRaw)
+      ? checkinsRaw.map((c) => sanitizeCheckinForPublic(c as Record<string, unknown>))
+      : sanitizeCheckinForPublic(checkinsRaw as Record<string, unknown>);
+  return {
+    ...rest,
+    ...(sanitizedCheckins !== undefined ? { checkins: sanitizedCheckins } : {}),
+  };
 }
 
 /**
@@ -141,7 +149,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      queue: maskQueueEntryPatient(entry as Record<string, unknown>),
+      queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
       position,
       patients_ahead: patientsAhead,
       est_wait_minutes: estWaitMinutes,

@@ -21,8 +21,6 @@ type RoomPanel = {
   description?: string;
   current: {
     queue_number: string;
-    name: string;
-    doctor: string;
   } | null;
 };
 
@@ -30,8 +28,6 @@ type WaitingItem = {
   id: string | number;
   queueId?: number;
   queue_number?: string;
-  name: string;
-  reason: string;
   position: number;
   est_wait_minutes: number;
   priority?: string;
@@ -217,18 +213,6 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                   >
                     {room.current.queue_number}
                   </div>
-                  {!tvMode && (
-                    <>
-                      <p className="text-headline-sm text-on-surface font-medium truncate mt-2">
-                        {room.current.name || "—"}
-                      </p>
-                      {room.current.doctor && (
-                        <p className="text-body-sm text-on-surface-variant mt-1">
-                          {room.current.doctor}
-                        </p>
-                      )}
-                    </>
-                  )}
                 </>
               ) : (
                 <p className="text-body-md text-on-surface-variant py-4">
@@ -287,8 +271,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                   </div>
                   {!tvMode && (
                     <div className="patient-details min-w-0">
-                      <div className="font-medium truncate text-on-surface">{q.name}</div>
-                      <div className="appointment-time mt-1 flex flex-wrap gap-1 items-center">
+                      <div className="appointment-time flex flex-wrap gap-1 items-center">
                         <span className="position-badge">{ordinal(pos)} in line</span>
                         {display.show_wait_time && (
                           <span className="est-wait-badge">~{estWait} min</span>
