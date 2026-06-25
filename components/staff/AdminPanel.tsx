@@ -165,11 +165,33 @@ export function AdminPanel() {
     const supabase = createClient();
     const channel = supabase
       .channel("admin-checkins-refresh")
-      .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, () => {
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, () => {
         if (activeTabRef.current === "appointments") {
           load();
         }
       })
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "checkins" },
+        (payload) => {
+          const oldStatus = (payload.old as { status?: string })?.status;
+          const newStatus = (payload.new as { status?: string })?.status;
+          if (oldStatus !== newStatus) {
+            if (newStatus === "cancelled") {
+              toast.warning("Appointment cancelled", {
+                description: "A patient cancelled their appointment.",
+              });
+            } else if (newStatus === "checked_in") {
+              toast.info("Appointment confirmed", {
+                description: "A patient confirmed their appointment.",
+              });
+            }
+          }
+          if (activeTabRef.current === "appointments") {
+            load();
+          }
+        }
+      )
       .subscribe();
 
     return () => {

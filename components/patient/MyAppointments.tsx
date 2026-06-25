@@ -2,8 +2,9 @@
 
 import { appointmentApi } from "@/lib/api/client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { Calendar, ClipboardList } from "lucide-react";
 import {
   CareqCard,
@@ -78,6 +79,7 @@ export function MyAppointments() {
   const [dob, setDob] = useState("");
   const [reference, setReference] = useState("");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [checkinIds, setCheckinIds] = useState<Set<string>>(new Set());
   const [patientName, setPatientName] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -87,6 +89,7 @@ export function MyAppointments() {
   function resetResults() {
     setSearched(false);
     setAppointments([]);
+    setCheckinIds(new Set());
     setPatientName("");
   }
 
@@ -95,7 +98,7 @@ export function MyAppointments() {
     resetResults();
   }
 
-  async function lookupByPhone() {
+  const lookupByPhone = useCallback(async () => {
     const isoDob = parseDobInput(dob);
     if (!phone || !isoDob) {
       toast.error("Please enter both phone number and date of birth.");
@@ -107,7 +110,9 @@ export function MyAppointments() {
         `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${isoDob}`
       );
       const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
-      setAppointments(data.appointments ?? []);
+      const appts: Appointment[] = data.appointments ?? [];
+      setAppointments(appts);
+      setCheckinIds(new Set(appts.map((a) => String(a.checkinId))));
       setPatientName(data.patientName ?? "");
     } catch {
       toast.error("Unable to load appointments. Please check your connection.");
@@ -116,9 +121,9 @@ export function MyAppointments() {
       setLoading(false);
       setSearched(true);
     }
-  }
+  }, [phone, dob]);
 
-  async function lookupByReference() {
+  const lookupByReference = useCallback(async () => {
     const ref = reference.trim();
     if (!ref) {
       toast.error("Please enter your reference number.");
@@ -132,7 +137,9 @@ export function MyAppointments() {
     try {
       const res = await fetch(`/api/appointments?reference=${encodeURIComponent(ref)}`);
       const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
-      setAppointments(data.appointments ?? []);
+      const appts: Appointment[] = data.appointments ?? [];
+      setAppointments(appts);
+      setCheckinIds(new Set(appts.map((a) => String(a.checkinId))));
       setPatientName(data.patientName ?? "");
     } catch {
       toast.error("Unable to load appointments. Please check your connection.");
@@ -141,15 +148,49 @@ export function MyAppointments() {
       setLoading(false);
       setSearched(true);
     }
-  }
+  }, [reference]);
 
-  async function lookup() {
+  const lookup = useCallback(async () => {
     if (lookupMethod === "phone") {
       await lookupByPhone();
     } else {
       await lookupByReference();
     }
-  }
+  }, [lookupMethod, lookupByPhone, lookupByReference]);
+
+  // Keep a stable ref so the realtime handler always sees the latest IDs
+  // without needing to re-subscribe every time the list changes.
+  const checkinIdsRef = useRef(checkinIds);
+  useEffect(() => {
+    checkinIdsRef.current = checkinIds;
+  }, [checkinIds]);
+
+  // Subscribe to checkins changes after a successful lookup and silently
+  // refresh the list when any of this patient's appointments are updated.
+  useEffect(() => {
+    if (checkinIds.size === 0) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("myappointments-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "checkins" },
+        (payload) => {
+          const changedId = String((payload.new as { checkin_id?: string | number })?.checkin_id ?? "");
+          if (checkinIdsRef.current.has(changedId)) {
+            void lookup();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  // Re-subscribe only when the set of tracked IDs changes (i.e. after a new lookup).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkinIds]);
 
   function openCancelDialog(ref: string) {
     setCancelRef(ref);

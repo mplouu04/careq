@@ -45,7 +45,7 @@ function statusBadgeVariant(
   return "error";
 }
 
-/** Synthesise a short two-tone chime via Web Audio API (no file needed). */
+/** Synthesise a short two-tone ascending chime (called). */
 function playCalledChime() {
   try {
     const ctx = new AudioContext();
@@ -54,8 +54,7 @@ function playCalledChime() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
     gain.connect(ctx.destination);
 
-    const tones = [880, 1100];
-    tones.forEach((freq, i) => {
+    [880, 1100].forEach((freq, i) => {
       const osc = ctx.createOscillator();
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.25);
@@ -64,26 +63,82 @@ function playCalledChime() {
       osc.stop(ctx.currentTime + i * 0.25 + 0.5);
     });
   } catch {
-    // AudioContext unavailable (e.g. server-side) — silently skip
+    // AudioContext unavailable — silently skip
   }
 }
 
-/** Request browser notification permission once; fire a notification if granted. */
-function fireCalledNotification(queueNumber: string, room: string) {
-  if (typeof window === "undefined" || !("Notification" in window)) return;
-  const send = () => {
-    new Notification("It's your turn!", {
-      body: `Queue ${queueNumber} — please proceed${room ? ` to ${room}` : ""}.`,
-      icon: "/icon-192.png",
+/** Softer single-tone chime for "approaching turn". */
+function playApproachingChime() {
+  try {
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    gain.connect(ctx.destination);
+
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(660, ctx.currentTime);
+    osc.connect(gain);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+  } catch {
+    // AudioContext unavailable — silently skip
+  }
+}
+
+/** Descending two-tone chime for "missed turn". */
+function playMissedChime() {
+  try {
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.0);
+    gain.connect(ctx.destination);
+
+    [440, 330].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.3);
+      osc.connect(gain);
+      osc.start(ctx.currentTime + i * 0.3);
+      osc.stop(ctx.currentTime + i * 0.3 + 0.4);
     });
-  };
+  } catch {
+    // AudioContext unavailable — silently skip
+  }
+}
+
+/** Fire a browser Notification if permission is granted (or request it first). */
+function fireBrowserNotification(title: string, body: string) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  const send = () => new Notification(title, { body, icon: "/icon-192.png" });
   if (Notification.permission === "granted") {
     send();
   } else if (Notification.permission !== "denied") {
-    Notification.requestPermission().then((p) => {
-      if (p === "granted") send();
-    });
+    Notification.requestPermission().then((p) => { if (p === "granted") send(); });
   }
+}
+
+function fireCalledNotification(queueNumber: string, room: string) {
+  fireBrowserNotification(
+    "It's your turn!",
+    `Queue ${queueNumber} — please proceed${room ? ` to ${room}` : ""}.`
+  );
+}
+
+function fireApproachingNotification(queueNumber: string, position: number) {
+  fireBrowserNotification(
+    "You're almost up!",
+    `Queue ${queueNumber} is now position ${position} — please stay nearby.`
+  );
+}
+
+function fireMissedNotification(queueNumber: string) {
+  fireBrowserNotification(
+    "You missed your turn",
+    `Queue ${queueNumber} — please see the front desk to rejoin the queue.`
+  );
 }
 
 export function QueueStatus({ refNumber }: { refNumber: string }) {
@@ -94,6 +149,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
+  const prevPositionRef = useRef<number | null>(null);
 
   // Request notification permission proactively on mount
   useEffect(() => {
@@ -102,15 +158,34 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     }
   }, []);
 
-  // Fire chime + browser notification when status transitions to in_progress
+  // Fire chime + browser notification on meaningful status transitions
   useEffect(() => {
     const current = queue?.status ?? null;
     if (prevStatusRef.current !== "in_progress" && current === "in_progress") {
       playCalledChime();
       fireCalledNotification(queue?.queue_number ?? "", room);
     }
+    if (prevStatusRef.current !== "no_show" && current === "no_show") {
+      playMissedChime();
+      fireMissedNotification(queue?.queue_number ?? "");
+    }
     prevStatusRef.current = current;
   }, [queue?.status, queue?.queue_number, room]);
+
+  // Fire approaching-turn alert when position drops to 2 or fewer
+  useEffect(() => {
+    const prev = prevPositionRef.current;
+    prevPositionRef.current = position;
+    if (
+      queue?.status === "waiting" &&
+      position !== null &&
+      position <= 2 &&
+      (prev === null || prev > 2)
+    ) {
+      playApproachingChime();
+      fireApproachingNotification(queue.queue_number, position);
+    }
+  }, [position, queue?.status, queue?.queue_number]);
 
   const load = useCallback(async () => {
     try {
