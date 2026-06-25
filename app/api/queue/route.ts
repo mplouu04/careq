@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { maskPatientName } from "@/lib/services/patient.service";
 import { format } from "date-fns";
@@ -9,9 +10,8 @@ import { requireStaff } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-async function getRoomNameMap(): Promise<Map<number, string>> {
+async function getRoomNameMap(supabase: SupabaseClient): Promise<Map<number, string>> {
   try {
-    const supabase = createAdminClient();
     const { data } = await supabase.from("rooms").select("id, name").eq("is_active", true);
     const map = new Map<number, string>();
     for (const r of data ?? []) {
@@ -71,91 +71,97 @@ export async function GET(request: Request) {
   const dayStart = getClinicDayStartIso();
   const dayEnd = getClinicDayEndIso();
   const supabase = createAdminClient();
-  const roomMap = await getRoomNameMap();
 
   // ── Public single-entry lookup ─────────────────────────────────────────────
   if (refRaw) {
     try {
-    const ref = normalizeQueueRef(refRaw);
-    const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
-         called_by_staff:called_by(first_name, last_name),
-         checkins!inner(
-           checkin_id, reference_number, reason, type_id,
-           patients(first_name, last_name),
-           appointment_types(name),
-           staff:doctor_id(first_name, last_name)
-         )`;
+      const ref = normalizeQueueRef(refRaw);
+      const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+           called_by_staff:called_by(first_name, last_name),
+           checkins!inner(
+             checkin_id, reference_number, reason, type_id,
+             patients(first_name, last_name),
+             appointment_types(name),
+             staff:doctor_id(first_name, last_name)
+           )`;
 
-    let { data: entry } = await supabase
-      .from("queue")
-      .select(queueSelect)
-      .eq("queue_number", ref)
-      .gte("created_at", dayStart)
-      .lte("created_at", dayEnd)
-      .maybeSingle();
+      // Round-trip 1: fire queue_number lookup and reference_number lookup in parallel
+      const [{ data: byNumber }, { data: byRef }, roomMap] = await Promise.all([
+        supabase
+          .from("queue")
+          .select(queueSelect)
+          .eq("queue_number", ref)
+          .gte("created_at", dayStart)
+          .lte("created_at", dayEnd)
+          .maybeSingle(),
+        supabase
+          .from("checkins")
+          .select("checkin_id")
+          .eq("reference_number", ref)
+          .maybeSingle(),
+        getRoomNameMap(supabase),
+      ]);
 
-    if (!entry) {
-      const { data: checkin } = await supabase
-        .from("checkins")
-        .select("checkin_id")
-        .eq("reference_number", ref)
-        .maybeSingle();
-
-      if (checkin) {
+      // Resolve entry: prefer direct queue_number hit; fall back to checkin_id lookup
+      let entry = byNumber;
+      if (!entry && byRef) {
+        // Round-trip 2a: fetch queue row by checkin_id (now indexed via migration 014)
         const { data: entryByCheckin } = await supabase
           .from("queue")
           .select(queueSelect)
-          .eq("checkin_id", checkin.checkin_id)
+          .eq("checkin_id", byRef.checkin_id)
           .gte("created_at", dayStart)
           .lte("created_at", dayEnd)
           .maybeSingle();
         entry = entryByCheckin;
       }
-    }
 
-    if (!entry) {
-      return NextResponse.json({ success: false, error: "Queue entry not found" });
-    }
-
-    let position: number | null = null;
-    let estWaitMinutes: number | null = null;
-    let patientsAhead: number | null = null;
-
-    if (entry.status === "waiting") {
-      const { data: allWaiting } = await supabase
-        .from("queue")
-        .select("id, skip_count")
-        .eq("status", "waiting")
-        .gte("created_at", dayStart)
-        .lte("created_at", dayEnd)
-        .order("skip_count", { ascending: true })
-        .order("id", { ascending: true });
-
-      const waiting = allWaiting ?? [];
-      const pos = waiting.findIndex((q) => q.id === entry.id) + 1;
-      if (pos > 0) {
-        const avg = await getAvgServiceTime(dayStart, dayEnd);
-        position = pos;
-        patientsAhead = pos - 1;
-        estWaitMinutes = pos * avg;
+      if (!entry) {
+        return NextResponse.json({ success: false, error: "Queue entry not found" });
       }
-    }
 
-    const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
-    const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
+      let position: number | null = null;
+      let estWaitMinutes: number | null = null;
+      let patientsAhead: number | null = null;
 
-    return NextResponse.json({
-      success: true,
-      queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
-      position,
-      patients_ahead: patientsAhead,
-      est_wait_minutes: estWaitMinutes,
-      doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
-      room: resolveRoomName(entry.room_id, roomMap),
-    });
+      if (entry.status === "waiting") {
+        // Round-trip 2b (or 3 if checkin fallback was used): position scan + avg in parallel
+        const [{ data: allWaiting }, avg] = await Promise.all([
+          supabase
+            .from("queue")
+            .select("id, skip_count")
+            .eq("status", "waiting")
+            .gte("created_at", dayStart)
+            .lte("created_at", dayEnd)
+            .order("skip_count", { ascending: true })
+            .order("id", { ascending: true }),
+          getAvgServiceTime(dayStart, dayEnd, supabase),
+        ]);
+
+        const waiting = allWaiting ?? [];
+        const pos = waiting.findIndex((q) => q.id === entry!.id) + 1;
+        if (pos > 0) {
+          position = pos;
+          patientsAhead = pos - 1;
+          estWaitMinutes = pos * avg;
+        }
+      }
+
+      const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
+      const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
+        | { first_name: string; last_name: string }
+        | null
+        | undefined;
+
+      return NextResponse.json({
+        success: true,
+        queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
+        position,
+        patients_ahead: patientsAhead,
+        est_wait_minutes: estWaitMinutes,
+        doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
+        room: resolveRoomName(entry.room_id, roomMap),
+      });
     } catch {
       return NextResponse.json({ success: false, error: "Queue entry not found" });
     }
@@ -167,24 +173,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const { data: allRows } = await supabase
-    .from("queue")
-    .select(
-      `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
-       checkins!inner(
-         checkin_id, reference_number, reason, type_id,
-         patients(first_name, last_name),
-         appointment_types(name),
-         staff:doctor_id(first_name, last_name)
-       )`
-    )
-    .gte("created_at", dayStart)
-    .lte("created_at", dayEnd)
-    .order("skip_count", { ascending: true })
-    .order("id", { ascending: true });
+  // Round-trip 1: rooms, queue join, and avg service time all fire in parallel
+  const [roomMap, { data: allRows }, avgServiceTime] = await Promise.all([
+    getRoomNameMap(supabase),
+    supabase
+      .from("queue")
+      .select(
+        `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+         checkins!inner(
+           checkin_id, reference_number, reason, type_id,
+           patients(first_name, last_name),
+           appointment_types(name),
+           staff:doctor_id(first_name, last_name)
+         )`
+      )
+      .gte("created_at", dayStart)
+      .lte("created_at", dayEnd)
+      .order("skip_count", { ascending: true })
+      .order("id", { ascending: true }),
+    getAvgServiceTime(dayStart, dayEnd, supabase),
+  ]);
 
   const rows = allRows ?? [];
-  const avgServiceTime = await getAvgServiceTime(dayStart, dayEnd);
 
   let waitingPosition = 0;
   const waiting = [];

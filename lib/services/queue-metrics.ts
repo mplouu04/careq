@@ -1,8 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { format, subDays } from "date-fns";
 
-export async function getAvgServiceTime(dayStart: string, dayEnd: string): Promise<number> {
-  const supabase = createAdminClient();
+export async function getAvgServiceTime(
+  dayStart: string,
+  dayEnd: string,
+  client?: SupabaseClient
+): Promise<number> {
+  const supabase = client ?? createAdminClient();
 
   const { data: completed } = await supabase
     .from("queue")

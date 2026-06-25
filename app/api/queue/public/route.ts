@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     }
   }
 
-  const [{ data: roomRows }, { data: queueRows }] = await Promise.all([
+  const [{ data: roomRows }, { data: queueRows }, avgServiceTime] = await Promise.all([
     supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
     supabase
       .from("queue")
@@ -62,11 +62,10 @@ export async function GET(request: Request) {
       .in("status", ["waiting", "in_progress"])
       .order("skip_count", { ascending: true })
       .order("id", { ascending: true }),
+    getAvgServiceTime(dayStart, dayEnd, supabase),
   ]);
 
   const items = (queueRows ?? []) as QueueRow[];
-
-  const avgServiceTime = await getAvgServiceTime(dayStart, dayEnd);
 
   const inProgressByRoom = new Map<number, { queue_number: string }>();
   for (const item of items.filter((q) => q.status === "in_progress")) {
