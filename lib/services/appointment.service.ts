@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
-import { normalizePhone, phonesMatchLast7 } from "@/lib/phone";
+import { normalizePhone, patientPhonesMatch, phonesMatchLast7 } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd, getClinicDayStartIso } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";
@@ -33,11 +33,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
     return { appointments: [], publicId: null, patientName: "" };
   }
 
-  const matched = (patients ?? []).filter(
-    (p) =>
-      phonesMatchLast7(p.phone || "", phone) ||
-      phonesMatchLast7(p.phone_normalized || "", phone)
-  );
+  const matched = (patients ?? []).filter((p) => patientPhonesMatch(p, phone));
 
   if (!matched.length) {
     return { appointments: [], publicId: null, patientName: "" };
@@ -101,93 +97,73 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
   };
 }
 
-function patientPhoneMatches(
-  patient: { phone: string; phone_normalized: string | null } | null | undefined,
-  phone: string
-): boolean {
-  return (
-    phonesMatchLast7(patient?.phone || "", phone) ||
-    phonesMatchLast7(patient?.phone_normalized || "", phone)
-  );
-}
-
 export async function lookupAppointmentByReference(reference: string, phone: string) {
   const supabase = createAdminClient();
   const ref = normalizeAppointmentReference(reference);
   const phoneInput = phone.trim();
 
-  const { data, error } = await supabase
+  const { data: checkin, error } = await supabase
     .from("checkins")
     .select(
       `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
        appointment_types(name),
-       staff:doctor_id(first_name, last_name),
-       patients(first_name, last_name, public_id, phone, phone_normalized)`
+       staff:doctor_id(first_name, last_name)`
     )
     .eq("reference_number", ref)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .maybeSingle();
 
   if (error) {
-    console.error("[lookupAppointmentByReference] query failed", error);
+    console.error("[lookupAppointmentByReference] checkin query failed", error);
     return { appointments: [], publicId: null, patientName: "" };
   }
 
-  if (!data) {
+  if (!checkin) {
     return { appointments: [], publicId: null, patientName: "" };
   }
 
-  const patientRaw = data.patients as unknown;
-  let patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-    | {
-        first_name: string;
-        last_name: string;
-        public_id: string;
-        phone: string;
-        phone_normalized: string | null;
-      }
-    | null
-    | undefined;
+  const { data: patient, error: patientError } = await supabase
+    .from("patients")
+    .select("first_name, last_name, public_id, phone, phone_normalized")
+    .eq("id", checkin.patient_id)
+    .maybeSingle();
 
-  if (!patient && data.patient_id) {
-    const { data: patientRow, error: patientError } = await supabase
-      .from("patients")
-      .select("first_name, last_name, public_id, phone, phone_normalized")
-      .eq("id", data.patient_id)
-      .maybeSingle();
-    if (patientError) {
-      console.error("[lookupAppointmentByReference] patient query failed", patientError);
-    } else {
-      patient = patientRow ?? undefined;
-    }
+  if (patientError) {
+    console.error("[lookupAppointmentByReference] patient query failed", patientError);
+    return { appointments: [], publicId: null, patientName: "" };
   }
-  const doctorRaw = data.staff as unknown;
+
+  if (!patientPhonesMatch(patient, phoneInput)) {
+    console.warn("[lookupAppointmentByReference] phone verification failed", {
+      reference: ref,
+      patientId: checkin.patient_id,
+    });
+    return { appointments: [], publicId: null, patientName: "" };
+  }
+
+  const doctorRaw = checkin.staff as unknown;
   const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
     | { first_name: string; last_name: string }
     | null
     | undefined;
-  const typeRaw = data.appointment_types as unknown;
+  const typeRaw = checkin.appointment_types as unknown;
   const apptType = (Array.isArray(typeRaw) ? typeRaw[0] : typeRaw) as
     | { name: string }
     | null
     | undefined;
-  const apptDate = data.appointment_date ? new Date(data.appointment_date) : null;
-
-  if (!patientPhoneMatches(patient, phoneInput)) {
-    return { appointments: [], publicId: null, patientName: "" };
-  }
+  const apptDate = checkin.appointment_date ? new Date(checkin.appointment_date) : null;
 
   return {
     appointments: [
       {
-        checkinId: data.checkin_id,
-        reference: data.reference_number,
+        checkinId: checkin.checkin_id,
+        reference: checkin.reference_number,
         date: apptDate ? format(apptDate, "MMMM d, yyyy") : "",
-        time: data.scheduled_time ? formatTime12h(data.scheduled_time.slice(0, 5)) : "",
+        time: checkin.scheduled_time ? formatTime12h(checkin.scheduled_time.slice(0, 5)) : "",
         doctor: doctor ? `Dr. ${doctor.first_name} ${doctor.last_name}` : "",
         type: apptType?.name ?? "",
-        reason: data.reason ?? "",
-        status: data.status,
+        reason: checkin.reason ?? "",
+        status: checkin.status,
       },
     ],
     publicId: patient?.public_id ?? null,
@@ -224,7 +200,7 @@ export async function cancelAppointment(
     phone_normalized: string | null;
   };
   if (
-    !patientPhoneMatches(patient, phone)
+    !patientPhonesMatch(patient, phone)
   ) {
     return { error: "Phone number does not match.", status: 403 as const };
   }

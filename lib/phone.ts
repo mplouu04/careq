@@ -21,3 +21,25 @@ export function phonesMatchLast7(stored: string, incoming: string): boolean {
   const b = extractPhoneLast7(incoming);
   return a.length === 7 && a === b;
 }
+
+/** Match on full local PH number when available, otherwise last-7 digits. */
+export function phonesMatch(stored: string, incoming: string): boolean {
+  if (!stored?.trim() || !incoming?.trim()) return false;
+  const localStored = toLocalPH(normalizePhone(stored));
+  const localIncoming = toLocalPH(normalizePhone(incoming));
+  if (localStored.length >= 10 && localIncoming.length >= 10 && localStored === localIncoming) {
+    return true;
+  }
+  return phonesMatchLast7(stored, incoming);
+}
+
+export function patientPhonesMatch(
+  patient: { phone?: string | null; phone_normalized?: string | null } | null | undefined,
+  incoming: string
+): boolean {
+  if (!patient) return false;
+  return (
+    phonesMatch(patient.phone || "", incoming) ||
+    phonesMatch(patient.phone_normalized || "", incoming)
+  );
+}

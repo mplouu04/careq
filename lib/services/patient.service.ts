@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CheckinError } from "@/lib/counters";
-import { phonesMatchLast7 } from "@/lib/phone";
+import { patientPhonesMatch } from "@/lib/phone";
 import {
   escapePostgrestValue,
   ilikePattern,
@@ -253,11 +253,7 @@ export async function verifyPatientByDobAndPhone(
     throw new Error(error.message);
   }
 
-  const matched = (patients ?? []).filter(
-    (p) =>
-      phonesMatchLast7(p.phone || "", phoneLast7) ||
-      phonesMatchLast7(p.phone_normalized || "", phoneLast7)
-  );
+  const matched = (patients ?? []).filter((p) => patientPhonesMatch(p, phoneLast7));
 
   if (!matched.length) {
     console.warn("[verifyPatientByDobAndPhone] verification failed", {

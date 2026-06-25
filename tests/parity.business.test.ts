@@ -5,7 +5,7 @@
  * Pure unit tests — no DB / HTTP.
  */
 import { describe, it, expect } from "vitest";
-import { phonesMatchLast7, extractPhoneLast7 } from "../lib/phone";
+import { phonesMatchLast7, extractPhoneLast7, phonesMatch } from "../lib/phone";
 
 // ─── Phone last-7-digit matching (cancel / lookup) ──────────────────────────
 
@@ -36,6 +36,22 @@ describe("phonesMatchLast7 (cancel / patient_lookup)", () => {
 
   it("matches when 10-digit number missing leading 0 is normalized", () => {
     expect(phonesMatchLast7("09171234567", "9171234567")).toBe(true);
+  });
+});
+
+// ─── Full phone match (lookup / verify) ───────────────────────────────────────
+
+describe("phonesMatch", () => {
+  it("matches identical 11-digit local numbers", () => {
+    expect(phonesMatch("09502994754", "09502994754")).toBe(true);
+  });
+
+  it("matches 10-digit stored number to 11-digit input", () => {
+    expect(phonesMatch("9502994754", "09502994754")).toBe(true);
+  });
+
+  it("falls back to last-7 when full numbers differ", () => {
+    expect(phonesMatch("09171234567", "1234567")).toBe(true);
   });
 });
 

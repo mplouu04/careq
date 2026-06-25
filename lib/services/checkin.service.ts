@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, TIMEZONE } from "@/lib/constants";
-import { phonesMatchLast7 } from "@/lib/phone";
+import { patientPhonesMatch, phonesMatchLast7 } from "@/lib/phone";
 import { normalizeAppointmentReference, sanitize } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { checkinToQueue, CheckinError, nextCounter } from "@/lib/counters";
@@ -12,20 +12,16 @@ function patientPhoneMatches(
   patient: { phone: string; phone_normalized: string | null } | null | undefined,
   phone: string
 ): boolean {
-  return (
-    phonesMatchLast7(patient?.phone || "", phone) ||
-    phonesMatchLast7(patient?.phone_normalized || "", phone)
-  );
+  return patientPhonesMatch(patient, phone);
 }
 
 export async function lookupAppointmentForCheckin(ref: string, phone: string) {
   const supabase = createAdminClient();
   const normalizedRef = normalizeAppointmentReference(ref);
-  const { data } = await supabase
+  const { data: checkin } = await supabase
     .from("checkins")
     .select(
-      `checkin_id, reference_number, scheduled_time, appointment_date, status,
-       patients(first_name, last_name, phone, phone_normalized),
+      `checkin_id, reference_number, scheduled_time, appointment_date, status, patient_id,
        staff:doctor_id(first_name, last_name),
        appointment_types(name)`
     )
@@ -33,24 +29,24 @@ export async function lookupAppointmentForCheckin(ref: string, phone: string) {
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .maybeSingle();
 
-  if (!data) return null;
+  if (!checkin) return null;
 
-  const patientRaw = data.patients as unknown;
-  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-    | { first_name: string; last_name: string; phone: string; phone_normalized: string | null }
-    | null
-    | undefined;
+  const { data: patient } = await supabase
+    .from("patients")
+    .select("first_name, last_name, phone, phone_normalized")
+    .eq("id", checkin.patient_id)
+    .maybeSingle();
 
   if (!patientPhoneMatches(patient, phone)) {
     return null;
   }
 
-  const doctorRaw = data.staff as unknown;
+  const doctorRaw = checkin.staff as unknown;
   const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
     | { first_name: string; last_name: string }
     | null
     | undefined;
-  const typeRaw = data.appointment_types as unknown;
+  const typeRaw = checkin.appointment_types as unknown;
   const apptType = (Array.isArray(typeRaw) ? typeRaw[0] : typeRaw) as
     | { name: string }
     | null
@@ -59,12 +55,12 @@ export async function lookupAppointmentForCheckin(ref: string, phone: string) {
   return [
     {
       fullname: patient ? `${patient.first_name} ${patient.last_name}` : "",
-      appointment_date: data.appointment_date,
+      appointment_date: checkin.appointment_date,
       doctor: doctor ? `${doctor.first_name} ${doctor.last_name}` : "",
       appointment: apptType?.name ?? "",
-      time: data.scheduled_time,
-      appnumber: data.reference_number,
-      id: data.checkin_id,
+      time: checkin.scheduled_time,
+      appnumber: checkin.reference_number,
+      id: checkin.checkin_id,
     },
   ];
 }
