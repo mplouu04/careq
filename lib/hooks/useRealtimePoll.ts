@@ -9,6 +9,9 @@ type UseRealtimePollOptions = {
   debounceMs?: number;
   fallbackIntervalMs?: number;
   maxBackoffMs?: number;
+  /** Interval (ms) to keep polling even when the realtime subscription is live.
+   *  Acts as a safety net for silently dropped WAL events. Set to 0 to disable. */
+  heartbeatIntervalMs?: number;
 };
 
 export function useRealtimePoll({
@@ -17,10 +20,12 @@ export function useRealtimePoll({
   debounceMs = 300,
   fallbackIntervalMs = 5000,
   maxBackoffMs = 30000,
+  heartbeatIntervalMs = 15000,
 }: UseRealtimePollOptions) {
   const [isLive, setIsLive] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const backoffRef = useRef(fallbackIntervalMs);
   const mountedRef = useRef(true);
   const liveRef = useRef(false);
@@ -40,6 +45,22 @@ export function useRealtimePoll({
       pollRef.current = null;
     }
   }, []);
+
+  const stopHeartbeat = useCallback(() => {
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+  }, []);
+
+  const startHeartbeat = useCallback(() => {
+    stopHeartbeat();
+    if (heartbeatIntervalMs <= 0) return;
+    heartbeatRef.current = setInterval(() => {
+      if (!mountedRef.current) return;
+      fetchFn().catch(() => {});
+    }, heartbeatIntervalMs);
+  }, [fetchFn, heartbeatIntervalMs, stopHeartbeat]);
 
   const startFallbackPolling = useCallback(() => {
     stopFallbackPolling();
@@ -79,8 +100,12 @@ export function useRealtimePoll({
       if (live) {
         backoffRef.current = fallbackIntervalMs;
         stopFallbackPolling();
-      } else if (!pollRef.current) {
-        startFallbackPolling();
+        startHeartbeat();
+      } else {
+        stopHeartbeat();
+        if (!pollRef.current) {
+          startFallbackPolling();
+        }
       }
     });
 
@@ -88,9 +113,10 @@ export function useRealtimePoll({
       mountedRef.current = false;
       if (debounceRef.current) clearTimeout(debounceRef.current);
       stopFallbackPolling();
+      stopHeartbeat();
       channel.unsubscribe();
     };
-  }, [fetchFn, subscribe, debouncedFetch, startFallbackPolling, stopFallbackPolling, fallbackIntervalMs]);
+  }, [fetchFn, subscribe, debouncedFetch, startFallbackPolling, stopFallbackPolling, startHeartbeat, stopHeartbeat, fallbackIntervalMs]);
 
   return { isLive, refresh: fetchFn };
 }
