@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
-import { normalizePhone, patientPhonesMatch, phonesMatchLast7 } from "@/lib/phone";
+import { normalizePhone, patientPhonesMatch } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd, getClinicDayStartIso } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";

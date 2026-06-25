@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, TIMEZONE } from "@/lib/constants";
-import { patientPhonesMatch, phonesMatchLast7 } from "@/lib/phone";
+import { patientPhonesMatch } from "@/lib/phone";
 import { normalizeAppointmentReference, sanitize } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { checkinToQueue, CheckinError, nextCounter } from "@/lib/counters";
