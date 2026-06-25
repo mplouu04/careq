@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import { ExternalLink } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/careq";
@@ -150,6 +151,30 @@ export function AdminPanel() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Auto-refresh the appointments list when checkins change while the
+  // appointments tab is active. Uses a ref so the effect can read the
+  // latest activeTab without re-subscribing every time the tab changes.
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("admin-checkins-refresh")
+      .on("postgres_changes", { event: "*", schema: "public", table: "checkins" }, () => {
+        if (activeTabRef.current === "appointments") {
+          load();
+        }
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [load]);
 
   async function createStaff(e: React.FormEvent<HTMLFormElement>) {

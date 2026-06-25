@@ -187,6 +187,28 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     fallbackIntervalMs: 5000,
   });
 
+  // Second channel: alert staff when a walk-in patient checks in (type_id = 2)
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("dashboard-walkin-alerts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "checkins", filter: "type_id=eq.2" },
+        () => {
+          toast.info("New walk-in arrived", {
+            description: "A patient just checked in at the front desk.",
+            duration: 6000,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, []);
+
   useEffect(() => {
     setToday(
       new Date().toLocaleDateString("en-PH", {

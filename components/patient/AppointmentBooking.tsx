@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -191,6 +192,30 @@ export function AppointmentBooking() {
   useEffect(() => {
     refetchSlots(state.doctorId, state.date, state.appTypeId);
   }, [state.doctorId, state.date, state.appTypeId, refetchSlots]);
+
+  // Keep a stable ref to refetchSlots so the channel effect below
+  // does not re-subscribe every time the callback identity changes.
+  const refetchSlotsRef = useRef(refetchSlots);
+  useEffect(() => {
+    refetchSlotsRef.current = refetchSlots;
+  }, [refetchSlots]);
+
+  // Re-fetch slots live when another patient books on the same doctor + date
+  useEffect(() => {
+    if (!state.doctorId || !state.date) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`booking-slots-${state.doctorId}-${state.date}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, () => {
+        refetchSlotsRef.current(state.doctorId, state.date, state.appTypeId);
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [state.doctorId, state.date, state.appTypeId]);
 
   const goStep = (step: number) => {
     setState((s) => ({ ...s, step }));

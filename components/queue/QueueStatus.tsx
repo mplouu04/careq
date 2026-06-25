@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import {
@@ -45,6 +45,47 @@ function statusBadgeVariant(
   return "error";
 }
 
+/** Synthesise a short two-tone chime via Web Audio API (no file needed). */
+function playCalledChime() {
+  try {
+    const ctx = new AudioContext();
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.4, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+    gain.connect(ctx.destination);
+
+    const tones = [880, 1100];
+    tones.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.25);
+      osc.connect(gain);
+      osc.start(ctx.currentTime + i * 0.25);
+      osc.stop(ctx.currentTime + i * 0.25 + 0.5);
+    });
+  } catch {
+    // AudioContext unavailable (e.g. server-side) — silently skip
+  }
+}
+
+/** Request browser notification permission once; fire a notification if granted. */
+function fireCalledNotification(queueNumber: string, room: string) {
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  const send = () => {
+    new Notification("It's your turn!", {
+      body: `Queue ${queueNumber} — please proceed${room ? ` to ${room}` : ""}.`,
+      icon: "/icon-192.png",
+    });
+  };
+  if (Notification.permission === "granted") {
+    send();
+  } else if (Notification.permission !== "denied") {
+    Notification.requestPermission().then((p) => {
+      if (p === "granted") send();
+    });
+  }
+}
+
 export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [queue, setQueue] = useState<QueueEntry | null>(null);
   const [position, setPosition] = useState<number | null>(null);
@@ -52,6 +93,24 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [room, setRoom] = useState("");
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const prevStatusRef = useRef<string | null>(null);
+
+  // Request notification permission proactively on mount
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  // Fire chime + browser notification when status transitions to in_progress
+  useEffect(() => {
+    const current = queue?.status ?? null;
+    if (prevStatusRef.current !== "in_progress" && current === "in_progress") {
+      playCalledChime();
+      fireCalledNotification(queue?.queue_number ?? "", room);
+    }
+    prevStatusRef.current = current;
+  }, [queue?.status, queue?.queue_number, room]);
 
   const load = useCallback(async () => {
     try {
