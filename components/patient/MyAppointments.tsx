@@ -109,7 +109,13 @@ export function MyAppointments() {
       const res = await fetch(
         `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${isoDob}`
       );
-      const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data.error ?? "Unable to look up appointments.");
+        setAppointments([]);
+        setPatientName("");
+        return;
+      }
       const appts: Appointment[] = data.appointments ?? [];
       setAppointments(appts);
       setCheckinIds(new Set(appts.map((a) => String(a.checkinId))));

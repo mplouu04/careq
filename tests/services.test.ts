@@ -187,6 +187,26 @@ describe("appointment.service lookupPatientAppointments", () => {
   });
 });
 
+describe("isActiveAppointmentForLookup", () => {
+  it("always includes pending appointments", async () => {
+    const { isActiveAppointmentForLookup } = await import("../lib/services/appointment.service");
+    expect(
+      isActiveAppointmentForLookup("pending", "2020-01-01T00:00:00.000Z", "2026-06-25T00:00:00.000Z")
+    ).toBe(true);
+  });
+
+  it("includes non-pending appointments from today onward", async () => {
+    const { isActiveAppointmentForLookup } = await import("../lib/services/appointment.service");
+    const todayStart = "2026-06-25T08:00:00.000Z";
+    expect(isActiveAppointmentForLookup("checked_in", "2026-06-25T09:00:00.000Z", todayStart)).toBe(
+      true
+    );
+    expect(isActiveAppointmentForLookup("checked_in", "2026-06-24T09:00:00.000Z", todayStart)).toBe(
+      false
+    );
+  });
+});
+
 describe("appointment.service lookupAppointmentByReference", () => {
   beforeEach(() => {
     vi.clearAllMocks();

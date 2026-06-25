@@ -8,6 +8,17 @@ import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
 import { addDays, format, parseISO } from "date-fns";
 
+/** Pending always shows; other active statuses only from start of clinic day onward. */
+export function isActiveAppointmentForLookup(
+  status: string,
+  appointmentDate: string | null | undefined,
+  todayStartIso: string
+): boolean {
+  if (status === "pending") return true;
+  if (!appointmentDate) return false;
+  return new Date(appointmentDate).getTime() >= new Date(todayStartIso).getTime();
+}
+
 export async function lookupPatientAppointments(phone: string, dob: string) {
   const supabase = createAdminClient();
 
@@ -35,7 +46,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
   const today = getClinicTodayYmd();
   const todayStartIso = getClinicDayStartIso(today);
 
-  const { data } = await supabase
+  const { data, error: checkinsError } = await supabase
     .from("checkins")
     .select(
       `checkin_id, reference_number, scheduled_time, appointment_date, status, reason,
@@ -45,11 +56,19 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
     .in("patient_id", ids)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
     .not("status", "in", '("cancelled","completed","no_show")')
-    .or(`status.eq.pending,appointment_date.gte.${todayStartIso}`)
     .order("appointment_date", { ascending: true })
-    .limit(20);
+    .limit(50);
 
-  const appointments = (data ?? []).map((a) => {
+  if (checkinsError) {
+    console.error("[lookupPatientAppointments] checkins query failed", checkinsError);
+    return { appointments: [], publicId: null, patientName: "" };
+  }
+
+  const activeRows = (data ?? []).filter((a) =>
+    isActiveAppointmentForLookup(a.status, a.appointment_date, todayStartIso)
+  );
+
+  const appointments = activeRows.slice(0, 20).map((a) => {
     const doctorRaw = a.staff as unknown;
     const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
       | { first_name: string; last_name: string }
