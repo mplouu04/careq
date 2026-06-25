@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { withRateLimit, withStaffAuth } from "@/lib/api/with-auth";
 import { parseJsonBody } from "@/lib/api/parse-body";
 import { minSearchLength } from "@/lib/patient-search";
-import { RegisterPatientSchema } from "@/lib/schemas/patient";
+import { PatientSearchSchema, RegisterPatientSchema } from "@/lib/schemas/patient";
 import {
   mapPatient,
   registerPatient,
   searchPatients,
 } from "@/lib/services/patient.service";
+import { logAudit } from "@/lib/audit";
+import { getClientIp } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,15 +19,36 @@ export const GET = withStaffAuth(
     "patient_search",
     async (request: Request) => {
       const { searchParams } = new URL(request.url);
-      const term = searchParams.get("term")?.trim() ?? "";
-      const dob = searchParams.get("dob")?.trim() ?? "";
+
+      const parsed = PatientSearchSchema.safeParse({
+        term: searchParams.get("term") ?? "",
+        dob: searchParams.get("dob") ?? undefined,
+      });
+
+      if (!parsed.success) {
+        return NextResponse.json({ success: true, patients: [] });
+      }
+
+      const { term, dob = "" } = parsed.data;
 
       if (!minSearchLength(term)) {
         return NextResponse.json({ success: true, patients: [] });
       }
 
+      const session = (request as Request & { staffSession?: { userId: string } }).staffSession;
+      const ip = getClientIp(request);
+
       try {
         const rows = await searchPatients(term, dob);
+
+        void logAudit({
+          userId: session?.userId ?? null,
+          action: "patient_search",
+          tableName: "patients",
+          newValues: { term_length: term.length, result_count: rows.length },
+          ipAddress: ip,
+        });
+
         return NextResponse.json({
           success: true,
           patients: rows.map(mapPatient),
@@ -43,6 +66,7 @@ export const GET = withStaffAuth(
 export const POST = withRateLimit(
   "patient_register",
   async (request: Request) => {
+    const ip = getClientIp(request);
     const parsed = await parseJsonBody(request, RegisterPatientSchema);
     if ("error" in parsed) {
       const body = (await parsed.error.json()) as { error?: string };
@@ -74,6 +98,18 @@ export const POST = withRateLimit(
         { status: result.status }
       );
     }
+
+    void logAudit({
+      userId: null,
+      action: "patient_register",
+      tableName: "patients",
+      recordId: "patient" in result ? result.patient : null,
+      newValues: {
+        reused_existing: "reused_existing" in result ? result.reused_existing : false,
+        matched_by: "matched_by" in result ? result.matched_by : null,
+      },
+      ipAddress: ip,
+    });
 
     return NextResponse.json(result);
   },

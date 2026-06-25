@@ -18,6 +18,10 @@ import { CheckinError } from "@/lib/counters";
 
 import { CheckinBodySchema } from "@/lib/schemas/checkin";
 
+import { logAudit } from "@/lib/audit";
+
+import { getClientIp } from "@/lib/rate-limit";
+
 
 
 export const dynamic = "force-dynamic";
@@ -26,49 +30,51 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/checkin?appointmentID=<reference_number> */
 
-export async function GET(request: Request) {
+export const GET = withRateLimit(
+  "checkin_lookup",
+  async (request: Request) => {
+    const { searchParams } = new URL(request.url);
 
-  const { searchParams } = new URL(request.url);
+    const ref = sanitize(
 
-  const ref = sanitize(
+      searchParams.get("appointmentID") ?? searchParams.get("reference"),
 
-    searchParams.get("appointmentID") ?? searchParams.get("reference"),
+      50
 
-    50
-
-  );
-
-
-
-  if (!ref) {
-
-    return NextResponse.json({ error: "Missing appointmentID" }, { status: 400 });
-
-  }
+    );
 
 
 
-  if (!isValidRef(ref)) {
+    if (!ref) {
 
-    return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
+      return NextResponse.json({ error: "Missing appointmentID" }, { status: 400 });
 
-  }
-
-
-
-  const appointment = await lookupAppointmentForCheckin(ref);
-
-  if (!appointment) {
-
-    return NextResponse.json({ success: false, appointment: null });
-
-  }
+    }
 
 
 
-  return NextResponse.json({ success: true, appointment });
+    if (!isValidRef(ref)) {
 
-}
+      return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
+
+    }
+
+
+
+    const appointment = await lookupAppointmentForCheckin(ref);
+
+    if (!appointment) {
+
+      return NextResponse.json({ success: false, appointment: null });
+
+    }
+
+
+
+    return NextResponse.json({ success: true, appointment });
+  },
+  { max: 10, windowSeconds: 60, failClosed: true }
+);
 
 
 
@@ -125,6 +131,15 @@ export const POST = withRateLimit(
 
 
       const result = await checkinWalkIn(parsed.data);
+
+      void logAudit({
+        userId: null,
+        action: "patient_walkin_checkin",
+        tableName: "checkins",
+        recordId: result.reference,
+        newValues: { queueNumber: result.queueNumber },
+        ipAddress: getClientIp(request),
+      });
 
       return NextResponse.json({
 
