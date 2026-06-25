@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { logAudit } from "@/lib/audit";
 import { parseJsonBody } from "@/lib/api/parse-body";
 import { withPatientVerifyRateLimit } from "@/lib/api/with-auth";
 import {
@@ -39,6 +40,13 @@ export const POST = withPatientVerifyRateLimit(async (request: Request) => {
         if (ip !== "unknown") {
           await recordVerificationFailure(ip);
         }
+        void logAudit({
+          userId: null,
+          action: "patient_verify_failed",
+          tableName: "patients",
+          ipAddress: ip !== "unknown" ? ip : null,
+          newValues: { outcome: "no_match" },
+        });
         const elapsed = Date.now() - start;
         const remaining = Math.max(0, NO_MATCH_MIN_DELAY_MS - elapsed);
         if (remaining > 0) {
@@ -50,6 +58,14 @@ export const POST = withPatientVerifyRateLimit(async (request: Request) => {
       if (ip !== "unknown") {
         await clearVerificationFailures(ip);
       }
+
+      void logAudit({
+        userId: null,
+        action: "patient_verify_success",
+        tableName: "patients",
+        ipAddress: ip !== "unknown" ? ip : null,
+        newValues: { outcome: "matched" },
+      });
 
       return NextResponse.json({
         matched: true,

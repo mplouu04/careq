@@ -37,7 +37,7 @@ export function VisitChoice() {
                 I&apos;ve been here before
               </span>
               <span className="text-body-sm text-on-surface-variant mt-2">
-                Search by name, phone, or patient number
+                Verify with your date of birth and mobile number
               </span>
             </Link>
 

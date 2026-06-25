@@ -18,7 +18,7 @@ describe("lib/env", () => {
     const { getEnvSafe } = await import("../lib/env");
     const env = getEnvSafe();
     expect(env?.NEXT_PUBLIC_SUPABASE_URL).toBe("https://example.supabase.co");
-    expect(env?.RETENTION_DAYS).toBe(90);
+    expect(env?.RETENTION_DAYS).toBe(2190);
   });
 
   it("rejects mismatched Resend config", async () => {

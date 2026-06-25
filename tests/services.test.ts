@@ -196,12 +196,12 @@ describe("appointment.service lookupAppointmentByReference", () => {
     mockFrom.mockReturnValue(chain({ data: null }));
 
     const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
-    const result = await lookupAppointmentByReference("APT-MISSING");
+    const result = await lookupAppointmentByReference("APT-MISSING", "09171234567");
 
     expect(result).toEqual({ appointments: [], publicId: null, patientName: "" });
   });
 
-  it("returns a single appointment with patient name for valid reference", async () => {
+  it("returns empty when phone does not match", async () => {
     mockFrom.mockReturnValue(
       chain({
         data: {
@@ -218,13 +218,45 @@ describe("appointment.service lookupAppointmentByReference", () => {
             first_name: "Jane",
             last_name: "Doe",
             public_id: "550e8400-e29b-41d4-a716-446655440099",
+            phone: "09171234567",
+            phone_normalized: "09171234567",
           },
         },
       })
     );
 
     const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
-    const result = await lookupAppointmentByReference("APT20260610001");
+    const result = await lookupAppointmentByReference("APT20260610001", "09999999999");
+
+    expect(result).toEqual({ appointments: [], publicId: null, patientName: "" });
+  });
+
+  it("returns a single appointment with patient name when phone matches", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: {
+          checkin_id: 10,
+          reference_number: "APT20260610001",
+          scheduled_time: "09:00:00",
+          appointment_date: "2026-06-10T09:00:00",
+          status: "pending",
+          reason: "Follow-up",
+          patient_id: 42,
+          appointment_types: { name: "Consultation" },
+          staff: { first_name: "John", last_name: "Smith" },
+          patients: {
+            first_name: "Jane",
+            last_name: "Doe",
+            public_id: "550e8400-e29b-41d4-a716-446655440099",
+            phone: "09171234567",
+            phone_normalized: "09171234567",
+          },
+        },
+      })
+    );
+
+    const { lookupAppointmentByReference } = await import("../lib/services/appointment.service");
+    const result = await lookupAppointmentByReference("APT20260610001", "1234567");
 
     expect(result.publicId).toBe("550e8400-e29b-41d4-a716-446655440099");
     expect(result.patientName).toBe("Jane Doe");
@@ -406,6 +438,59 @@ describe("patient.service consumePatientVerifyToken", () => {
       message: "Invalid or expired verification token",
       status: 403,
     });
+  });
+});
+
+describe("checkin.service checkinAppointment", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRpc.mockResolvedValue({ data: 12, error: null });
+  });
+
+  it("throws 404 when appointment not found", async () => {
+    mockFrom.mockReturnValue(chain({ data: null }));
+
+    const { checkinAppointment } = await import("../lib/services/checkin.service");
+    await expect(checkinAppointment("APT-MISSING", "09171234567")).rejects.toMatchObject({
+      message: "Appointment not found",
+      status: 404,
+    });
+  });
+
+  it("throws 403 when phone does not match", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: {
+          checkin_id: 1,
+          status: "pending",
+          patients: { phone: "09171234567", phone_normalized: "09171234567" },
+        },
+      })
+    );
+
+    const { checkinAppointment } = await import("../lib/services/checkin.service");
+    await expect(checkinAppointment("APT20260610001", "09999999999")).rejects.toMatchObject({
+      message: "Phone number does not match.",
+      status: 403,
+    });
+  });
+
+  it("checks in when phone matches", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: {
+          checkin_id: 1,
+          status: "pending",
+          patients: { phone: "09171234567", phone_normalized: "09171234567" },
+        },
+      })
+    );
+
+    const { checkinAppointment } = await import("../lib/services/checkin.service");
+    const result = await checkinAppointment("APT20260610001", "1234567");
+
+    expect(result.queueNumber).toBe(12);
+    expect(mockRpc).toHaveBeenCalled();
   });
 });
 

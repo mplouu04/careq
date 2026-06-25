@@ -15,6 +15,7 @@ import {
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { storeVerifyToken } from "@/lib/verify-session";
 
 type VerifyMatch = {
   firstName: string;
@@ -131,7 +132,8 @@ export function PatientSearch() {
 
   function confirmIdentity() {
     if (!match) return;
-    router.push(`/checkin?verifyToken=${encodeURIComponent(match.verifyToken)}`);
+    storeVerifyToken(match.verifyToken);
+    router.push("/checkin?tab=walk-in");
   }
 
   if (match) {

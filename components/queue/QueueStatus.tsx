@@ -149,18 +149,13 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [doctor, setDoctor] = useState("");
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
   const prevPositionRef = useRef<number | null>(null);
 
-  // Request notification permission proactively on mount
+  // Only fire notifications when the user has opted in
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission().catch(() => {});
-    }
-  }, []);
-
-  // Fire chime + browser notification on meaningful status transitions
-  useEffect(() => {
+    if (!alertsEnabled) return;
     const current = queue?.status ?? null;
     if (prevStatusRef.current !== "in_progress" && current === "in_progress") {
       playCalledChime();
@@ -171,10 +166,11 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       fireMissedNotification(queue?.queue_number ?? "");
     }
     prevStatusRef.current = current;
-  }, [queue?.status, queue?.queue_number, room]);
+  }, [queue?.status, queue?.queue_number, room, alertsEnabled]);
 
   // Fire approaching-turn alert when position drops to 2 or fewer
   useEffect(() => {
+    if (!alertsEnabled) return;
     const prev = prevPositionRef.current;
     prevPositionRef.current = position;
     if (
@@ -186,7 +182,13 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       playApproachingChime();
       fireApproachingNotification(queue.queue_number, position);
     }
-  }, [position, queue?.status, queue?.queue_number]);
+  }, [position, queue?.status, queue?.queue_number, alertsEnabled]);
+
+  async function enableAlerts() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const permission = await Notification.requestPermission();
+    setAlertsEnabled(permission === "granted");
+  }
 
   const load = useCallback(async () => {
     try {
@@ -358,6 +360,23 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
           )}
         </div>
       </CareqCard>
+
+      <div className="text-center mt-3">
+        {!alertsEnabled && typeof window !== "undefined" && "Notification" in window && (
+          <CareqButton
+            type="button"
+            variant="outline"
+            size="sm"
+            className="cursor-pointer mb-2"
+            onClick={() => void enableAlerts()}
+          >
+            Enable sound &amp; alerts
+          </CareqButton>
+        )}
+        {alertsEnabled && (
+          <p className="text-label-sm text-on-surface-variant mb-2">Alerts enabled</p>
+        )}
+      </div>
 
       <div className="text-center mt-3">
         <span

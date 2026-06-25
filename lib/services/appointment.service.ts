@@ -81,7 +81,17 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
   };
 }
 
-export async function lookupAppointmentByReference(reference: string) {
+function patientPhoneMatches(
+  patient: { phone: string; phone_normalized: string | null } | null | undefined,
+  phone: string
+): boolean {
+  return (
+    phonesMatchLast7(patient?.phone || "", phone) ||
+    phonesMatchLast7(patient?.phone_normalized || "", phone)
+  );
+}
+
+export async function lookupAppointmentByReference(reference: string, phone: string) {
   const supabase = createAdminClient();
 
   const { data } = await supabase
@@ -90,7 +100,7 @@ export async function lookupAppointmentByReference(reference: string) {
       `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
        appointment_types(name),
        staff:doctor_id(first_name, last_name),
-       patients(first_name, last_name, public_id)`
+       patients(first_name, last_name, public_id, phone, phone_normalized)`
     )
     .eq("reference_number", reference)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
@@ -102,7 +112,13 @@ export async function lookupAppointmentByReference(reference: string) {
 
   const patientRaw = data.patients as unknown;
   const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-    | { first_name: string; last_name: string; public_id: string }
+    | {
+        first_name: string;
+        last_name: string;
+        public_id: string;
+        phone: string;
+        phone_normalized: string | null;
+      }
     | null
     | undefined;
   const doctorRaw = data.staff as unknown;
@@ -116,6 +132,10 @@ export async function lookupAppointmentByReference(reference: string) {
     | null
     | undefined;
   const apptDate = data.appointment_date ? new Date(data.appointment_date) : null;
+
+  if (!patientPhoneMatches(patient, phone)) {
+    return { appointments: [], publicId: null, patientName: "" };
+  }
 
   return {
     appointments: [
@@ -163,8 +183,7 @@ export async function cancelAppointment(
     phone_normalized: string | null;
   };
   if (
-    !phonesMatchLast7(patient?.phone || "", phone) &&
-    !phonesMatchLast7(patient?.phone_normalized || "", phone)
+    !patientPhoneMatches(patient, phone)
   ) {
     return { error: "Phone number does not match.", status: 403 as const };
   }

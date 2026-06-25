@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { logAudit } from "@/lib/audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
+import { withRateLimit } from "@/lib/api/with-auth";
 import { getClientIp } from "@/lib/rate-limit";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
@@ -27,7 +28,9 @@ type QueueRow = {
   called_at: string | null;
 };
 
-export async function GET(request: Request) {
+export const GET = withRateLimit(
+  "queue_public",
+  async (request: Request) => {
   const supabase = createAdminClient();
   const dayStart = getClinicDayStartIso();
   const dayEnd = getClinicDayEndIso();
@@ -110,7 +113,9 @@ export async function GET(request: Request) {
     waiting: waitingMapped,
     avg_service_time: avgServiceTime,
   });
-}
+  },
+  { max: 120, windowSeconds: 60, failClosed: true }
+);
 
 export async function POST(request: Request) {
   const auth = await requireStaff();

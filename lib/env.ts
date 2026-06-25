@@ -17,8 +17,8 @@ const envSchema = z
     RESEND_FROM_EMAIL: z.string().email().optional(),
     CLINIC_NAME: z.string().min(1).optional(),
     CLINIC_ADDRESS: z.string().min(1).optional(),
-    /** Days to retain rate_limits and audit_log rows (cron purge). */
-    RETENTION_DAYS: z.coerce.number().int().min(7).max(365).default(90),
+    /** Days to retain rate_limits and audit_log rows (cron purge). Default 6 years for HIPAA. */
+    RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(2190),
   })
   .superRefine((data, ctx) => {
     const isProd =

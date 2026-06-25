@@ -126,6 +126,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [doctorId, setDoctorId] = useState(staff.role === "doctor" ? staff.id : "");
   const [roomId, setRoomId] = useState("");
   const [stats, setStats] = useState({ served: 0, waiting: 0, avg: 10 });
+  const [history, setHistory] = useState<{ date: string; served: number }[]>([]);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
@@ -157,6 +158,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         waiting: data.waiting_count ?? 0,
         avg: data.avg_service_time ?? 10,
       });
+      setHistory(data.history ?? []);
     } catch {
       // Retry on next poll
     }
@@ -450,6 +452,31 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           <StatCard label="Waiting" value={String(stats.waiting)} icon={Users} />
           <StatCard label="No show" value={String(noShow.length)} icon={AlertCircle} />
         </div>
+        {history.length > 0 && (
+          <div className="mt-4 rounded-xl border border-outline-variant p-4">
+            <h4 className="text-label-sm font-semibold text-on-surface mb-3">
+              Patients served (last 7 days)
+            </h4>
+            <div className="flex items-end gap-2 h-28" aria-label="7-day served chart">
+              {history.map((day) => {
+                const max = Math.max(...history.map((d) => d.served), 1);
+                const height = Math.max(8, Math.round((day.served / max) * 100));
+                return (
+                  <div key={day.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                    <div
+                      className="w-full rounded-t bg-primary/80"
+                      style={{ height: `${height}%` }}
+                      title={`${day.date}: ${day.served}`}
+                    />
+                    <span className="text-[10px] text-on-surface-variant truncate w-full text-center">
+                      {day.date.slice(5)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div

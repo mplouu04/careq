@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireStaff } from "@/lib/auth";
+import { sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -42,11 +43,13 @@ export async function POST(request: Request) {
   const supabase = createAdminClient();
 
   if (body.action === "update" && body.id) {
+    const name = sanitize(String(body.name ?? ""), 100);
+    const description = body.description != null ? sanitize(String(body.description), 500) : null;
     const { error } = await supabase
       .from("rooms")
       .update({
-        name: body.name,
-        description: body.description ?? null,
+        name,
+        description,
         is_active: body.is_active ?? true,
       })
       .eq("id", body.id);
@@ -64,11 +67,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Room name is required" }, { status: 400 });
   }
 
+  const name = sanitize(String(body.name), 100);
+  const description = body.description != null ? sanitize(String(body.description), 500) : null;
+
   const { data, error } = await supabase
     .from("rooms")
     .insert({
-      name: body.name,
-      description: body.description ?? null,
+      name,
+      description,
       is_active: true,
     })
     .select("id")

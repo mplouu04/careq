@@ -10,10 +10,21 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 2 | `002_seed.sql` | Reference data: check-in types, appointment types, rooms, displays |
 | 3 | `003_booking_and_queue.sql` | `no_show` queue status, unique doctor-slot index, default schedules |
 | 4 | `003_fix_staff_user_trigger.sql` | Fix `handle_new_staff_user()` SECURITY DEFINER grants |
-| 5 | `004_atomic_counters.sql` | Atomic daily counters for queue numbers and reference IDs |
-| 6 | `005_rate_limit_rpc.sql` | Atomic rate-limit increment RPC |
-| 7 | `006_checkin_transaction.sql` | Transactional check-in RPC |
-| 8 | `007_indexes_and_reminders.sql` | Performance indexes, `reminder_sent_at`, retention helpers |
+| 5 | `003_improvements.sql` | Additional schema improvements |
+| 6 | `004_atomic_counters.sql` | Atomic daily counters for queue numbers and reference IDs |
+| 7 | `005_rate_limit_rpc.sql` | Atomic rate-limit increment RPC |
+| 8 | `006_checkin_transaction.sql` | Transactional check-in RPC |
+| 9 | `007_indexes_and_reminders.sql` | Performance indexes, `reminder_sent_at`, retention helpers |
+| 10 | `008_patient_sessions.sql` | Short-lived verification tokens |
+| 11 | `009_patients_public_id.sql` | Opaque `public_id` on patients |
+| 12 | `010_unique_phone_normalized.sql` | Unique index on `phone_normalized` |
+| 13 | `011_backfill_phone_normalized.sql` | Backfill legacy phone rows |
+| 14 | `012_checkins_realtime.sql` | Enable Realtime on `checkins` |
+| 15 | `013_queue_replica_identity.sql` | `REPLICA IDENTITY FULL` on `queue` |
+| 16 | `014_queue_perf_indexes.sql` | Queue API performance indexes |
+| 17 | `015_audit_remediation.sql` | Audit indexes, RLS scope, reminder failures, staff trigger hardening |
+
+**Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
 
 ## Verification queries
 
@@ -38,27 +49,13 @@ SELECT indexname FROM pg_indexes WHERE indexname = 'uq_checkin_doctor_slot';
 After `004_atomic_counters.sql`:
 
 ```sql
-SELECT next_counter(CURRENT_DATE, 'APPT');
-SELECT next_counter(CURRENT_DATE, 'APPT');
--- should return 1 then 2
-
-SELECT indexname FROM pg_indexes WHERE indexname IN ('uq_queue_number_day', 'uq_checkins_reference');
--- both should exist
+SELECT proname FROM pg_proc WHERE proname = 'next_counter';
 ```
 
-After `007_indexes_and_reminders.sql`:
+After `015_audit_remediation.sql`:
 
 ```sql
-SELECT column_name FROM information_schema.columns
-WHERE table_name = 'checkins' AND column_name = 'reminder_sent_at';
--- should return one row
-
-SELECT * FROM purge_old_logs(90);
--- should return rate_limits_deleted and audit_deleted counts
+SELECT indexname FROM pg_indexes WHERE indexname = 'idx_patients_dob';
+SELECT proname FROM pg_proc WHERE proname = 'get_queue_waiting_position';
+SELECT tablename FROM pg_tables WHERE tablename = 'reminder_failures';
 ```
-
-## Post-migration setup
-
-1. Create admin user in **Authentication → Users** (see README).
-2. Confirm Realtime is enabled on `queue` (done in migration 001).
-3. Set environment variables in Vercel / `.env.local`.

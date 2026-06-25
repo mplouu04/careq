@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { withRateLimit } from "@/lib/api/with-auth";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { maskPatientName } from "@/lib/services/patient.service";
 import { format } from "date-fns";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { requireStaff } from "@/lib/auth";
+import { getClientIp } from "@/lib/rate-limit";
+import { logAudit } from "@/lib/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +50,9 @@ function sanitizeCheckinForPublic(checkin: Record<string, unknown>): Record<stri
 }
 
 function sanitizeQueueEntryForPublic(entry: Record<string, unknown>): Record<string, unknown> {
-  const { called_by_staff: _staff, checkins: checkinsRaw, ...rest } = entry;
+  const checkinsRaw = entry.checkins;
+  const rest = { ...entry };
+  delete rest.called_by_staff;
   const sanitizedCheckins = !checkinsRaw
     ? undefined
     : Array.isArray(checkinsRaw)
@@ -68,106 +73,128 @@ function sanitizeQueueEntryForPublic(entry: Record<string, unknown>): Record<str
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const refRaw = searchParams.get("ref");
+
+  if (refRaw) {
+    return withRateLimit(
+      "queue_status",
+      () => publicQueueRefHandler(request),
+      { max: 60, windowSeconds: 60, failClosed: true }
+    )(request);
+  }
+
+  return staffQueueHandler();
+}
+
+async function publicQueueRefHandler(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const refRaw = searchParams.get("ref");
+  if (!refRaw) {
+    return NextResponse.json({ success: false, error: "Missing ref" }, { status: 400 });
+  }
+
   const dayStart = getClinicDayStartIso();
   const dayEnd = getClinicDayEndIso();
   const supabase = createAdminClient();
 
-  // ── Public single-entry lookup ─────────────────────────────────────────────
-  if (refRaw) {
-    try {
-      const ref = normalizeQueueRef(refRaw);
-      const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
-           called_by_staff:called_by(first_name, last_name),
-           checkins!inner(
-             checkin_id, reference_number, reason, type_id,
-             patients(first_name, last_name),
-             appointment_types(name),
-             staff:doctor_id(first_name, last_name)
-           )`;
+  try {
+    const ref = normalizeQueueRef(refRaw);
+    const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+         called_by_staff:called_by(first_name, last_name),
+         checkins!inner(
+           checkin_id, reference_number, reason, type_id,
+           patients(first_name, last_name),
+           appointment_types(name),
+           staff:doctor_id(first_name, last_name)
+         )`;
 
-      // Round-trip 1: fire queue_number lookup and reference_number lookup in parallel
-      const [{ data: byNumber }, { data: byRef }, roomMap] = await Promise.all([
-        supabase
-          .from("queue")
-          .select(queueSelect)
-          .eq("queue_number", ref)
-          .gte("created_at", dayStart)
-          .lte("created_at", dayEnd)
-          .maybeSingle(),
-        supabase
-          .from("checkins")
-          .select("checkin_id")
-          .eq("reference_number", ref)
-          .maybeSingle(),
-        getRoomNameMap(supabase),
-      ]);
+    const [{ data: byNumber }, { data: byRef }, roomMap] = await Promise.all([
+      supabase
+        .from("queue")
+        .select(queueSelect)
+        .eq("queue_number", ref)
+        .gte("created_at", dayStart)
+        .lte("created_at", dayEnd)
+        .maybeSingle(),
+      supabase
+        .from("checkins")
+        .select("checkin_id")
+        .eq("reference_number", ref)
+        .maybeSingle(),
+      getRoomNameMap(supabase),
+    ]);
 
-      // Resolve entry: prefer direct queue_number hit; fall back to checkin_id lookup
-      let entry = byNumber;
-      if (!entry && byRef) {
-        // Round-trip 2a: fetch queue row by checkin_id (now indexed via migration 014)
-        const { data: entryByCheckin } = await supabase
-          .from("queue")
-          .select(queueSelect)
-          .eq("checkin_id", byRef.checkin_id)
-          .gte("created_at", dayStart)
-          .lte("created_at", dayEnd)
-          .maybeSingle();
-        entry = entryByCheckin;
-      }
+    let entry = byNumber;
+    if (!entry && byRef) {
+      const { data: entryByCheckin } = await supabase
+        .from("queue")
+        .select(queueSelect)
+        .eq("checkin_id", byRef.checkin_id)
+        .gte("created_at", dayStart)
+        .lte("created_at", dayEnd)
+        .maybeSingle();
+      entry = entryByCheckin;
+    }
 
-      if (!entry) {
-        return NextResponse.json({ success: false, error: "Queue entry not found" });
-      }
-
-      let position: number | null = null;
-      let estWaitMinutes: number | null = null;
-      let patientsAhead: number | null = null;
-
-      if (entry.status === "waiting") {
-        // Round-trip 2b (or 3 if checkin fallback was used): position scan + avg in parallel
-        const [{ data: allWaiting }, avg] = await Promise.all([
-          supabase
-            .from("queue")
-            .select("id, skip_count")
-            .eq("status", "waiting")
-            .gte("created_at", dayStart)
-            .lte("created_at", dayEnd)
-            .order("skip_count", { ascending: true })
-            .order("id", { ascending: true }),
-          getAvgServiceTime(dayStart, dayEnd, supabase),
-        ]);
-
-        const waiting = allWaiting ?? [];
-        const pos = waiting.findIndex((q) => q.id === entry!.id) + 1;
-        if (pos > 0) {
-          position = pos;
-          patientsAhead = pos - 1;
-          estWaitMinutes = pos * avg;
-        }
-      }
-
-      const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
-      const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
-        | { first_name: string; last_name: string }
-        | null
-        | undefined;
-
-      return NextResponse.json({
-        success: true,
-        queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
-        position,
-        patients_ahead: patientsAhead,
-        est_wait_minutes: estWaitMinutes,
-        doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
-        room: resolveRoomName(entry.room_id, roomMap),
-      });
-    } catch {
+    if (!entry) {
       return NextResponse.json({ success: false, error: "Queue entry not found" });
     }
-  }
 
-  // ── Staff dashboard queue ──────────────────────────────────────────────────
+    let position: number | null = null;
+    let estWaitMinutes: number | null = null;
+    let patientsAhead: number | null = null;
+
+    if (entry.status === "waiting") {
+      const [{ data: pos }, avg] = await Promise.all([
+        supabase.rpc("get_queue_waiting_position", {
+          p_queue_id: entry.id,
+          p_day_start: dayStart,
+          p_day_end: dayEnd,
+        }),
+        getAvgServiceTime(dayStart, dayEnd, supabase),
+      ]);
+
+      const resolvedPos = typeof pos === "number" ? pos : 0;
+      if (resolvedPos > 0) {
+        position = resolvedPos;
+        patientsAhead = resolvedPos - 1;
+        estWaitMinutes = resolvedPos * avg;
+      }
+    }
+
+    const calledByRaw = (entry as Record<string, unknown>).called_by_staff;
+    const calledBy = (Array.isArray(calledByRaw) ? calledByRaw[0] : calledByRaw) as
+      | { first_name: string; last_name: string }
+      | null
+      | undefined;
+
+    void logAudit({
+      userId: null,
+      action: "queue_status_lookup",
+      tableName: "queue",
+      recordId: entry.id,
+      newValues: { ref },
+      ipAddress: getClientIp(request),
+    });
+
+    return NextResponse.json({
+      success: true,
+      queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
+      position,
+      patients_ahead: patientsAhead,
+      est_wait_minutes: estWaitMinutes,
+      doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
+      room: resolveRoomName(entry.room_id, roomMap),
+    });
+  } catch {
+    return NextResponse.json({ success: false, error: "Queue entry not found" });
+  }
+}
+
+async function staffQueueHandler() {
+  const dayStart = getClinicDayStartIso();
+  const dayEnd = getClinicDayEndIso();
+  const supabase = createAdminClient();
+
   const auth = await requireStaff();
   if ("error" in auth) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -280,6 +307,5 @@ export async function GET(request: Request) {
       noShow,
       avg_service_time: avgServiceTime,
     },
-    queue: rows,
   });
 }

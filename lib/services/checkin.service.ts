@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, TIMEZONE } from "@/lib/constants";
+import { phonesMatchLast7 } from "@/lib/phone";
 import { sanitize } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { checkinToQueue, CheckinError, nextCounter } from "@/lib/counters";
@@ -7,13 +8,23 @@ import { consumePatientVerifyToken } from "@/lib/services/patient.service";
 
 const TERMINAL_CHECKIN = ["cancelled", "completed", "no_show"];
 
-export async function lookupAppointmentForCheckin(ref: string) {
+function patientPhoneMatches(
+  patient: { phone: string; phone_normalized: string | null } | null | undefined,
+  phone: string
+): boolean {
+  return (
+    phonesMatchLast7(patient?.phone || "", phone) ||
+    phonesMatchLast7(patient?.phone_normalized || "", phone)
+  );
+}
+
+export async function lookupAppointmentForCheckin(ref: string, phone: string) {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("checkins")
     .select(
-      `checkin_id, reference_number, scheduled_time, appointment_date, status, reason,
-       patients(first_name, last_name, phone),
+      `checkin_id, reference_number, scheduled_time, appointment_date, status,
+       patients(first_name, last_name, phone, phone_normalized),
        staff:doctor_id(first_name, last_name),
        appointment_types(name)`
     )
@@ -25,9 +36,14 @@ export async function lookupAppointmentForCheckin(ref: string) {
 
   const patientRaw = data.patients as unknown;
   const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-    | { first_name: string; last_name: string }
+    | { first_name: string; last_name: string; phone: string; phone_normalized: string | null }
     | null
     | undefined;
+
+  if (!patientPhoneMatches(patient, phone)) {
+    return null;
+  }
+
   const doctorRaw = data.staff as unknown;
   const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
     | { first_name: string; last_name: string }
@@ -46,56 +62,61 @@ export async function lookupAppointmentForCheckin(ref: string) {
       doctor: doctor ? `${doctor.first_name} ${doctor.last_name}` : "",
       appointment: apptType?.name ?? "",
       time: data.scheduled_time,
-      reason: data.reason ?? "",
       appnumber: data.reference_number,
       id: data.checkin_id,
     },
   ];
 }
 
-export async function checkinAppointment(appointmentId: string) {
+async function resolveAppointmentCheckin(appointmentId: string) {
   const supabase = createAdminClient();
   const isNumeric = /^\d+$/.test(appointmentId);
-  let checkinId: number | null = null;
 
   if (!isNumeric) {
     const { data } = await supabase
       .from("checkins")
-      .select("checkin_id, status")
+      .select(
+        `checkin_id, status, patients(phone, phone_normalized)`
+      )
       .eq("reference_number", appointmentId)
       .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
       .maybeSingle();
-    if (data) {
-      checkinId = data.checkin_id;
-      if (data.status && TERMINAL_CHECKIN.includes(data.status)) {
-        throw new CheckinError(
-          `Cannot check in: appointment is ${data.status.replace("_", " ")}.`,
-          409
-        );
-      }
-    }
-  } else {
-    const { data } = await supabase
-      .from("checkins")
-      .select("checkin_id, status")
-      .eq("checkin_id", appointmentId)
-      .maybeSingle();
-    if (data) {
-      checkinId = data.checkin_id;
-      if (data.status && TERMINAL_CHECKIN.includes(data.status)) {
-        throw new CheckinError(
-          `Cannot check in: appointment is ${data.status.replace("_", " ")}.`,
-          409
-        );
-      }
-    }
+    return data;
   }
 
-  if (!checkinId) {
+  const { data } = await supabase
+    .from("checkins")
+    .select(`checkin_id, status, patients(phone, phone_normalized)`)
+    .eq("checkin_id", appointmentId)
+    .maybeSingle();
+  return data;
+}
+
+export async function checkinAppointment(appointmentId: string, phone: string) {
+  const data = await resolveAppointmentCheckin(appointmentId);
+
+  if (!data) {
     throw new CheckinError("Appointment not found", 404);
   }
 
-  const queueNumber = await checkinToQueue(checkinId, "APPT");
+  if (data.status && TERMINAL_CHECKIN.includes(data.status)) {
+    throw new CheckinError(
+      `Cannot check in: appointment is ${data.status.replace("_", " ")}.`,
+      409
+    );
+  }
+
+  const patientRaw = data.patients as unknown;
+  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
+    | { phone: string; phone_normalized: string | null }
+    | null
+    | undefined;
+
+  if (!patientPhoneMatches(patient, phone)) {
+    throw new CheckinError("Phone number does not match.", 403);
+  }
+
+  const queueNumber = await checkinToQueue(data.checkin_id, "APPT");
   return { queueNumber };
 }
 

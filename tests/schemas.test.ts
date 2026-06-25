@@ -104,9 +104,18 @@ describe("RegisterPatientSchema", () => {
 });
 
 describe("CheckinBodySchema", () => {
-  it("accepts appointment check-in", () => {
+  it("accepts appointment check-in with phone", () => {
+    expect(
+      CheckinBodySchema.safeParse({
+        appointmentId: "APT20260610001",
+        phone: "09171234567",
+      }).success
+    ).toBe(true);
+  });
+
+  it("rejects appointment check-in without phone", () => {
     expect(CheckinBodySchema.safeParse({ appointmentId: "APT20260610001" }).success).toBe(
-      true
+      false
     );
   });
 

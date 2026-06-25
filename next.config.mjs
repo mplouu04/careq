@@ -2,6 +2,8 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
 
+const isProd = process.env.NODE_ENV === "production";
+
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -21,8 +23,8 @@ const securityHeaders = [
       "default-src 'self'",
       // Supabase REST + Realtime WebSocket
       "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-      // Next.js requires unsafe-eval in dev; unsafe-inline needed for inline styles from Tailwind
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+      // Next.js requires unsafe-eval in dev; production omits it for stronger XSS defense
+      `script-src 'self' 'unsafe-inline'${isProd ? "" : " 'unsafe-eval'"}`,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",

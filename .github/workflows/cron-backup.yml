@@ -1,0 +1,19 @@
+name: Cron backup reminders
+
+on:
+  schedule:
+    # 06:00 Asia/Manila — backup if Vercel cron fails
+    - cron: "0 22 * * *"
+  workflow_dispatch:
+
+jobs:
+  reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger reminder cron
+        run: |
+          curl -fsS -X GET "${APP_URL}/api/cron/reminders" \
+            -H "Authorization: Bearer ${CRON_SECRET}"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

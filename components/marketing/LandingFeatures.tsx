@@ -17,8 +17,9 @@ const FEATURES = [
   },
   {
     icon: MessageSquare,
-    title: "SMS reminders",
-    description: "Notify patients as their turn approaches to cut no-shows and lobby crowding.",
+    title: "Email reminders",
+    description:
+      "Optional appointment reminders by email help reduce no-shows and lobby crowding.",
     span: "md:col-span-1",
   },
 ] as const;

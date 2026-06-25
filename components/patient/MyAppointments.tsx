@@ -125,8 +125,13 @@ export function MyAppointments() {
 
   const lookupByReference = useCallback(async () => {
     const ref = reference.trim();
+    const phoneForLookup = phone.trim();
     if (!ref) {
       toast.error("Please enter your reference number.");
+      return;
+    }
+    if (!phoneForLookup) {
+      toast.error("Please enter your registered phone number.");
       return;
     }
     if (!isValidRef(ref)) {
@@ -135,7 +140,11 @@ export function MyAppointments() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`/api/appointments?reference=${encodeURIComponent(ref)}`);
+      const params = new URLSearchParams({
+        reference: ref,
+        phone: phoneForLookup,
+      });
+      const res = await fetch(`/api/appointments?${params.toString()}`);
       const data = res.ok ? await res.json() : { appointments: [], patientName: "" };
       const appts: Appointment[] = data.appointments ?? [];
       setAppointments(appts);
@@ -148,7 +157,7 @@ export function MyAppointments() {
       setLoading(false);
       setSearched(true);
     }
-  }, [reference]);
+  }, [reference, phone]);
 
   const lookup = useCallback(async () => {
     if (lookupMethod === "phone") {
@@ -223,7 +232,7 @@ export function MyAppointments() {
             <p className="text-body-sm text-on-surface-variant mt-0.5">
               {lookupMethod === "phone"
                 ? "Enter your phone and date of birth"
-                : "Enter your appointment reference number"}
+                : "Enter your appointment reference and registered phone"}
             </p>
           </div>
 
@@ -293,20 +302,34 @@ export function MyAppointments() {
             </div>
           ) : (
             <div
-              className="min-w-0 w-full"
+              className="flex flex-col gap-4"
               role="tabpanel"
               aria-label="Reference number lookup"
             >
-              <FormLabel htmlFor="lookup-reference">Reference Number</FormLabel>
-              <FormInput
-                id="lookup-reference"
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                placeholder="APT..."
-                className="font-mono tracking-wide"
-                autoCapitalize="characters"
-              />
+              <div className="min-w-0 w-full">
+                <FormLabel htmlFor="lookup-reference">Reference Number</FormLabel>
+                <FormInput
+                  id="lookup-reference"
+                  type="text"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  placeholder="APT..."
+                  className="font-mono tracking-wide"
+                  autoCapitalize="characters"
+                />
+              </div>
+              <div className="min-w-0 w-full">
+                <FormLabel htmlFor="lookup-ref-phone">Registered Phone</FormLabel>
+                <FormInput
+                  id="lookup-ref-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="09XX XXX XXXX"
+                  autoComplete="tel"
+                />
+              </div>
             </div>
           )}
 

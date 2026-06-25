@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const AppointmentCheckinSchema = z.object({
   appointmentId: z.union([z.string(), z.number()]),
+  phone: z.string().min(1),
 });
 
 export const WalkInCheckinSchema = z.object({

@@ -260,14 +260,9 @@ export async function verifyPatientByDobAndPhone(
   );
 
   if (!matched.length) {
-    if (!patients?.length) {
-      console.warn("[verifyPatientByDobAndPhone] no patients found for DOB", { dob });
-    } else {
-      console.warn("[verifyPatientByDobAndPhone] DOB matched but phone did not match", {
-        dob,
-        candidateCount: patients.length,
-      });
-    }
+    console.warn("[verifyPatientByDobAndPhone] verification failed", {
+      candidateCount: patients?.length ?? 0,
+    });
     return { matched: false };
   }
 

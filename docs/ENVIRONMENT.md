@@ -41,7 +41,7 @@ Validated at server startup via [`lib/env.ts`](../lib/env.ts) (Zod). Invalid con
 | `RESEND_FROM_EMAIL` | Verified sender (must pair with `RESEND_API_KEY`) |
 | `CLINIC_NAME` | Email template clinic name |
 | `CLINIC_ADDRESS` | Email template address |
-| `RETENTION_DAYS` | Days to keep `rate_limits` / `audit_log` (default `90`) |
+| `RETENTION_DAYS` | Days to keep `rate_limits` / `audit_log` (default `2190` / 6 years) |
 
 ## Cron jobs
 
@@ -49,10 +49,24 @@ Configured in [`vercel.json`](../vercel.json):
 
 | Schedule | Route | Purpose |
 |----------|-------|---------|
-| Daily 08:00 UTC | `/api/cron/reminders` | Send tomorrow's appointment reminder emails |
-| Weekly Sun 03:00 UTC | `/api/cron/retention` | Purge old `rate_limits` and `audit_log` rows |
+| `0 22 * * *` (06:00 PH) | `/api/cron/reminders` | Tomorrow appointment email reminders |
+| `0 17 * * 0` (01:00 PH Sun) | `/api/cron/retention` | Purge old `rate_limits`, `audit_log`, expired sessions |
 
-Both routes require `Authorization: Bearer $CRON_SECRET`. Set `CRON_SECRET` in Vercel for **Production** (and Preview if you test crons there).
+A GitHub Actions backup cron (`.github/workflows/cron-backup.yml`) can call `/api/cron/reminders` if Vercel cron fails. Set repo secrets `APP_URL` and `CRON_SECRET`.
+
+## Health check
+
+- **Public:** `GET /api/health` returns `{ status: "ok" | "degraded" }` only.
+- **Ops detail:** `GET /api/health?detail=1` includes database and config checks (use for internal monitors).
+
+Wire an external uptime monitor (Better Stack, Checkly, UptimeRobot) to `GET /api/health`.
+
+## Security
+
+- **Disable Supabase Auth public signups** in the Supabase dashboard (Authentication → Providers → Email). Staff are created only via the admin API with service-role `app_metadata`.
+- Execute migration `015_audit_remediation.sql` so the staff trigger reads `app_metadata.staff_role`, not user-editable `user_metadata`.
+
+Both cron routes require `Authorization: Bearer $CRON_SECRET`. Set `CRON_SECRET` in Vercel for **Production** (and Preview if you test crons there).
 
 ## Secret rotation (quarterly recommended)
 
@@ -73,7 +87,3 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.vercel.app/api/cro
 - **Development** → local `.env.local` with dev Supabase; email/cron optional.
 
 Copy [`.env.local.example`](../.env.local.example) to `.env.local` for local development.
-
-## Health check
-
-`GET /api/health` returns database connectivity, env validation status, and whether cron/email providers are configured. Use for uptime monitoring.

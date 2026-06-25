@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Clock, Users, CircleDot } from "lucide-react";
 import { StatCard } from "@/components/careq";
 import { Skeleton } from "@/components/ui/skeleton";
+import { clinicHoursLabel, isClinicOpenNow } from "@/lib/clinic-hours";
 
 type PublicStats = {
   waiting_count: number;
@@ -13,8 +14,10 @@ type PublicStats = {
 export function ClinicStatusBar({ className }: { className?: string }) {
   const [stats, setStats] = useState<PublicStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
+    setOpen(isClinicOpenNow());
     fetch("/api/queue/public")
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { waiting?: unknown[]; avg_service_time?: number } | null) => {
@@ -40,9 +43,7 @@ export function ClinicStatusBar({ className }: { className?: string }) {
   const waiting = stats?.waiting_count ?? 0;
   const avg = stats?.avg_service_time ?? 10;
   const estWait =
-    waiting > 0
-      ? `~${Math.min(avg * waiting, 120)} min`
-      : `~${avg} min`;
+    waiting > 0 ? `~${Math.min(avg * waiting, 120)} min` : open ? `~${avg} min` : "Closed";
 
   return (
     <div
@@ -54,22 +55,24 @@ export function ClinicStatusBar({ className }: { className?: string }) {
         label="Est. wait"
         value={estWait}
         subtext={
-          waiting > 0
-            ? `${waiting} patient${waiting === 1 ? "" : "s"} ahead · walk-in`
-            : "No wait right now · walk-in"
+          !open
+            ? "Clinic is currently closed"
+            : waiting > 0
+              ? `${waiting} patient${waiting === 1 ? "" : "s"} ahead · walk-in`
+              : "No wait right now · walk-in"
         }
         icon={Clock}
       />
       <StatCard
         label="In queue"
-        value={String(waiting)}
-        subtext="Waiting for service today"
+        value={open ? String(waiting) : "—"}
+        subtext={open ? "Waiting for service today" : "Check in during operating hours"}
         icon={Users}
       />
       <StatCard
         label="Clinic"
-        value="Open"
-        subtext="Check in during operating hours"
+        value={open ? "Open" : "Closed"}
+        subtext={clinicHoursLabel()}
         icon={CircleDot}
       />
     </div>

@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 
 
 
-/** GET /api/checkin?appointmentID=<reference_number> */
+/** GET /api/checkin?appointmentID=<reference_number>&phone=<registered phone> */
 
 export const GET = withRateLimit(
   "checkin_lookup",
@@ -36,40 +36,37 @@ export const GET = withRateLimit(
     const { searchParams } = new URL(request.url);
 
     const ref = sanitize(
-
       searchParams.get("appointmentID") ?? searchParams.get("reference"),
-
       50
-
     );
-
-
+    const phone = sanitize(searchParams.get("phone") ?? "", 20);
 
     if (!ref) {
-
       return NextResponse.json({ error: "Missing appointmentID" }, { status: 400 });
-
     }
 
-
+    if (!phone) {
+      return NextResponse.json({ error: "Missing phone" }, { status: 400 });
+    }
 
     if (!isValidRef(ref)) {
-
       return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
-
     }
 
-
-
-    const appointment = await lookupAppointmentForCheckin(ref);
+    const appointment = await lookupAppointmentForCheckin(ref, phone);
 
     if (!appointment) {
-
       return NextResponse.json({ success: false, appointment: null });
-
     }
 
-
+    void logAudit({
+      userId: null,
+      action: "checkin_lookup",
+      tableName: "checkins",
+      recordId: ref,
+      ipAddress: getClientIp(request),
+      newValues: { outcome: "found" },
+    });
 
     return NextResponse.json({ success: true, appointment });
   },
@@ -113,8 +110,19 @@ export const POST = withRateLimit(
     try {
 
       if ("appointmentId" in parsed.data) {
+        const result = await checkinAppointment(
+          String(parsed.data.appointmentId),
+          parsed.data.phone
+        );
 
-        const result = await checkinAppointment(String(parsed.data.appointmentId));
+        void logAudit({
+          userId: null,
+          action: "patient_appointment_checkin",
+          tableName: "checkins",
+          recordId: String(parsed.data.appointmentId),
+          newValues: { queueNumber: result.queueNumber },
+          ipAddress: getClientIp(request),
+        });
 
         return NextResponse.json({
 

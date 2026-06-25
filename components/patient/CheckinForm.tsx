@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { clearVerifyToken, readVerifyToken, storeVerifyToken } from "@/lib/verify-session";
 import {
   CareqCard,
   CareqButton,
@@ -30,13 +31,21 @@ type AppointmentPreview = {
 
 export function CheckinForm() {
   const params = useSearchParams();
-  const verifyToken = params.get("verifyToken");
+  const urlToken = params.get("verifyToken");
+  const verifyToken = urlToken ?? readVerifyToken();
+
+  useEffect(() => {
+    if (urlToken) {
+      storeVerifyToken(urlToken);
+    }
+  }, [urlToken]);
 
   const [types, setTypes] = useState<ApptType[]>([]);
   const [apptType, setApptType] = useState("");
   const [reason, setReason] = useState("");
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [ref, setRef] = useState("");
+  const [phone, setPhone] = useState("");
   const [refLookup, setRefLookup] = useState<AppointmentPreview | null>(null);
   const [refLookupError, setRefLookupError] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
@@ -60,7 +69,7 @@ export function CheckinForm() {
   }, []);
 
   useEffect(() => {
-    if (ref.length < 3) {
+    if (ref.length < 3 || phone.trim().length < 7) {
       setRefLookup(null);
       setRefLookupError("");
       return;
@@ -68,16 +77,18 @@ export function CheckinForm() {
     const t = setTimeout(async () => {
       setLookingUp(true);
       try {
-        const res = await fetch(
-          `/api/checkin?appointmentID=${encodeURIComponent(ref.toUpperCase())}`
-        );
+        const params = new URLSearchParams({
+          appointmentID: ref.toUpperCase(),
+          phone: phone.trim(),
+        });
+        const res = await fetch(`/api/checkin?${params.toString()}`);
         const data = await res.json();
         if (data.success && data.appointment?.[0]) {
           setRefLookup(data.appointment[0]);
           setRefLookupError("");
         } else {
           setRefLookup(null);
-          setRefLookupError("No appointment found with this reference.");
+          setRefLookupError("No appointment found for this reference and phone.");
         }
       } catch {
         setRefLookup(null);
@@ -87,7 +98,7 @@ export function CheckinForm() {
       }
     }, 500);
     return () => clearTimeout(t);
-  }, [ref]);
+  }, [ref, phone]);
 
   async function walkInCheckin() {
     if (!verifyToken) {
@@ -114,9 +125,15 @@ export function CheckinForm() {
     const data = await res.json();
     setLoading(false);
     if (!res.ok) {
+      if (res.status === 403) {
+        clearVerifyToken();
+        setError("Your verification session expired. Please verify your identity again.");
+        return;
+      }
       setError(data.error ?? "Check-in failed");
       return;
     }
+    clearVerifyToken();
     setSuccessRef(data.queueNumber ?? data.quenumber);
   }
 
@@ -130,7 +147,10 @@ export function CheckinForm() {
     const res = await fetch("/api/checkin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appointmentId: refLookup.appnumber }),
+      body: JSON.stringify({
+        appointmentId: refLookup.appnumber,
+        phone: phone.trim(),
+      }),
     });
     const data = await res.json();
     setLoading(false);
@@ -171,13 +191,24 @@ export function CheckinForm() {
         </p>
       </div>
 
-      <div className="flex border-b border-border">
-        <button type="button" onClick={() => setActiveTab("appointment")} className={tabClass("appointment")}>
+      <div className="flex border-b border-border" role="tablist" aria-label="Check-in type">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "appointment"}
+          aria-controls="checkin-panel-appointment"
+          onClick={() => setActiveTab("appointment")}
+          className={tabClass("appointment")}
+        >
           Appointment
         </button>
         <button
           type="button"
+          role="tab"
+          aria-selected={activeTab === "walk-in"}
+          aria-controls="checkin-panel-walk-in"
           disabled={!verifyToken}
+          aria-describedby={!verifyToken ? "walkin-tab-hint" : undefined}
           onClick={() => verifyToken && setActiveTab("walk-in")}
           className={cn(
             tabClass("walk-in"),
@@ -187,12 +218,17 @@ export function CheckinForm() {
           Walk-in
         </button>
       </div>
+      {!verifyToken && (
+        <p id="walkin-tab-hint" className="sr-only">
+          Walk-in check-in requires identity verification first.
+        </p>
+      )}
 
       <div className="px-6 py-5">
         {error && <FormError message={error} />}
 
         {activeTab === "appointment" && (
-          <div className="space-y-4">
+          <div className="space-y-4" role="tabpanel" id="checkin-panel-appointment">
             <div>
               <FormLabel required>Reference</FormLabel>
               <FormInput
@@ -210,6 +246,18 @@ export function CheckinForm() {
               )}
             </div>
 
+            <div>
+              <FormLabel required>Registered phone</FormLabel>
+              <FormInput
+                type="tel"
+                inputMode="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="09XX XXX XXXX"
+                autoComplete="tel"
+              />
+            </div>
+
             {refLookup && (
               <div className="rounded-xl border border-outline-variant p-3 text-body-sm bg-secondary-container/30">
                 <p className="font-semibold text-on-surface">{refLookup.fullname}</p>
@@ -222,7 +270,7 @@ export function CheckinForm() {
             <CareqButton
               type="button"
               className="w-full cursor-pointer"
-              disabled={loading || !refLookup}
+              disabled={loading || !refLookup || phone.trim().length < 7}
               onClick={appointmentCheckin}
             >
               {loading ? "Checking in…" : "Check in"}
@@ -231,7 +279,7 @@ export function CheckinForm() {
         )}
 
         {activeTab === "walk-in" && (
-          <div className="space-y-4">
+          <div className="space-y-4" role="tabpanel" id="checkin-panel-walk-in">
             {!verifyToken && (
               <FormWarning>
                 <Link href="/patient-search" className="text-primary hover:underline">

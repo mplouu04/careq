@@ -17,6 +17,7 @@ import {
   SuccessCard,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
+import { storeVerifyToken } from "@/lib/verify-session";
 
 type RegStep = "personal" | "contact" | "consent";
 
@@ -46,7 +47,8 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     if (redirectTo) {
       router.push(`${redirectTo}?publicId=${publicId}`);
     } else if (token) {
-      router.push(`/checkin?verifyToken=${encodeURIComponent(token)}`);
+      storeVerifyToken(token);
+      router.push("/checkin?tab=walk-in");
     } else {
       router.push("/patient-search");
     }
@@ -141,6 +143,9 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
 
+    if (data.verifyToken) {
+      storeVerifyToken(data.verifyToken);
+    }
     setSuccessPublicId(String(data.patient));
     setSuccessVerifyToken(data.verifyToken ?? null);
   }
@@ -152,9 +157,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
         message="Registration complete."
         primaryCta={{
           label: "Check in now",
-          href: successVerifyToken
-            ? `/checkin?verifyToken=${encodeURIComponent(successVerifyToken)}`
-            : "/patient-search",
+          href: successVerifyToken ? "/checkin?tab=walk-in" : "/patient-search",
         }}
         secondaryCta={{
           label: "Book appointment",

@@ -1,5 +1,6 @@
 import { getEnvSafe } from "@/lib/env";
 import { captureException, logWarn } from "@/lib/observability";
+import { escapeHtml } from "@/lib/html";
 
 export type AppointmentReminderPayload = {
   to: string;
@@ -18,17 +19,25 @@ export type SendEmailResult =
   | { ok: false; error: string; retryable: boolean };
 
 function buildReminderHtml(payload: AppointmentReminderPayload): string {
+  const name = escapeHtml(payload.patientName);
+  const clinic = escapeHtml(payload.clinicName);
+  const ref = escapeHtml(payload.referenceNumber);
+  const date = escapeHtml(payload.appointmentDate);
+  const time = escapeHtml(payload.appointmentTime);
+  const doctor = escapeHtml(payload.doctorName);
+  const address = escapeHtml(payload.clinicAddress);
+  const statusUrl = escapeHtml(payload.statusUrl);
   return `
-    <p>Hi ${payload.patientName},</p>
-    <p>This is a reminder that you have an appointment tomorrow at <strong>${payload.clinicName}</strong>.</p>
+    <p>Hi ${name},</p>
+    <p>This is a reminder that you have an appointment tomorrow at <strong>${clinic}</strong>.</p>
     <ul>
-      <li><strong>Reference:</strong> ${payload.referenceNumber}</li>
-      <li><strong>Date:</strong> ${payload.appointmentDate}</li>
-      <li><strong>Time:</strong> ${payload.appointmentTime}</li>
-      <li><strong>Doctor:</strong> ${payload.doctorName}</li>
-      <li><strong>Location:</strong> ${payload.clinicAddress}</li>
+      <li><strong>Reference:</strong> ${ref}</li>
+      <li><strong>Date:</strong> ${date}</li>
+      <li><strong>Time:</strong> ${time}</li>
+      <li><strong>Doctor:</strong> ${doctor}</li>
+      <li><strong>Location:</strong> ${address}</li>
     </ul>
-    <p>Track your visit status: <a href="${payload.statusUrl}">${payload.statusUrl}</a></p>
+    <p>Track your visit status: <a href="${statusUrl}">${statusUrl}</a></p>
     <p>If you need to cancel, use your appointment reference and registered phone number on the clinic portal.</p>
   `.trim();
 }

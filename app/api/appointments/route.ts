@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getClientIp } from "@/lib/rate-limit";
 import { withRateLimit, withStaffAuth } from "@/lib/api/with-auth";
+import { logAudit } from "@/lib/audit";
 import {
   BookAppointmentSchema,
   CancelAppointmentSchema,
   PatientLookupSchema,
+  ReferencePhoneLookupSchema,
   StaffUpdateAppointmentSchema,
 } from "@/lib/schemas/appointment";
 import {
@@ -19,7 +21,7 @@ import { isValidRef, sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/appointments — staff list or patient self-lookup (?phone=&dob= or ?reference=) */
+/** GET /api/appointments — staff list or patient self-lookup (?phone=&dob= or ?reference=&phone=) */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const reference = searchParams.get("reference");
@@ -27,14 +29,31 @@ export async function GET(request: Request) {
   const dob = searchParams.get("dob");
 
   if (reference) {
+    const parsed = ReferencePhoneLookupSchema.safeParse({ reference, phone: phone ?? "" });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "Reference and phone are required" },
+        { status: 400 }
+      );
+    }
     return withRateLimit(
       "patient_lookup",
       async () => {
-        const ref = sanitize(reference, 30);
+        const ref = sanitize(parsed.data.reference, 30);
         if (!isValidRef(ref)) {
           return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
         }
-        const result = await lookupAppointmentByReference(ref);
+        const result = await lookupAppointmentByReference(ref, parsed.data.phone);
+        void logAudit({
+          userId: null,
+          action: "appointment_reference_lookup",
+          tableName: "checkins",
+          recordId: ref,
+          ipAddress: getClientIp(request),
+          newValues: {
+            outcome: result.appointments.length ? "found" : "not_found",
+          },
+        });
         return NextResponse.json({
           success: true,
           appointments: result.appointments,
