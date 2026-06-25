@@ -35,8 +35,13 @@ export async function checkRateLimit(
       return data === true;
     }
 
-    logWarn("[rate-limit] RPC unavailable — failing closed", { action, error: error.message });
-    return false;
+    logWarn(
+      failClosed
+        ? "[rate-limit] RPC unavailable — failing closed"
+        : "[rate-limit] RPC unavailable — failing open",
+      { action, error: error.message }
+    );
+    return !failClosed;
   } catch (err) {
     logWarn("[rate-limit] Unexpected error", {
       action,

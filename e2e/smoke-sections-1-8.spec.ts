@@ -76,13 +76,13 @@ test.describe("Smoke §3 — Appointment Booking", () => {
 test.describe("Smoke §4 — Check-In", () => {
   test("4.1 appointment and walk-in tabs", async ({ page }) => {
     await page.goto("/checkin");
-    await expect(page.getByRole("button", { name: /^appointment$/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /walk-in/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^appointment$/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /walk-in/i })).toBeVisible();
   });
 
   test("4.2 walk-in tab disabled without verifyToken", async ({ page }) => {
     await page.goto("/checkin");
-    await expect(page.getByRole("button", { name: /walk-in/i })).toBeDisabled();
+    await expect(page.getByRole("tab", { name: /walk-in/i })).toBeDisabled();
   });
 });
 

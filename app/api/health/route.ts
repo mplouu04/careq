@@ -64,5 +64,5 @@ async function healthHandler(request: Request) {
 export const GET = withRateLimit("health_check", healthHandler, {
   max: 60,
   windowSeconds: 60,
-  failClosed: true,
+  failClosed: false,
 });
