@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -62,15 +62,35 @@ export function CheckinForm() {
     else if (verifyToken) setActiveTab("walk-in");
   }, [params, verifyToken]);
 
-  useEffect(() => {
-    fetch("/api/appointment-types")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load appointment types");
-        return r.json();
-      })
-      .then((d) => setTypes(d.types ?? []))
-      .catch(() => toast.error("Unable to load visit types."));
+  const fetchTypes = useCallback(async () => {
+    try {
+      const r = await fetch("/api/appointment-types", { cache: "no-store" });
+      if (!r.ok) throw new Error("Failed to load appointment types");
+      const d = await r.json();
+      setTypes(d.types ?? []);
+    } catch {
+      toast.error("Unable to load visit types.");
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchTypes();
+  }, [fetchTypes]);
+
+  useEffect(() => {
+    const onTabFocus = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchTypes();
+    };
+    const onVisibilityChange = () => onTabFocus();
+    const onWindowFocus = () => onTabFocus();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onWindowFocus);
+    };
+  }, [fetchTypes]);
 
   useEffect(() => {
     if (ref.length < 3 || phone.trim().length < 7) {

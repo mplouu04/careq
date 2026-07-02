@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Clock, Users, CircleDot } from "lucide-react";
 import { StatCard } from "@/components/careq";
 import { Skeleton } from "@/components/ui/skeleton";
 import { clinicHoursLabel, isClinicOpenNow } from "@/lib/clinic-hours";
+import { createClient } from "@/lib/supabase/client";
+import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 
 type PublicStats = {
   waiting_count: number;
@@ -17,22 +19,39 @@ export function ClinicStatusBar({ className }: { className?: string }) {
   const [unavailable, setUnavailable] = useState(false);
   const [open, setOpen] = useState(true);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setOpen(isClinicOpenNow());
-    fetch("/api/queue/public")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load queue status");
-        return r.json();
-      })
-      .then((d: { waiting?: unknown[]; avg_service_time?: number }) => {
-        setStats({
-          waiting_count: d.waiting?.length ?? 0,
-          avg_service_time: d.avg_service_time ?? 10,
-        });
-      })
-      .catch(() => setUnavailable(true))
-      .finally(() => setLoading(false));
+    try {
+      const r = await fetch("/api/queue/public");
+      if (!r.ok) throw new Error("Failed to load queue status");
+      const d: { waiting?: unknown[]; avg_service_time?: number } = await r.json();
+      setStats({
+        waiting_count: d.waiting?.length ?? 0,
+        avg_service_time: d.avg_service_time ?? 10,
+      });
+      setUnavailable(false);
+    } catch {
+      setUnavailable(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  const subscribeQueue = useMemo(
+    () => (onChange: () => void) => {
+      const supabase = createClient();
+      return supabase
+        .channel("clinic-status-bar")
+        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
+    },
+    []
+  );
+
+  useRealtimePoll({
+    fetchFn: load,
+    subscribe: subscribeQueue,
+    fallbackIntervalMs: 15000,
+  });
 
   if (loading) {
     return (

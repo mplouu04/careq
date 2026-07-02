@@ -141,23 +141,30 @@ export function AppointmentBooking() {
   const selectedDoctor = doctors.find((d) => d.id === state.doctorId);
   const selectedType = types.find((t) => String(t.id) === state.appTypeId);
 
-  useEffect(() => {
+  const fetchCatalogs = useCallback(async () => {
     setDoctorsLoading(true);
-    Promise.all([
-      fetch("/api/doctors").then(async (r) => {
-        if (!r.ok) throw new Error("doctors");
-        const d = await r.json();
-        setDoctors(d.doctors ?? []);
-      }),
-      fetch("/api/appointment-types").then(async (r) => {
-        if (!r.ok) throw new Error("types");
-        const d = await r.json();
-        setTypes(d.types ?? []);
-      }),
-    ])
-      .catch(() => toast.error("Unable to load booking options. Please refresh the page."))
-      .finally(() => setDoctorsLoading(false));
+    try {
+      const [doctorsRes, typesRes] = await Promise.all([
+        fetch("/api/doctors", { cache: "no-store" }),
+        fetch("/api/appointment-types", { cache: "no-store" }),
+      ]);
+      if (!doctorsRes.ok || !typesRes.ok) throw new Error("catalog");
+      const [doctorsData, typesData] = await Promise.all([
+        doctorsRes.json(),
+        typesRes.json(),
+      ]);
+      setDoctors(doctorsData.doctors ?? []);
+      setTypes(typesData.types ?? []);
+    } catch {
+      toast.error("Unable to load booking options. Please refresh the page.");
+    } finally {
+      setDoctorsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchCatalogs();
+  }, [fetchCatalogs]);
 
   const refetchSlots = useCallback(
     async (doctorId: string, date: string, appTypeId: string) => {
@@ -209,6 +216,38 @@ export function AppointmentBooking() {
   useEffect(() => {
     refetchSlotsRef.current = refetchSlots;
   }, [refetchSlots]);
+
+  const bookingStateRef = useRef({
+    doctorId: state.doctorId,
+    date: state.date,
+    appTypeId: state.appTypeId,
+  });
+  useEffect(() => {
+    bookingStateRef.current = {
+      doctorId: state.doctorId,
+      date: state.date,
+      appTypeId: state.appTypeId,
+    };
+  }, [state.doctorId, state.date, state.appTypeId]);
+
+  useEffect(() => {
+    const onTabFocus = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchCatalogs();
+      const { doctorId, date, appTypeId } = bookingStateRef.current;
+      if (doctorId && date && appTypeId) {
+        void refetchSlotsRef.current(doctorId, date, appTypeId);
+      }
+    };
+    const onVisibilityChange = () => onTabFocus();
+    const onWindowFocus = () => onTabFocus();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("focus", onWindowFocus);
+    };
+  }, [fetchCatalogs]);
 
   // Re-fetch slots live when another patient books on the same doctor + date
   useEffect(() => {

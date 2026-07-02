@@ -20,7 +20,7 @@ export const GET = withRateLimit(
     }
     return NextResponse.json(
       { success: true, doctors: data ?? [] },
-      { headers: { "Cache-Control": "public, s-maxage=120, stale-while-revalidate=240" } }
+      { headers: { "Cache-Control": "private, no-store" } }
     );
   },
   { max: 60, windowSeconds: 60, failClosed: true }

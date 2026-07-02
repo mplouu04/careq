@@ -38,6 +38,16 @@ export async function getDoctorAvailableSlots(
   appointmentTypeId?: string | number
 ): Promise<string[]> {
   const supabase = createAdminClient();
+
+  const { data: doctor } = await supabase
+    .from("staff")
+    .select("is_active")
+    .eq("id", doctorId)
+    .eq("role", "doctor")
+    .maybeSingle();
+
+  if (!doctor || doctor.is_active === false) return [];
+
   const dayOfWeek = getClinicDayOfWeek(dateYmd);
 
   const apptTypeQuery =

@@ -68,13 +68,10 @@ export async function GET() {
     );
   }
 
-  const cacheHeader = staffMode
-
-    ? { "Cache-Control": "private, no-store" }
-
-    : { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" };
-
-  return NextResponse.json({ success: true, types: data ?? [] }, { headers: cacheHeader });
+  return NextResponse.json(
+    { success: true, types: data ?? [] },
+    { headers: { "Cache-Control": "private, no-store" } }
+  );
 
 }
 
