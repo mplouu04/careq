@@ -381,6 +381,80 @@ describe("queue.service callNextPatient", () => {
 
     expect(result).toEqual({ error: "Failed to call patient", status: 500 });
   });
+
+  it("returns 409 when patient is already called", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: { status: "in_progress" }, error: null }));
+
+    const { callNextPatient } = await import("../lib/services/queue.service");
+    const result = await callNextPatient({
+      queueId: 7,
+      doctorId: "550e8400-e29b-41d4-a716-446655440000",
+      roomNumber: 1,
+      userId: "user-1",
+      ip: "127.0.0.1",
+    });
+
+    expect(result).toEqual({ error: "Already called", status: 409 });
+  });
+
+  it("returns 409 when queue entry is not waiting", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: { status: "completed" }, error: null }));
+
+    const { callNextPatient } = await import("../lib/services/queue.service");
+    const result = await callNextPatient({
+      queueId: 8,
+      doctorId: "550e8400-e29b-41d4-a716-446655440000",
+      roomNumber: 1,
+      userId: "user-1",
+      ip: "127.0.0.1",
+    });
+
+    expect(result).toEqual({ error: "Queue entry is already completed", status: 409 });
+  });
+});
+
+describe("queue.service recallPatient", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 409 when recall target is already called", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: { status: "called" }, error: null }));
+
+    const { recallPatient } = await import("../lib/services/queue.service");
+    const result = await recallPatient({
+      queueId: 11,
+      doctorId: "550e8400-e29b-41d4-a716-446655440000",
+      roomNumber: 2,
+      userId: "user-1",
+      ip: "127.0.0.1",
+    });
+
+    expect(result).toEqual({ error: "Already called", status: 409 });
+  });
+
+  it("returns 409 when recall target is not waiting", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: { status: "cancelled" }, error: null }));
+
+    const { recallPatient } = await import("../lib/services/queue.service");
+    const result = await recallPatient({
+      queueId: 12,
+      doctorId: "550e8400-e29b-41d4-a716-446655440000",
+      roomNumber: 2,
+      userId: "user-1",
+      ip: "127.0.0.1",
+    });
+
+    expect(result).toEqual({ error: "Queue entry is already cancelled", status: 409 });
+  });
 });
 
 describe("queue.service markDone", () => {

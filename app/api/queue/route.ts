@@ -11,6 +11,7 @@ import { requireStaff } from "@/lib/auth";
 import { getClientIp } from "@/lib/rate-limit";
 import { logAudit } from "@/lib/audit";
 import { captureException } from "@/lib/observability";
+import { isCalledLikeStatus } from "@/lib/queue-status";
 
 export const dynamic = "force-dynamic";
 
@@ -296,7 +297,7 @@ async function staffQueueHandler() {
         est_wait_minutes: waitingPosition * avgServiceTime,
         skip_count: row.skip_count ?? 0,
       });
-    } else if (row.status === "in_progress") {
+    } else if (isCalledLikeStatus(row.status)) {
       inProgress.push({
         id: row.queue_number,
         queueId: row.id,

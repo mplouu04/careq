@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { normalizePhone } from "../lib/phone";
 import { generateTimeSlots, filterSameDaySlots } from "../lib/slots";
+import { isCalledLikeStatus } from "../lib/queue-status";
 
 // ─── Phone normalization ────────────────────────────────────────────────────
 
@@ -99,5 +100,20 @@ describe("filterSameDaySlots (pqms_filter_same_day_slots)", () => {
 
   it("handles empty slot list", () => {
     expect(filterSameDaySlots([], "2099-01-01")).toEqual([]);
+  });
+});
+
+describe("isCalledLikeStatus", () => {
+  it("treats in_progress as called-like", () => {
+    expect(isCalledLikeStatus("in_progress")).toBe(true);
+  });
+
+  it("treats called as called-like for backward compatibility", () => {
+    expect(isCalledLikeStatus("called")).toBe(true);
+  });
+
+  it("does not treat waiting/completed as called-like", () => {
+    expect(isCalledLikeStatus("waiting")).toBe(false);
+    expect(isCalledLikeStatus("completed")).toBe(false);
   });
 });

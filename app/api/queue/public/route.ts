@@ -8,6 +8,7 @@ import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { completeQueueEntries } from "@/lib/services/queue.service";
+import { isCalledLikeStatus } from "@/lib/queue-status";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export const GET = withRateLimit(
       .select("id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)")
       .gte("created_at", dayStart)
       .lte("created_at", dayEnd)
-      .in("status", ["waiting", "in_progress"])
+      .in("status", ["waiting", "in_progress", "called"])
       .order("skip_count", { ascending: true })
       .order("id", { ascending: true }),
     getAvgServiceTime(dayStart, dayEnd, supabase),
@@ -72,7 +73,7 @@ export const GET = withRateLimit(
   const items = (queueRows ?? []) as QueueRow[];
 
   const inProgressByRoom = new Map<number, { queue_number: string }>();
-  for (const item of items.filter((q) => q.status === "in_progress")) {
+  for (const item of items.filter((q) => isCalledLikeStatus(q.status))) {
     if (item.room_id != null) {
       inProgressByRoom.set(Number(item.room_id), { queue_number: item.queue_number });
     }
@@ -97,7 +98,7 @@ export const GET = withRateLimit(
     }));
 
   const nowServing = items
-    .filter((q) => q.status === "in_progress")
+    .filter((q) => isCalledLikeStatus(q.status))
     .map((q) => ({
       id: q.queue_number,
       queueId: q.id,

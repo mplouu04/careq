@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Hourglass } from "lucide-react";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
+import { isCalledLikeStatus } from "@/lib/queue-status";
 
 type QueueEntry = {
   id: number;
@@ -29,6 +30,7 @@ type QueueEntry = {
 
 const HEADER_BG: Record<string, string> = {
   waiting: "bg-primary",
+  called: "bg-status-called",
   in_progress: "bg-status-called",
   completed: "bg-muted-foreground",
   cancelled: "bg-destructive",
@@ -39,7 +41,7 @@ function statusBadgeVariant(
   status: string
 ): "waiting" | "called" | "completed" | "error" | "no_show" {
   if (status === "waiting") return "waiting";
-  if (status === "in_progress") return "called";
+  if (isCalledLikeStatus(status)) return "called";
   if (status === "completed") return "completed";
   if (status === "no_show") return "no_show";
   return "error";
@@ -158,7 +160,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   useEffect(() => {
     if (!alertsEnabled) return;
     const current = queue?.status ?? null;
-    if (prevStatusRef.current !== "in_progress" && current === "in_progress") {
+    if (!isCalledLikeStatus(prevStatusRef.current) && isCalledLikeStatus(current)) {
       playCalledChime();
       fireCalledNotification(queue?.queue_number ?? "", room);
     }
@@ -235,11 +237,16 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
       const supabase = createClient();
+      const queueIdFilter = queue?.id ? `id=eq.${queue.id}` : undefined;
       return supabase
         .channel(`queue-status-${refNumber}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "queue", filter: queueIdFilter },
+          onChange
+        );
     },
-    [refNumber]
+    [refNumber, queue?.id]
   );
 
   const { isLive } = useRealtimePoll({
@@ -310,7 +317,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const statusLabel =
     queue.status === "waiting"
       ? "Waiting"
-      : queue.status === "in_progress"
+      : isCalledLikeStatus(queue.status)
         ? "Called"
         : queue.status === "completed"
           ? "Done"
@@ -325,7 +332,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
           <StatusBadge
             status={statusBadgeVariant(queue.status)}
             label={statusLabel}
-            icon={queue.status === "waiting" ? Hourglass : queue.status === "in_progress" ? Megaphone : undefined}
+            icon={queue.status === "waiting" ? Hourglass : isCalledLikeStatus(queue.status) ? Megaphone : undefined}
             className="bg-white/20 text-white border-0 mb-3"
           />
           <p
@@ -351,7 +358,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
             </>
           )}
 
-          {queue.status === "in_progress" && (
+          {isCalledLikeStatus(queue.status) && (
             <>
               <div className="called-banner rounded-lg p-4 mb-4 bg-status-called text-white">
                 <p className="text-headline-md font-semibold">{room || "Your room"}</p>

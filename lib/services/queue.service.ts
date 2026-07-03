@@ -2,6 +2,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit";
 import { getClinicDayStartIso } from "@/lib/datetime";
 import { getQueueReport } from "@/lib/services/queue-metrics";
+import { isCalledLikeStatus } from "@/lib/queue-status";
+
+async function getQueueStatus(queueId: number): Promise<string | null> {
+  const supabase = createAdminClient();
+  const { data } = await supabase
+    .from("queue")
+    .select("status")
+    .eq("id", queueId)
+    .maybeSingle();
+  return data?.status ?? null;
+}
 
 export async function callNextPatient(params: {
   queueId: number;
@@ -25,6 +36,16 @@ export async function callNextPatient(params: {
     .maybeSingle();
 
   if (error || !data) {
+    const currentStatus = await getQueueStatus(params.queueId);
+    if (isCalledLikeStatus(currentStatus)) {
+      return { error: "Already called", status: 409 as const };
+    }
+    if (currentStatus && currentStatus !== "waiting") {
+      return {
+        error: `Queue entry is already ${String(currentStatus).replace("_", " ")}`,
+        status: 409 as const,
+      };
+    }
     return { error: "Failed to call patient", status: 500 as const };
   }
 
@@ -91,7 +112,7 @@ export async function recallPatient(params: {
   ip: string;
 }) {
   const supabase = createAdminClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("queue")
     .update({
       status: "in_progress",
@@ -100,9 +121,21 @@ export async function recallPatient(params: {
       called_at: new Date().toISOString(),
     })
     .eq("id", params.queueId)
-    .eq("status", "waiting");
+    .eq("status", "waiting")
+    .select("id")
+    .maybeSingle();
 
-  if (error) {
+  if (error || !data) {
+    const currentStatus = await getQueueStatus(params.queueId);
+    if (isCalledLikeStatus(currentStatus)) {
+      return { error: "Already called", status: 409 as const };
+    }
+    if (currentStatus && currentStatus !== "waiting") {
+      return {
+        error: `Queue entry is already ${String(currentStatus).replace("_", " ")}`,
+        status: 409 as const,
+      };
+    }
     return { error: "Failed to recall", status: 500 as const };
   }
 
