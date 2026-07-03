@@ -106,7 +106,7 @@ test.describe("Smoke §5 — Queue Status", () => {
   test("5.6 invalid queue number shows not found", async ({ page }) => {
     await page.route(/\/api\/queue/, async (route) => {
       await route.fulfill({
-        status: 200,
+        status: 404,
         contentType: "application/json",
         body: JSON.stringify({ success: false, error: "Queue entry not found" }),
       });

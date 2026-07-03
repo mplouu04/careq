@@ -6,7 +6,7 @@ export function normalizeQueueRef(raw: string): string {
   const hyphenated = ref.match(/^(WALK|APPT)-(\d+)$/);
   if (hyphenated) return ref;
 
-  const compact = ref.match(/^(WALK|APPT)(\d+)$/);
+  const compact = ref.match(/^(WALK|APPT)(\d{1,4})$/);
   if (compact) return `${compact[1]}-${compact[2]}`;
 
   return ref;

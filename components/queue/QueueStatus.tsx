@@ -149,6 +149,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const [doctor, setDoctor] = useState("");
   const [notFound, setNotFound] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [rateLimited, setRateLimited] = useState(false);
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
   const prevPositionRef = useRef<number | null>(null);
@@ -193,23 +194,40 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const load = useCallback(async () => {
     try {
       const res = await fetch(`/api/queue?ref=${encodeURIComponent(refNumber)}`);
-      if (!res.ok) {
-        setLoadError(true);
-        return;
-      }
-      const data = await res.json();
-      if (!data.success) {
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 404 || (res.ok && !data.success)) {
+        setLoadError(false);
+        setRateLimited(false);
         setNotFound(true);
         return;
       }
+
+      if (res.status === 429) {
+        setLoadError(false);
+        setNotFound(false);
+        setRateLimited(true);
+        return;
+      }
+
+      if (!res.ok || !data.success) {
+        setNotFound(false);
+        setRateLimited(false);
+        setLoadError(true);
+        return;
+      }
+
       setLoadError(false);
       setNotFound(false);
+      setRateLimited(false);
       setQueue(data.queue);
       setPosition(data.position ?? null);
       setEstWait(data.est_wait_minutes ?? null);
       setRoom(data.room ?? "");
       setDoctor(data.doctor ?? "");
     } catch {
+      setNotFound(false);
+      setRateLimited(false);
       setLoadError(true);
     }
   }, [refNumber]);
@@ -229,6 +247,23 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     subscribe: subscribeQueue,
     fallbackIntervalMs: 2000,
   });
+
+  if (rateLimited) {
+    return (
+      <div className="max-w-md mx-auto">
+        <CareqCard className="p-6 text-center">
+          <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+          <p className="text-headline-sm text-on-surface mb-1">Too many requests</p>
+          <p className="text-body-sm text-on-surface-variant mb-4">
+            Wait a moment and try again.
+          </p>
+          <CareqButton type="button" onClick={load} className="cursor-pointer">
+            Retry
+          </CareqButton>
+        </CareqCard>
+      </div>
+    );
+  }
 
   if (loadError) {
     return (

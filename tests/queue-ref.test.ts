@@ -18,4 +18,8 @@ describe("normalizeQueueRef", () => {
   it("trims whitespace", () => {
     expect(normalizeQueueRef("  walk-1  ")).toBe("WALK-1");
   });
+
+  it("preserves date-based walk-in reference codes", () => {
+    expect(normalizeQueueRef("WALK2026070301")).toBe("WALK2026070301");
+  });
 });

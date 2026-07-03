@@ -179,17 +179,13 @@ async function publicQueueRefHandler(request: Request) {
 
     if (posRes.error) {
       captureException(posRes.error, { route: "/api/queue", ref, queueId: entry.id });
-      return NextResponse.json(
-        { success: false, error: "Failed to load queue status" },
-        { status: 500 }
-      );
-    }
-
-    const resolvedPos = typeof posRes.data === "number" ? posRes.data : 0;
-    if (resolvedPos > 0) {
-      position = resolvedPos;
-      patientsAhead = resolvedPos - 1;
-      estWaitMinutes = resolvedPos * avg;
+    } else {
+      const resolvedPos = typeof posRes.data === "number" ? posRes.data : 0;
+      if (resolvedPos > 0) {
+        position = resolvedPos;
+        patientsAhead = resolvedPos - 1;
+        estWaitMinutes = resolvedPos * avg;
+      }
     }
   }
 
