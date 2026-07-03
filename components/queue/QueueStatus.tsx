@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Hourglass } from "lucide-react";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
+import { normalizeQueueRef } from "@/lib/queue-ref";
 import { isCalledLikeStatus } from "@/lib/queue-status";
 
 type QueueEntry = {
@@ -195,7 +196,9 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/queue?ref=${encodeURIComponent(refNumber)}`);
+      const res = await fetch(`/api/queue?ref=${encodeURIComponent(refNumber)}`, {
+        cache: "no-store",
+      });
       const data = await res.json().catch(() => ({}));
 
       if (res.status === 404 || (res.ok && !data.success)) {
@@ -234,25 +237,33 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     }
   }, [refNumber]);
 
+  const normalizedRef = useMemo(() => normalizeQueueRef(refNumber), [refNumber]);
+
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
       const supabase = createClient();
-      const queueIdFilter = queue?.id ? `id=eq.${queue.id}` : undefined;
       return supabase
-        .channel(`queue-status-${refNumber}`)
+        .channel(`queue-status-${normalizedRef}`)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "queue", filter: queueIdFilter },
+          {
+            event: "*",
+            schema: "public",
+            table: "queue",
+            filter: `queue_number=eq.${normalizedRef}`,
+          },
           onChange
         );
     },
-    [refNumber, queue?.id]
+    [normalizedRef]
   );
 
   const { isLive } = useRealtimePoll({
     fetchFn: load,
     subscribe: subscribeQueue,
     fallbackIntervalMs: 2000,
+    livePollIntervalMs: 3000,
+    heartbeatIntervalMs: 5000,
   });
 
   if (rateLimited) {

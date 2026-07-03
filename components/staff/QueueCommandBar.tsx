@@ -9,13 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CareqButton } from "@/components/careq";
+import { CareqButton, FormLabel } from "@/components/careq";
 import {
   doctorLabel,
-  doctorLabelForValue,
   doctorSelectItems,
   roomLabel,
-  roomLabelForValue,
   roomSelectItems,
   type DoctorOption,
   type RoomOption,
@@ -67,50 +65,54 @@ export function QueueCommandBar({
         className
       )}
     >
-      <div className="flex flex-wrap items-center gap-2 md:gap-3">
-        <Select
-          value={doctorId}
-          onValueChange={(v) => onDoctorChange(v ?? "")}
-          items={doctorItems}
-        >
-          <SelectTrigger
-            className="h-11 min-w-[140px] flex-1 sm:flex-none sm:max-w-[200px] cursor-pointer"
-            aria-label="Doctor"
+      <div className="flex flex-wrap items-end gap-2 md:gap-3">
+        <div className="flex flex-col flex-1 sm:flex-none min-w-[140px] sm:max-w-[200px]">
+          <FormLabel htmlFor="queue-doctor-select">Doctor</FormLabel>
+          <Select
+            value={doctorId || null}
+            onValueChange={(v) => onDoctorChange(v ?? "")}
+            items={doctorItems}
           >
-            <SelectValue placeholder="Doctor">
-              {(value) => doctorLabelForValue(doctors, value as string | null)}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {doctors.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {doctorLabel(d)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <SelectTrigger
+              id="queue-doctor-select"
+              className="h-11 w-full cursor-pointer"
+              aria-label="Doctor"
+            >
+              <SelectValue placeholder="Doctor" />
+            </SelectTrigger>
+            <SelectContent>
+              {doctors.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {doctorLabel(d)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Select
-          value={roomId}
-          onValueChange={(v) => onRoomChange(v ?? "")}
-          items={roomItems}
-        >
-          <SelectTrigger
-            className="h-11 min-w-[120px] flex-1 sm:flex-none sm:max-w-[160px] cursor-pointer"
-            aria-label="Room"
+        <div className="flex flex-col flex-1 sm:flex-none min-w-[120px] sm:max-w-[160px]">
+          <FormLabel htmlFor="queue-room-select">Room</FormLabel>
+          <Select
+            value={roomId || null}
+            onValueChange={(v) => onRoomChange(v ?? "")}
+            items={roomItems}
           >
-            <SelectValue placeholder="Room">
-              {(value) => roomLabelForValue(rooms, value as string | null)}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {rooms.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {roomLabel(r)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <SelectTrigger
+              id="queue-room-select"
+              className="h-11 w-full cursor-pointer"
+              aria-label="Room"
+            >
+              <SelectValue placeholder="Room" />
+            </SelectTrigger>
+            <SelectContent>
+              {rooms.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {roomLabel(r)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <CareqButton
           type="button"
@@ -128,7 +130,7 @@ export function QueueCommandBar({
         </CareqButton>
 
         <div
-          className="flex items-center gap-1.5 ml-auto text-body-sm text-on-surface-variant"
+          className="flex items-center gap-1.5 ml-auto pb-2.5 text-body-sm text-on-surface-variant"
           title={isLive ? "Connected" : "Reconnecting"}
         >
           <span

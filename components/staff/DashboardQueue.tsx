@@ -39,10 +39,8 @@ import { QueueCommandBar } from "@/components/staff/QueueCommandBar";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 import {
   doctorLabel,
-  doctorLabelForValue,
   doctorSelectItems,
   roomLabel,
-  roomLabelForValue,
   roomSelectItems,
 } from "@/lib/staff-select-labels";
 
@@ -597,14 +595,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           <div>
             <FormLabel>Select Doctor</FormLabel>
             <Select
-              value={recallDoctorId}
+              value={recallDoctorId || null}
               onValueChange={(v) => setRecallDoctorId(v ?? "")}
               items={doctorItems}
             >
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="Select doctor">
-                  {(value) => doctorLabelForValue(doctors, value as string | null)}
-                </SelectValue>
+                <SelectValue placeholder="Select doctor" />
               </SelectTrigger>
               <SelectContent>
                 {doctors.map((d) => (
@@ -618,14 +614,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           <div>
             <FormLabel>Select Room</FormLabel>
             <Select
-              value={recallRoomId}
+              value={recallRoomId || null}
               onValueChange={(v) => setRecallRoomId(v ?? "")}
               items={roomItems}
             >
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="Select room">
-                  {(value) => roomLabelForValue(rooms, value as string | null)}
-                </SelectValue>
+                <SelectValue placeholder="Select room" />
               </SelectTrigger>
               <SelectContent>
                 {rooms.map((r) => (

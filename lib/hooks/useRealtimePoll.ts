@@ -12,6 +12,10 @@ type UseRealtimePollOptions = {
   /** Interval (ms) to keep polling even when the realtime subscription is live.
    *  Acts as a safety net for silently dropped WAL events. Set to 0 to disable. */
   heartbeatIntervalMs?: number;
+  /** Interval (ms) to poll while SUBSCRIBED (in addition to realtime events).
+   *  Use on surfaces where dropped WAL events are common (e.g. anonymous patient status).
+   *  Set to 0 to disable (default). */
+  livePollIntervalMs?: number;
 };
 
 export function useRealtimePoll({
@@ -21,11 +25,13 @@ export function useRealtimePoll({
   fallbackIntervalMs = 5000,
   maxBackoffMs = 30000,
   heartbeatIntervalMs = 15000,
+  livePollIntervalMs = 0,
 }: UseRealtimePollOptions) {
   const [isLive, setIsLive] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const livePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const backoffRef = useRef(fallbackIntervalMs);
   const mountedRef = useRef(true);
   const liveRef = useRef(false);
@@ -61,6 +67,22 @@ export function useRealtimePoll({
       fetchFn().catch(() => {});
     }, heartbeatIntervalMs);
   }, [fetchFn, heartbeatIntervalMs, stopHeartbeat]);
+
+  const stopLivePolling = useCallback(() => {
+    if (livePollRef.current) {
+      clearInterval(livePollRef.current);
+      livePollRef.current = null;
+    }
+  }, []);
+
+  const startLivePolling = useCallback(() => {
+    stopLivePolling();
+    if (livePollIntervalMs <= 0) return;
+    livePollRef.current = setInterval(() => {
+      if (!mountedRef.current) return;
+      fetchFn().catch(() => {});
+    }, livePollIntervalMs);
+  }, [fetchFn, livePollIntervalMs, stopLivePolling]);
 
   const startFallbackPolling = useCallback(() => {
     stopFallbackPolling();
@@ -101,8 +123,10 @@ export function useRealtimePoll({
         backoffRef.current = fallbackIntervalMs;
         stopFallbackPolling();
         startHeartbeat();
+        startLivePolling();
       } else {
         stopHeartbeat();
+        stopLivePolling();
         if (!pollRef.current) {
           startFallbackPolling();
         }
@@ -114,9 +138,10 @@ export function useRealtimePoll({
       if (debounceRef.current) clearTimeout(debounceRef.current);
       stopFallbackPolling();
       stopHeartbeat();
+      stopLivePolling();
       channel.unsubscribe();
     };
-  }, [fetchFn, subscribe, debouncedFetch, startFallbackPolling, stopFallbackPolling, startHeartbeat, stopHeartbeat, fallbackIntervalMs]);
+  }, [fetchFn, subscribe, debouncedFetch, startFallbackPolling, stopFallbackPolling, startHeartbeat, stopHeartbeat, startLivePolling, stopLivePolling, fallbackIntervalMs]);
 
   return { isLive, refresh: fetchFn };
 }
