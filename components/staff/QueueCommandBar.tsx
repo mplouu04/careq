@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { Phone } from "lucide-react";
 import {
   Select,
@@ -9,14 +10,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CareqButton } from "@/components/careq";
+import {
+  doctorLabel,
+  doctorLabelForValue,
+  doctorSelectItems,
+  roomLabel,
+  roomLabelForValue,
+  roomSelectItems,
+  type DoctorOption,
+  type RoomOption,
+} from "@/lib/staff-select-labels";
 import { cn } from "@/lib/utils";
 
-type Doctor = { id: string; first_name: string; last_name: string };
-type Room = { id: string; name: string };
-
 type QueueCommandBarProps = {
-  doctors: Doctor[];
-  rooms: Room[];
+  doctors: DoctorOption[];
+  rooms: RoomOption[];
   doctorId: string;
   roomId: string;
   onDoctorChange: (id: string) => void;
@@ -39,6 +47,9 @@ export function QueueCommandBar({
   isLive = true,
   className,
 }: QueueCommandBarProps) {
+  const doctorItems = useMemo(() => doctorSelectItems(doctors), [doctors]);
+  const roomItems = useMemo(() => roomSelectItems(rooms), [rooms]);
+
   const hint = !canCall
     ? !doctorId && !roomId
       ? "Select doctor and room"
@@ -57,33 +68,45 @@ export function QueueCommandBar({
       )}
     >
       <div className="flex flex-wrap items-center gap-2 md:gap-3">
-        <Select value={doctorId} onValueChange={(v) => onDoctorChange(v ?? "")}>
+        <Select
+          value={doctorId}
+          onValueChange={(v) => onDoctorChange(v ?? "")}
+          items={doctorItems}
+        >
           <SelectTrigger
             className="h-11 min-w-[140px] flex-1 sm:flex-none sm:max-w-[200px] cursor-pointer"
             aria-label="Doctor"
           >
-            <SelectValue placeholder="Doctor" />
+            <SelectValue placeholder="Doctor">
+              {(value) => doctorLabelForValue(doctors, value as string | null)}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {doctors.map((d) => (
               <SelectItem key={d.id} value={d.id}>
-                Dr. {d.first_name} {d.last_name}
+                {doctorLabel(d)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
 
-        <Select value={roomId} onValueChange={(v) => onRoomChange(v ?? "")}>
+        <Select
+          value={roomId}
+          onValueChange={(v) => onRoomChange(v ?? "")}
+          items={roomItems}
+        >
           <SelectTrigger
             className="h-11 min-w-[120px] flex-1 sm:flex-none sm:max-w-[160px] cursor-pointer"
             aria-label="Room"
           >
-            <SelectValue placeholder="Room" />
+            <SelectValue placeholder="Room">
+              {(value) => roomLabelForValue(rooms, value as string | null)}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {rooms.map((r) => (
               <SelectItem key={r.id} value={r.id}>
-                {r.name}
+                {roomLabel(r)}
               </SelectItem>
             ))}
           </SelectContent>

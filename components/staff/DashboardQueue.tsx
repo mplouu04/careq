@@ -37,6 +37,14 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { QueueCommandBar } from "@/components/staff/QueueCommandBar";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
+import {
+  doctorLabel,
+  doctorLabelForValue,
+  doctorSelectItems,
+  roomLabel,
+  roomLabelForValue,
+  roomSelectItems,
+} from "@/lib/staff-select-labels";
 
 type QueueWaiting = {
   id: number;
@@ -123,7 +131,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [, setAvgServiceTime] = useState(10);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [doctorId, setDoctorId] = useState(staff.role === "doctor" ? staff.id : "");
+  const [doctorId, setDoctorId] = useState("");
   const [roomId, setRoomId] = useState("");
   const [stats, setStats] = useState({ served: 0, waiting: 0, avg: 10 });
   const [history, setHistory] = useState<{ date: string; served: number }[]>([]);
@@ -134,6 +142,9 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [queueTab, setQueueTab] = useState<ColumnId>("waiting");
   const queueLoadedRef = useRef(false);
   const statsLoadedRef = useRef(false);
+
+  const doctorItems = useMemo(() => doctorSelectItems(doctors), [doctors]);
+  const roomItems = useMemo(() => roomSelectItems(rooms), [rooms]);
 
   const loadQueue = useCallback(async () => {
     try {
@@ -248,6 +259,13 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       .then((d) => setRooms(d.rooms ?? []))
       .catch(() => toast.error("Unable to load rooms."));
   }, []);
+
+  useEffect(() => {
+    if (!doctors.length) return;
+    if (staff.role === "doctor" && doctors.some((d) => d.id === staff.id)) {
+      setDoctorId((prev) => prev || staff.id);
+    }
+  }, [doctors, staff.id, staff.role]);
 
   async function performAction(
     name: string,
@@ -578,14 +596,20 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         <div className="space-y-4">
           <div>
             <FormLabel>Select Doctor</FormLabel>
-            <Select value={recallDoctorId} onValueChange={(v) => setRecallDoctorId(v ?? "")}>
+            <Select
+              value={recallDoctorId}
+              onValueChange={(v) => setRecallDoctorId(v ?? "")}
+              items={doctorItems}
+            >
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="Select doctor" />
+                <SelectValue placeholder="Select doctor">
+                  {(value) => doctorLabelForValue(doctors, value as string | null)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {doctors.map((d) => (
                   <SelectItem key={d.id} value={d.id}>
-                    Dr. {d.first_name} {d.last_name}
+                    {doctorLabel(d)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -593,14 +617,20 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           </div>
           <div>
             <FormLabel>Select Room</FormLabel>
-            <Select value={recallRoomId} onValueChange={(v) => setRecallRoomId(v ?? "")}>
+            <Select
+              value={recallRoomId}
+              onValueChange={(v) => setRecallRoomId(v ?? "")}
+              items={roomItems}
+            >
               <SelectTrigger className="h-11">
-                <SelectValue placeholder="Select room" />
+                <SelectValue placeholder="Select room">
+                  {(value) => roomLabelForValue(rooms, value as string | null)}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {rooms.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
-                    {r.name}
+                    {roomLabel(r)}
                   </SelectItem>
                 ))}
               </SelectContent>
