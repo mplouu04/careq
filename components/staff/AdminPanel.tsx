@@ -128,12 +128,12 @@ export function AdminPanel() {
     try {
       const [s, t, set, a, roomsRes, doctorsRes] = await Promise.all([
         fetch("/api/admin/staff").then((r) => (r.ok ? r.json() : { staff: [] })),
-        fetch("/api/appointment-types").then((r) => (r.ok ? r.json() : { types: [] })),
+        fetch("/api/appointment-types?all=1").then((r) => (r.ok ? r.json() : { types: [] })),
         fetch("/api/admin/settings").then((r) => (r.ok ? r.json() : { screens: [] })),
         fetch(`/api/appointments?filter=${apptFilter}`).then((r) =>
           r.ok ? r.json() : { appointments: [] }
         ),
-        fetch("/api/rooms").then((r) => (r.ok ? r.json() : { rooms: [] })),
+        fetch("/api/rooms?all=1").then((r) => (r.ok ? r.json() : { rooms: [] })),
         fetch("/api/admin/doctors").then((r) => (r.ok ? r.json() : { doctors: [] })),
       ]);
       setStaffList(s.staff ?? []);

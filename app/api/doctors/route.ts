@@ -12,7 +12,7 @@ export const GET = withRateLimit(
       .from("staff")
       .select("id, first_name, last_name")
       .eq("role", "doctor")
-      .neq("is_active", false)
+      .eq("is_active", true)
       .order("last_name");
 
     if (error) {
@@ -20,7 +20,13 @@ export const GET = withRateLimit(
     }
     return NextResponse.json(
       { success: true, doctors: data ?? [] },
-      { headers: { "Cache-Control": "private, no-store" } }
+      {
+        headers: {
+          "Cache-Control": "private, no-store",
+          "CDN-Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
+        },
+      }
     );
   },
   { max: 60, windowSeconds: 60, failClosed: true }

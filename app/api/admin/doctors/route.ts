@@ -177,7 +177,7 @@ export const POST = withStaffAuth(async (request: Request) => {
 
       await supabase.from("doctor_schedules").delete().eq("id", body.id);
 
-      await logAudit({
+      void logAudit({
 
         userId: audit.userId,
 
@@ -319,7 +319,7 @@ export const POST = withStaffAuth(async (request: Request) => {
 
 
 
-      await logAudit({
+      void logAudit({
 
         userId: audit.userId,
 
@@ -359,7 +359,7 @@ export const POST = withStaffAuth(async (request: Request) => {
 
 
 
-    await logAudit({
+    void logAudit({
 
       userId: audit.userId,
 
@@ -385,7 +385,7 @@ export const POST = withStaffAuth(async (request: Request) => {
 
       await supabase.from("doctor_blocks").delete().eq("id", body.id);
 
-      await logAudit({
+      void logAudit({
 
         userId: audit.userId,
 
@@ -433,7 +433,7 @@ export const POST = withStaffAuth(async (request: Request) => {
 
 
 
-    await logAudit({
+    void logAudit({
 
       userId: audit.userId,
 

@@ -261,9 +261,9 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const { isLive } = useRealtimePoll({
     fetchFn: load,
     subscribe: subscribeQueue,
-    fallbackIntervalMs: 2000,
-    livePollIntervalMs: 3000,
-    heartbeatIntervalMs: 5000,
+    fallbackIntervalMs: 5000,
+    livePollIntervalMs: 0,
+    heartbeatIntervalMs: 15000,
   });
 
   if (rateLimited) {

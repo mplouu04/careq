@@ -119,24 +119,30 @@ export async function searchPatients(term: string, dob: string): Promise<Patient
 
   if (isDigitsOnly(term)) {
     const idNum = parseInt(term, 10);
-    if (!Number.isNaN(idNum)) {
-      let q = supabase.from("patients").select(select).eq("id", idNum);
-      if (dob) q = q.eq("date_of_birth", dob);
-      const { data } = await q;
-      addRows(data as PatientRow[] | null);
-    }
-
     const digits = normalizePhoneDigits(term);
     const phoneOr = [
       `phone.ilike."%${escapePostgrestValue(digits)}%"`,
       `phone_normalized.ilike."%${escapePostgrestValue(digits)}%"`,
     ].join(",");
-    let q = supabase.from("patients").select(select).or(phoneOr).limit(10);
-    if (dob) q = q.eq("date_of_birth", dob);
-    const { data } = await q;
-    addRows(data as PatientRow[] | null);
+
+    const queries = [];
+    if (!Number.isNaN(idNum)) {
+      let q = supabase.from("patients").select(select).eq("id", idNum);
+      if (dob) q = q.eq("date_of_birth", dob);
+      queries.push(q);
+    }
+    let phoneQ = supabase.from("patients").select(select).or(phoneOr).limit(10);
+    if (dob) phoneQ = phoneQ.eq("date_of_birth", dob);
+    queries.push(phoneQ);
+
+    const results = await Promise.all(queries);
+    for (const { data } of results) {
+      addRows(data as PatientRow[] | null);
+    }
   } else {
     const tokens = splitSearchTokens(term);
+    const queries = [];
+
     if (tokens.length >= 2) {
       const [a, b] = tokens;
       const pa = escapePostgrestValue(ilikePattern(a));
@@ -148,8 +154,7 @@ export async function searchPatients(term: string, dob: string): Promise<Patient
       ]) {
         let q = supabase.from("patients").select(select).or(filter).limit(10);
         if (dob) q = q.eq("date_of_birth", dob);
-        const { data } = await q;
-        addRows(data as PatientRow[] | null);
+        queries.push(q);
       }
     }
 
@@ -159,10 +164,14 @@ export async function searchPatients(term: string, dob: string): Promise<Patient
       `phone.ilike."${quoted}"`,
       `phone_normalized.ilike."${quoted}"`,
     ].join(",");
-    let q = supabase.from("patients").select(select).or(orFilter).limit(10);
-    if (dob) q = q.eq("date_of_birth", dob);
-    const { data } = await q;
-    addRows(data as PatientRow[] | null);
+    let broadQ = supabase.from("patients").select(select).or(orFilter).limit(10);
+    if (dob) broadQ = broadQ.eq("date_of_birth", dob);
+    queries.push(broadQ);
+
+    const results = await Promise.all(queries);
+    for (const { data } of results) {
+      addRows(data as PatientRow[] | null);
+    }
   }
 
   return Array.from(seen.values()).sort((x, y) =>
@@ -243,11 +252,21 @@ export async function verifyPatientByDobAndPhone(
   ip?: string | null
 ): Promise<PatientVerifyResult> {
   const supabase = createAdminClient();
+  const last7 = phoneLast7.replace(/\D/g, "").slice(-7);
 
-  const { data: patients, error } = await supabase
+  let query = supabase
     .from("patients")
     .select("id, first_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
+
+  // Narrow candidates in SQL; still confirm with patientPhonesMatch for format edge cases
+  if (last7.length === 7) {
+    query = query.or(
+      `phone_normalized.like.%${last7},phone.like.%${last7}`
+    );
+  }
+
+  const { data: patients, error } = await query.limit(20);
 
   if (error) {
     throw new Error(error.message);

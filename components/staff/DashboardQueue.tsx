@@ -144,6 +144,9 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const doctorItems = useMemo(() => doctorSelectItems(doctors), [doctors]);
   const roomItems = useMemo(() => roomSelectItems(rooms), [rooms]);
 
+  const lastAutoCompleteRef = useRef(0);
+  const AUTO_COMPLETE_MIN_INTERVAL_MS = 120_000;
+
   const loadQueue = useCallback(async () => {
     try {
       const res = await fetch("/api/queue");
@@ -155,11 +158,19 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       }
       const data = await res.json();
       if (data.appointment) {
-        setWaiting(data.appointment.waiting ?? []);
+        const waitingList = data.appointment.waiting ?? [];
+        const completedList = data.appointment.completed ?? [];
+        const avg = data.appointment.avg_service_time ?? 10;
+        setWaiting(waitingList);
         setInProgress(data.appointment.inProgress ?? []);
-        setCompleted(data.appointment.completed ?? []);
+        setCompleted(completedList);
         setNoShow(data.appointment.noShow ?? []);
-        setAvgServiceTime(data.appointment.avg_service_time ?? 10);
+        setAvgServiceTime(avg);
+        setStats({
+          served: completedList.length,
+          waiting: waitingList.length,
+          avg,
+        });
       }
       queueLoadedRef.current = true;
     } catch {
@@ -186,14 +197,21 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     }
   }, []);
 
-  const refreshDashboard = useCallback(async () => {
+  const maybeAutoComplete = useCallback(() => {
+    const now = Date.now();
+    if (now - lastAutoCompleteRef.current < AUTO_COMPLETE_MIN_INTERVAL_MS) return;
+    lastAutoCompleteRef.current = now;
     fetch("/api/queue/public", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ auto: true }),
     }).catch(() => {});
-    await Promise.all([loadQueue(), loadStats()]);
-  }, [loadQueue, loadStats]);
+  }, []);
+
+  const refreshDashboard = useCallback(async () => {
+    maybeAutoComplete();
+    await loadQueue();
+  }, [loadQueue, maybeAutoComplete]);
 
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
@@ -210,6 +228,15 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     subscribe: subscribeQueue,
     fallbackIntervalMs: 5000,
   });
+
+  // Analytics (history chart) on a slower cadence — live counts come from loadQueue
+  useEffect(() => {
+    void loadStats();
+    const id = setInterval(() => {
+      void loadStats();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [loadStats]);
 
   // Second channel: alert staff when a walk-in patient checks in (type_id = 2)
   useEffect(() => {
@@ -233,6 +260,16 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     };
   }, []);
 
+  const loadDoctors = useCallback(() => {
+    fetch("/api/doctors", { cache: "no-store" })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load doctors");
+        return r.json();
+      })
+      .then((d) => setDoctors(d.doctors ?? []))
+      .catch(() => toast.error("Unable to load doctors."));
+  }, []);
+
   useEffect(() => {
     setToday(
       new Date().toLocaleDateString("en-PH", {
@@ -242,13 +279,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         day: "numeric",
       })
     );
-    fetch("/api/doctors")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load doctors");
-        return r.json();
-      })
-      .then((d) => setDoctors(d.doctors ?? []))
-      .catch(() => toast.error("Unable to load doctors."));
+    loadDoctors();
     fetch("/api/rooms")
       .then((r) => {
         if (!r.ok) throw new Error("Failed to load rooms");
@@ -256,7 +287,34 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       })
       .then((d) => setRooms(d.rooms ?? []))
       .catch(() => toast.error("Unable to load rooms."));
-  }, []);
+  }, [loadDoctors]);
+
+  // Keep doctor dropdown in sync when admin creates/deactivates staff
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("dashboard-doctors-catalog")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "staff" },
+        () => {
+          loadDoctors();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [loadDoctors]);
+
+  useEffect(() => {
+    if (!doctors.length) return;
+    setDoctorId((prev) => (prev && !doctors.some((d) => d.id === prev) ? "" : prev));
+    setRecallDoctorId((prev) =>
+      prev && !doctors.some((d) => d.id === prev) ? "" : prev
+    );
+  }, [doctors]);
 
   useEffect(() => {
     if (!doctors.length) return;

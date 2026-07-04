@@ -23,6 +23,8 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 15 | `013_queue_replica_identity.sql` | `REPLICA IDENTITY FULL` on `queue` |
 | 16 | `014_queue_perf_indexes.sql` | Queue API performance indexes |
 | 17 | `015_audit_remediation.sql` | Audit indexes, RLS scope, reminder failures, staff trigger hardening |
+| 18 | `016_staff_realtime.sql` | Realtime on `staff` + `REPLICA IDENTITY FULL` for doctor catalog sync |
+| 19 | `017_queue_metrics_rpc.sql` | SQL avg service time and daily history aggregation RPCs |
 
 **Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
 
@@ -58,4 +60,17 @@ After `015_audit_remediation.sql`:
 SELECT indexname FROM pg_indexes WHERE indexname = 'idx_patients_dob';
 SELECT proname FROM pg_proc WHERE proname = 'get_queue_waiting_position';
 SELECT tablename FROM pg_tables WHERE tablename = 'reminder_failures';
+```
+
+After `016_staff_realtime.sql`:
+
+```sql
+SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'staff';
+-- should return one row
+```
+
+After `017_queue_metrics_rpc.sql`:
+
+```sql
+SELECT proname FROM pg_proc WHERE proname IN ('get_avg_service_minutes', 'get_queue_served_by_day');
 ```

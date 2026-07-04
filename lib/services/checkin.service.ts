@@ -23,7 +23,8 @@ export async function lookupAppointmentForCheckin(ref: string, phone: string) {
     .select(
       `checkin_id, reference_number, scheduled_time, appointment_date, status, patient_id,
        staff:doctor_id(first_name, last_name),
-       appointment_types(name)`
+       appointment_types(name),
+       patients(first_name, last_name, phone, phone_normalized)`
     )
     .eq("reference_number", normalizedRef)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
@@ -31,11 +32,13 @@ export async function lookupAppointmentForCheckin(ref: string, phone: string) {
 
   if (!checkin) return null;
 
-  const { data: patient } = await supabase
-    .from("patients")
-    .select("first_name, last_name, phone, phone_normalized")
-    .eq("id", checkin.patient_id)
-    .maybeSingle();
+  const patientRaw = checkin.patients as unknown;
+  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as {
+    first_name: string;
+    last_name: string;
+    phone: string;
+    phone_normalized: string | null;
+  } | null;
 
   if (!patientPhoneMatches(patient, phone)) {
     return null;

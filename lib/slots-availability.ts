@@ -38,16 +38,6 @@ export async function getDoctorAvailableSlots(
   appointmentTypeId?: string | number
 ): Promise<string[]> {
   const supabase = createAdminClient();
-
-  const { data: doctor } = await supabase
-    .from("staff")
-    .select("is_active")
-    .eq("id", doctorId)
-    .eq("role", "doctor")
-    .maybeSingle();
-
-  if (!doctor || doctor.is_active === false) return [];
-
   const dayOfWeek = getClinicDayOfWeek(dateYmd);
 
   const apptTypeQuery =
@@ -59,7 +49,13 @@ export async function getDoctorAvailableSlots(
           .maybeSingle()
       : Promise.resolve({ data: null as { buffer_minutes: number; max_concurrent: number } | null });
 
-  const [{ data: schedule }, { data: apptType }] = await Promise.all([
+  const [{ data: doctor }, { data: schedule }, { data: apptType }] = await Promise.all([
+    supabase
+      .from("staff")
+      .select("is_active")
+      .eq("id", doctorId)
+      .eq("role", "doctor")
+      .maybeSingle(),
     supabase
       .from("doctor_schedules")
       .select("start_time, end_time")
@@ -70,6 +66,7 @@ export async function getDoctorAvailableSlots(
     apptTypeQuery,
   ]);
 
+  if (!doctor || doctor.is_active === false) return [];
   if (!schedule) return [];
 
   const bufferMinutes = apptType?.buffer_minutes ?? 0;
@@ -82,20 +79,32 @@ export async function getDoctorAvailableSlots(
     bufferMinutes
   );
 
-  const [{ data: blocks }, { data: booked }] = await Promise.all([
-    supabase
-      .from("doctor_blocks")
-      .select("start_time, end_time, block_date, day_of_week, is_recurring")
-      .eq("doctor_id", doctorId),
-    supabase
-      .from("checkins")
-      .select("scheduled_time, appointment_types(duration)")
-      .eq("doctor_id", doctorId)
-      .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
-      .gte("appointment_date", `${dateYmd}T00:00:00`)
-      .lte("appointment_date", `${dateYmd}T23:59:59`)
-      .not("status", "in", '("cancelled","no_show")'),
-  ]);
+  // Scope blocks: recurring for this weekday OR one-off on this date
+  const [{ data: recurringBlocks }, { data: oneOffBlocks }, { data: booked }] =
+    await Promise.all([
+      supabase
+        .from("doctor_blocks")
+        .select("start_time, end_time, block_date, day_of_week, is_recurring")
+        .eq("doctor_id", doctorId)
+        .eq("is_recurring", true)
+        .eq("day_of_week", dayOfWeek),
+      supabase
+        .from("doctor_blocks")
+        .select("start_time, end_time, block_date, day_of_week, is_recurring")
+        .eq("doctor_id", doctorId)
+        .eq("is_recurring", false)
+        .eq("block_date", dateYmd),
+      supabase
+        .from("checkins")
+        .select("scheduled_time, appointment_types(duration)")
+        .eq("doctor_id", doctorId)
+        .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+        .gte("appointment_date", `${dateYmd}T00:00:00`)
+        .lte("appointment_date", `${dateYmd}T23:59:59`)
+        .not("status", "in", '("cancelled","no_show")'),
+    ]);
+
+  const blocks = [...(recurringBlocks ?? []), ...(oneOffBlocks ?? [])];
 
   slots = slots.filter((slot) => {
     for (const block of blocks ?? []) {

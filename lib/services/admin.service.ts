@@ -85,7 +85,7 @@ export async function registerStaff(params: {
     isActive: true,
   });
 
-  await logAudit({
+  void logAudit({
     userId: params.requestingUserId,
     action: "staff_create",
     tableName: "staff",
@@ -159,7 +159,7 @@ export async function updateStaff(params: {
     isActive: activeRow?.is_active ?? true,
   });
 
-  await logAudit({
+  void logAudit({
     userId: params.requestingUserId,
     action: "staff_update",
     tableName: "staff",
@@ -202,7 +202,7 @@ export async function toggleStaffActive(params: {
     });
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.requestingUserId,
     action: "staff_toggle",
     tableName: "staff",
@@ -246,7 +246,7 @@ export async function addDisplayScreen(
     .select("id")
     .single();
   if (error) return { error: error.message, status: 500 as const };
-  await logAudit({
+  void logAudit({
     userId: audit.userId,
     action: "display_add",
     tableName: "display_settings",
@@ -270,7 +270,7 @@ export async function toggleDisplayScreen(
 
   const newActive = !(current?.is_active ?? true);
   await supabase.from("display_settings").update({ is_active: newActive }).eq("id", id);
-  await logAudit({
+  void logAudit({
     userId: audit.userId,
     action: "display_toggle",
     tableName: "display_settings",
@@ -306,7 +306,7 @@ export async function updateDisplayScreen(
     })
     .eq("id", body.id);
   if (error) return { error: error.message, status: 500 as const };
-  await logAudit({
+  void logAudit({
     userId: audit.userId,
     action: "display_update",
     tableName: "display_settings",
@@ -323,7 +323,7 @@ export async function deleteDisplayScreen(
 ) {
   const supabase = createAdminClient();
   await supabase.from("display_settings").delete().eq("id", id);
-  await logAudit({
+  void logAudit({
     userId: audit.userId,
     action: "display_delete",
     tableName: "display_settings",

@@ -141,8 +141,21 @@ export function AppointmentBooking() {
   const selectedDoctor = doctors.find((d) => d.id === state.doctorId);
   const selectedType = types.find((t) => String(t.id) === state.appTypeId);
 
-  const fetchCatalogs = useCallback(async () => {
-    setDoctorsLoading(true);
+  const bookingStateRef = useRef({
+    doctorId: state.doctorId,
+    date: state.date,
+    appTypeId: state.appTypeId,
+  });
+  useEffect(() => {
+    bookingStateRef.current = {
+      doctorId: state.doctorId,
+      date: state.date,
+      appTypeId: state.appTypeId,
+    };
+  }, [state.doctorId, state.date, state.appTypeId]);
+
+  const fetchCatalogs = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setDoctorsLoading(true);
     try {
       const [doctorsRes, typesRes] = await Promise.all([
         fetch("/api/doctors", { cache: "no-store" }),
@@ -153,12 +166,27 @@ export function AppointmentBooking() {
         doctorsRes.json(),
         typesRes.json(),
       ]);
-      setDoctors(doctorsData.doctors ?? []);
+      const nextDoctors: Doctor[] = doctorsData.doctors ?? [];
+      setDoctors(nextDoctors);
       setTypes(typesData.types ?? []);
+
+      const selectedId = bookingStateRef.current.doctorId;
+      if (selectedId && !nextDoctors.some((d) => d.id === selectedId)) {
+        setState((s) => ({
+          ...s,
+          doctorId: "",
+          date: "",
+          time: "",
+          step: s.step > 1 ? 1 : s.step,
+        }));
+        toast.message("The selected doctor is no longer available. Please choose another.");
+      }
     } catch {
-      toast.error("Unable to load booking options. Please refresh the page.");
+      if (!opts?.silent) {
+        toast.error("Unable to load booking options. Please refresh the page.");
+      }
     } finally {
-      setDoctorsLoading(false);
+      if (!opts?.silent) setDoctorsLoading(false);
     }
   }, []);
 
@@ -217,23 +245,10 @@ export function AppointmentBooking() {
     refetchSlotsRef.current = refetchSlots;
   }, [refetchSlots]);
 
-  const bookingStateRef = useRef({
-    doctorId: state.doctorId,
-    date: state.date,
-    appTypeId: state.appTypeId,
-  });
-  useEffect(() => {
-    bookingStateRef.current = {
-      doctorId: state.doctorId,
-      date: state.date,
-      appTypeId: state.appTypeId,
-    };
-  }, [state.doctorId, state.date, state.appTypeId]);
-
   useEffect(() => {
     const onTabFocus = () => {
       if (document.visibilityState !== "visible") return;
-      void fetchCatalogs();
+      void fetchCatalogs({ silent: true });
       const { doctorId, date, appTypeId } = bookingStateRef.current;
       if (doctorId && date && appTypeId) {
         void refetchSlotsRef.current(doctorId, date, appTypeId);
@@ -241,11 +256,35 @@ export function AppointmentBooking() {
     };
     const onVisibilityChange = () => onTabFocus();
     const onWindowFocus = () => onTabFocus();
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) onTabFocus();
+    };
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("focus", onWindowFocus);
+    window.addEventListener("pageshow", onPageShow);
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("focus", onWindowFocus);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, [fetchCatalogs]);
+
+  // Live doctor catalog when admin creates/deactivates staff
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("booking-doctors-catalog")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "staff" },
+        () => {
+          void fetchCatalogs({ silent: true });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
     };
   }, [fetchCatalogs]);
 

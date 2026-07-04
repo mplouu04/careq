@@ -49,7 +49,7 @@ export async function callNextPatient(params: {
     return { error: "Failed to call patient", status: 500 as const };
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "queue_call",
     tableName: "queue",
@@ -93,7 +93,7 @@ export async function skipPatient(params: {
     return { error: "Failed to skip", status: 500 as const };
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "queue_skip",
     tableName: "queue",
@@ -139,7 +139,7 @@ export async function recallPatient(params: {
     return { error: "Failed to recall", status: 500 as const };
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "queue_recall",
     tableName: "queue",
@@ -194,7 +194,7 @@ export async function markNoShow(params: {
       .eq("checkin_id", row.checkin_id);
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "queue_no_show",
     tableName: "queue",
@@ -247,7 +247,7 @@ export async function markDone(params: {
       .eq("checkin_id", row.checkin_id);
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "queue_done",
     tableName: "queue",
@@ -304,7 +304,7 @@ export async function resetDailyQueue(params: { userId: string; ip: string }) {
     .gte("created_at", dayStart)
     .select("id");
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "queue_reset_daily",
     tableName: "queue",
@@ -355,7 +355,7 @@ export async function purgeQueueHistory(params: { userId: string; ip: string }) 
     }
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: "purge_history",
     tableName: "queue",

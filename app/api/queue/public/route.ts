@@ -37,38 +37,44 @@ export const GET = withRateLimit(
   const dayStart = getClinicDayStartIso();
   const dayEnd = getClinicDayEndIso();
   const screenId = new URL(request.url).searchParams.get("screenId");
+  const screenIdNum = screenId != null ? parseInt(screenId, 10) : NaN;
+
+  const screenQuery =
+    screenId != null
+      ? supabase
+          .from("display_settings")
+          .select("display_name, location, theme_color, show_wait_time, show_priority, is_active")
+          .eq("id", Number.isNaN(screenIdNum) ? screenId : screenIdNum)
+          .maybeSingle()
+      : Promise.resolve({ data: null as null });
+
+  const [{ data: screen }, { data: roomRows }, { data: queueRows }, avgServiceTime] =
+    await Promise.all([
+      screenQuery,
+      supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
+      supabase
+        .from("queue")
+        .select(
+          "id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)"
+        )
+        .gte("created_at", dayStart)
+        .lte("created_at", dayEnd)
+        .in("status", ["waiting", "in_progress", "called"])
+        .order("skip_count", { ascending: true })
+        .order("id", { ascending: true }),
+      getAvgServiceTime(dayStart, dayEnd, supabase),
+    ]);
 
   let display = { ...DEFAULT_DISPLAY };
-  if (screenId) {
-    const screenIdNum = parseInt(screenId, 10);
-    const { data: screen } = await supabase
-      .from("display_settings")
-      .select("display_name, location, theme_color, show_wait_time, show_priority, is_active")
-      .eq("id", Number.isNaN(screenIdNum) ? screenId : screenIdNum)
-      .maybeSingle();
-    if (screen?.is_active) {
-      display = {
-        display_name: screen.display_name,
-        location: screen.location,
-        theme_color: screen.theme_color ?? CAREQ_DEFAULT_THEME_COLOR,
-        show_wait_time: screen.show_wait_time ?? true,
-        show_priority: screen.show_priority ?? true,
-      };
-    }
+  if (screen?.is_active) {
+    display = {
+      display_name: screen.display_name,
+      location: screen.location,
+      theme_color: screen.theme_color ?? CAREQ_DEFAULT_THEME_COLOR,
+      show_wait_time: screen.show_wait_time ?? true,
+      show_priority: screen.show_priority ?? true,
+    };
   }
-
-  const [{ data: roomRows }, { data: queueRows }, avgServiceTime] = await Promise.all([
-    supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
-    supabase
-      .from("queue")
-      .select("id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)")
-      .gte("created_at", dayStart)
-      .lte("created_at", dayEnd)
-      .in("status", ["waiting", "in_progress", "called"])
-      .order("skip_count", { ascending: true })
-      .order("id", { ascending: true }),
-    getAvgServiceTime(dayStart, dayEnd, supabase),
-  ]);
 
   const items = (queueRows ?? []) as QueueRow[];
 

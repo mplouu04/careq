@@ -5,16 +5,23 @@ import { sanitize } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/rooms — active rooms for public; staff/admin sees all with is_active flag */
-export async function GET() {
+/**
+ * GET /api/rooms
+ * - Public (no auth): active rooms only
+ * - Staff with ?all=1: all rooms including inactive
+ */
+export async function GET(request: Request) {
   const supabase = createAdminClient();
-  const auth = await requireStaff();
+  const wantAll = new URL(request.url).searchParams.get("all") === "1";
 
-  if ("error" in auth) {
+  if (wantAll) {
+    const auth = await requireStaff();
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
     const { data } = await supabase
       .from("rooms")
-      .select("id, name, description")
-      .eq("is_active", true)
+      .select("id, name, description, is_active")
       .order("name");
     return NextResponse.json(
       { success: true, rooms: data ?? [] },
@@ -24,11 +31,12 @@ export async function GET() {
 
   const { data } = await supabase
     .from("rooms")
-    .select("id, name, description, is_active")
+    .select("id, name, description")
+    .eq("is_active", true)
     .order("name");
   return NextResponse.json(
     { success: true, rooms: data ?? [] },
-    { headers: { "Cache-Control": "private, no-store" } }
+    { headers: { "Cache-Control": "public, max-age=30, stale-while-revalidate=60" } }
   );
 }
 

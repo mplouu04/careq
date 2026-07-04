@@ -22,11 +22,25 @@ export function isActiveAppointmentForLookup(
 
 export async function lookupPatientAppointments(phone: string, dob: string) {
   const supabase = createAdminClient();
+  const phoneDigits = phone.replace(/\D/g, "");
+  const last7 = phoneDigits.slice(-7);
 
-  const { data: patients, error: patientsError } = await supabase
+  let patientsQuery = supabase
     .from("patients")
     .select("id, public_id, first_name, last_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
+
+  if (phoneDigits.length === 11) {
+    patientsQuery = patientsQuery.or(
+      `phone_normalized.eq.${phoneDigits},phone.eq.${phoneDigits}`
+    );
+  } else if (last7.length === 7) {
+    patientsQuery = patientsQuery.or(
+      `phone_normalized.like.%${last7},phone.like.%${last7}`
+    );
+  }
+
+  const { data: patients, error: patientsError } = await patientsQuery.limit(20);
 
   if (patientsError) {
     console.error("[lookupPatientAppointments] patients query failed", patientsError);
@@ -107,7 +121,8 @@ export async function lookupAppointmentByReference(reference: string, phone: str
     .select(
       `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
        appointment_types(name),
-       staff:doctor_id(first_name, last_name)`
+       staff:doctor_id(first_name, last_name),
+       patients(first_name, last_name, public_id, phone, phone_normalized)`
     )
     .eq("reference_number", ref)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
@@ -122,16 +137,14 @@ export async function lookupAppointmentByReference(reference: string, phone: str
     return { appointments: [], publicId: null, patientName: "" };
   }
 
-  const { data: patient, error: patientError } = await supabase
-    .from("patients")
-    .select("first_name, last_name, public_id, phone, phone_normalized")
-    .eq("id", checkin.patient_id)
-    .maybeSingle();
-
-  if (patientError) {
-    console.error("[lookupAppointmentByReference] patient query failed", patientError);
-    return { appointments: [], publicId: null, patientName: "" };
-  }
+  const patientRaw = checkin.patients as unknown;
+  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as {
+    first_name: string;
+    last_name: string;
+    public_id: string;
+    phone: string;
+    phone_normalized: string | null;
+  } | null;
 
   if (!patientPhonesMatch(patient, phoneInput)) {
     console.warn("[lookupAppointmentByReference] phone verification failed", {
@@ -210,7 +223,7 @@ export async function cancelAppointment(
     .update({ status: "cancelled" })
     .eq("checkin_id", checkin.checkin_id);
 
-  await logAudit({
+  void logAudit({
     action: "appt_cancel_patient",
     tableName: "checkins",
     recordId: checkin.checkin_id,
@@ -390,18 +403,14 @@ export async function bookAppointment(body: {
     }
   }
 
-  const { count: noShowCount } = await supabase
-    .from("checkins")
-    .select("checkin_id", { count: "exact", head: true })
-    .eq("patient_id", patientId)
-    .eq("status", "no_show");
-
-  const isDuplicate = await hasDuplicateActiveAppointment(
-    patientId,
-    doctorId,
-    appointmentDate,
-    timeNorm
-  );
+  const [{ count: noShowCount }, isDuplicate] = await Promise.all([
+    supabase
+      .from("checkins")
+      .select("checkin_id", { count: "exact", head: true })
+      .eq("patient_id", patientId)
+      .eq("status", "no_show"),
+    hasDuplicateActiveAppointment(patientId, doctorId, appointmentDate, timeNorm),
+  ]);
   if (isDuplicate) {
     return {
       error: "You already have an active appointment with this doctor at this date and time.",
@@ -548,7 +557,8 @@ export async function listStaffAppointments(filter: string) {
     query = query
       .gte("appointment_date", `${today}T00:00:00`)
       .not("status", "in", '("cancelled","no_show","completed")')
-      .order("appointment_date", { ascending: true });
+      .order("appointment_date", { ascending: true })
+      .limit(200);
   }
 
   const { data, error } = await query;
@@ -579,7 +589,7 @@ export async function staffUpdateAppointment(params: {
     return { error: "Update failed", status: 404 as const };
   }
 
-  await logAudit({
+  void logAudit({
     userId: params.userId,
     action: `appt_${params.status}`,
     tableName: "checkins",

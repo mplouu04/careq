@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { withRateLimit } from "@/lib/api/with-auth";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { maskPatientName } from "@/lib/services/patient.service";
@@ -8,30 +7,11 @@ import { format } from "date-fns";
 import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { requireStaff } from "@/lib/auth";
-import { getClientIp } from "@/lib/rate-limit";
-import { logAudit } from "@/lib/audit";
 import { captureException } from "@/lib/observability";
 import { isCalledLikeStatus } from "@/lib/queue-status";
+import { getRoomNameMap, resolveRoomName } from "@/lib/rooms-map";
 
 export const dynamic = "force-dynamic";
-
-async function getRoomNameMap(supabase: SupabaseClient): Promise<Map<number, string>> {
-  try {
-    const { data } = await supabase.from("rooms").select("id, name").eq("is_active", true);
-    const map = new Map<number, string>();
-    for (const r of data ?? []) {
-      map.set(r.id, r.name);
-    }
-    return map;
-  } catch {
-    return new Map();
-  }
-}
-
-function resolveRoomName(roomId: number | null | undefined, roomMap: Map<number, string>): string {
-  if (roomId == null) return "";
-  return roomMap.get(Number(roomId)) ?? `Room ${roomId}`;
-}
 
 function sanitizeCheckinForPublic(checkin: Record<string, unknown>): Record<string, unknown> {
   const patientRaw = checkin.patients;
@@ -195,15 +175,6 @@ async function publicQueueRefHandler(request: Request) {
     | { first_name: string; last_name: string }
     | null
     | undefined;
-
-  void logAudit({
-    userId: null,
-    action: "queue_status_lookup",
-    tableName: "queue",
-    recordId: entry.id,
-    newValues: { ref },
-    ipAddress: getClientIp(request),
-  });
 
   return NextResponse.json({
     success: true,

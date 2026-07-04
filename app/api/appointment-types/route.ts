@@ -28,35 +28,25 @@ export const dynamic = "force-dynamic";
 
  */
 
-export async function GET() {
-
+export async function GET(request: Request) {
   const supabase = createAdminClient();
+  const wantAll = new URL(request.url).searchParams.get("all") === "1";
 
-
-
-  const staffAuth = await requireStaff();
-
-  const staffMode = !("error" in staffAuth);
-
-
-
-  let query = supabase
-
-    .from("appointment_types")
-
-    .select("id, name, duration, description, is_active")
-
-    .order("name");
-
-
-
-  if (!staffMode) {
-
-    query = query.eq("is_active", true) as typeof query;
-
+  if (wantAll) {
+    const staffAuth = await requireStaff();
+    if ("error" in staffAuth) {
+      return NextResponse.json({ error: staffAuth.error }, { status: staffAuth.status });
+    }
   }
 
+  let query = supabase
+    .from("appointment_types")
+    .select("id, name, duration, description, is_active")
+    .order("name");
 
+  if (!wantAll) {
+    query = query.eq("is_active", true) as typeof query;
+  }
 
   const { data, error } = await query;
 
@@ -70,9 +60,12 @@ export async function GET() {
 
   return NextResponse.json(
     { success: true, types: data ?? [] },
-    { headers: { "Cache-Control": "private, no-store" } }
+    {
+      headers: wantAll
+        ? { "Cache-Control": "private, no-store" }
+        : { "Cache-Control": "public, max-age=30, stale-while-revalidate=60" },
+    }
   );
-
 }
 
 
@@ -160,7 +153,7 @@ export async function POST(request: Request) {
 
     }
 
-    await logAudit({
+    void logAudit({
 
       userId: auth.session.userId,
 
@@ -212,7 +205,7 @@ export async function POST(request: Request) {
 
       .eq("id", body.id);
 
-    await logAudit({
+    void logAudit({
 
       userId: auth.session.userId,
 
@@ -272,7 +265,7 @@ export async function POST(request: Request) {
 
     }
 
-    await logAudit({
+    void logAudit({
 
       userId: auth.session.userId,
 

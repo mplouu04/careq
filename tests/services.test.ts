@@ -60,6 +60,8 @@ function chain(resolved: { data?: unknown; error?: unknown; count?: number }) {
 describe("appointment.service cancelAppointment", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns 404 when appointment not found", async () => {
@@ -111,6 +113,8 @@ describe("appointment.service cancelAppointment", () => {
 describe("appointment.service lookupPatientAppointments", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns appointments when last 7 digits match", async () => {
@@ -210,15 +214,17 @@ describe("isActiveAppointmentForLookup", () => {
 describe("appointment.service lookupAppointmentByReference", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   function mockCheckinAndPatient(
     checkin: Record<string, unknown>,
     patient: Record<string, unknown> | null
   ) {
-    mockFrom
-      .mockReturnValueOnce(chain({ data: checkin }))
-      .mockReturnValueOnce(chain({ data: patient }));
+    mockFrom.mockReturnValueOnce(
+      chain({ data: { ...checkin, patients: patient } })
+    );
   }
 
   it("returns empty when reference not found", async () => {
@@ -350,6 +356,8 @@ describe("appointment.service lookupAppointmentByReference", () => {
 describe("queue.service callNextPatient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns success when queue row updated", async () => {
@@ -420,6 +428,8 @@ describe("queue.service callNextPatient", () => {
 describe("queue.service recallPatient", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns 409 when recall target is already called", async () => {
@@ -460,6 +470,8 @@ describe("queue.service recallPatient", () => {
 describe("queue.service markDone", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("updates queue and linked checkin to completed", async () => {
@@ -517,6 +529,8 @@ describe("queue.service markDone", () => {
 describe("queue.service completeQueueEntries", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns 0 immediately for empty ids array without touching DB", async () => {
@@ -572,6 +586,8 @@ describe("queue.service completeQueueEntries", () => {
 describe("patient.service verifyPatientByDobAndPhone", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns matched false when no patient matches DOB and phone", async () => {
@@ -665,6 +681,8 @@ describe("patient.service verifyPatientByDobAndPhone", () => {
 describe("patient.service consumePatientVerifyToken", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("returns patient_id and marks token used when valid", async () => {
@@ -705,6 +723,8 @@ describe("patient.service consumePatientVerifyToken", () => {
 describe("checkin.service checkinAppointment", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
     mockRpc.mockResolvedValue({ data: 12, error: null });
   });
 
@@ -758,6 +778,8 @@ describe("checkin.service checkinAppointment", () => {
 describe("checkin.service checkinWalkIn", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
     mockRpc.mockResolvedValue({ data: 1, error: null });
   });
 
@@ -793,6 +815,8 @@ describe("checkin.service checkinWalkIn", () => {
 describe("admin.service toggleStaffActive", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   it("prevents self-deactivation", async () => {
@@ -811,37 +835,35 @@ describe("admin.service toggleStaffActive", () => {
 });
 
 describe("queue-metrics getQueueReport", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-07T12:00:00Z"));
+    const { clearAvgServiceTimeCache } = await import("../lib/services/queue-metrics");
+    clearAvgServiceTimeCache();
+    mockRpc.mockImplementation(async (fn: string) => {
+      if (fn === "get_avg_service_minutes") return { data: 10, error: null };
+      if (fn === "get_queue_served_by_day") return { data: [], error: null };
+      return { data: null, error: null };
+    });
+    mockFrom.mockReturnValue(chain({ data: null, count: 0 }));
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  function mockReportQueries(historyRows: { completed_at: string }[] = []) {
-    mockFrom
-      .mockReturnValueOnce(chain({ data: [] }))
-      .mockReturnValueOnce(chain({ data: null, count: 2 }))
-      .mockReturnValueOnce(chain({ data: historyRows }));
-  }
-
   it("defaults to 7 days of history", async () => {
-    mockReportQueries();
-
     const { getQueueReport } = await import("../lib/services/queue-metrics");
     const report = await getQueueReport("2026-06-07T00:00:00Z");
 
     expect(report.history).toHaveLength(7);
     expect(report.history[0]?.date).toBe("2026-06-01");
     expect(report.history[6]?.date).toBe("2026-06-07");
+    expect(report.avg_service_time).toBe(10);
   });
 
   it("respects custom historyDays parameter", async () => {
-    mockReportQueries();
-
     const { getQueueReport } = await import("../lib/services/queue-metrics");
     const report = await getQueueReport("2026-06-07T00:00:00Z", 14);
 
@@ -852,10 +874,18 @@ describe("queue-metrics getQueueReport", () => {
 });
 
 describe("queue.service getAnalyticsReport", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-07T12:00:00Z"));
+    const { clearAvgServiceTimeCache } = await import("../lib/services/queue-metrics");
+    clearAvgServiceTimeCache();
+    mockRpc.mockImplementation(async (fn: string) => {
+      if (fn === "get_avg_service_minutes") return { data: 10, error: null };
+      if (fn === "get_queue_served_by_day") return { data: [], error: null };
+      return { data: null, error: null };
+    });
+    mockFrom.mockReturnValue(chain({ data: null, count: 0 }));
   });
 
   afterEach(() => {
@@ -863,11 +893,6 @@ describe("queue.service getAnalyticsReport", () => {
   });
 
   it("passes days through to getQueueReport", async () => {
-    mockFrom
-      .mockReturnValueOnce(chain({ data: [] }))
-      .mockReturnValueOnce(chain({ data: null, count: 0 }))
-      .mockReturnValueOnce(chain({ data: [] }));
-
     const { getAnalyticsReport } = await import("../lib/services/queue.service");
     const report = await getAnalyticsReport(3);
 
