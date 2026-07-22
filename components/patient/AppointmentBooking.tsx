@@ -298,29 +298,14 @@ export function AppointmentBooking() {
     };
 
     const supabase = createClient();
+    // Listen unfiltered on schedule/block tables: admin edits are rare and the
+    // doctor_id filter can silently drop UPDATE/DELETE events. refetch already
+    // re-queries only the selected doctor/date, so this stays correct.
     const channel = supabase
       .channel(`booking-slots-${state.doctorId}-${state.date}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, refetch)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "doctor_schedules",
-          filter: `doctor_id=eq.${state.doctorId}`,
-        },
-        refetch
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "doctor_blocks",
-          filter: `doctor_id=eq.${state.doctorId}`,
-        },
-        refetch
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_schedules" }, refetch)
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_blocks" }, refetch)
       .subscribe();
 
     // Safety-net heartbeat for silently dropped WAL events

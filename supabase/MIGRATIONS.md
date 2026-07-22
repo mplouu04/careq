@@ -26,8 +26,13 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 18 | `016_staff_realtime.sql` | Realtime on `staff` + `REPLICA IDENTITY FULL` for doctor catalog sync |
 | 19 | `017_queue_metrics_rpc.sql` | SQL avg service time and daily history aggregation RPCs |
 | 20 | `018_queue_clinic_date.sql` | `queue.clinic_date` + index for same-day board/staff filters |
+| 21 | `018_schedule_realtime.sql` | Realtime on `doctor_schedules` / `doctor_blocks` for live slot updates |
+| 22 | `019_push_subscriptions.sql` | `push_subscriptions` table for Web Push turn notifications |
+| 23 | `020_schedule_replica_identity.sql` | `REPLICA IDENTITY FULL` on schedule/block tables so UPDATE/DELETE emit realtime events |
 
 **Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
+
+**Note:** Two files share the `018_` prefix (`018_queue_clinic_date.sql` then `018_schedule_realtime.sql`). Apply in the order listed above; future migrations should use `021_` and beyond.
 
 ## Verification queries
 
@@ -84,4 +89,27 @@ WHERE table_name = 'queue' AND column_name = 'clinic_date';
 -- should return one row
 
 SELECT indexname FROM pg_indexes WHERE indexname = 'idx_queue_clinic_date_status_order';
+```
+
+After `018_schedule_realtime.sql`:
+
+```sql
+SELECT tablename FROM pg_publication_tables
+WHERE pubname = 'supabase_realtime' AND tablename IN ('doctor_schedules','doctor_blocks');
+-- should return two rows
+```
+
+After `019_push_subscriptions.sql`:
+
+```sql
+SELECT tablename FROM pg_tables WHERE tablename = 'push_subscriptions';
+-- should return one row
+```
+
+After `020_schedule_replica_identity.sql`:
+
+```sql
+SELECT relname, relreplident FROM pg_class
+WHERE relname IN ('doctor_schedules','doctor_blocks');
+-- relreplident should be 'f' (full) for both
 ```
