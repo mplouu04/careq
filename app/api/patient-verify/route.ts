@@ -21,7 +21,9 @@ function sleep(ms: number): Promise<void> {
 
 /** POST /api/patient-verify — DOB + last-7 phone identity check for public kiosk */
 export const POST = withPatientVerifyRateLimit(async (request: Request) => {
-    const parsed = await parseJsonBody(request, PatientVerifySchema);
+    const parsed = await parseJsonBody(request, PatientVerifySchema, {
+      genericValidationError: "Invalid input",
+    });
     if ("error" in parsed) {
       return parsed.error;
     }

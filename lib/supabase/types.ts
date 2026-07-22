@@ -107,11 +107,16 @@ export type Database = {
           room_id: number | null;
           completed_at: string | null;
           skip_count: number;
+          clinic_date: string;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["queue"]["Row"], "id" | "created_at" | "updated_at"> & {
+        Insert: Omit<
+          Database["public"]["Tables"]["queue"]["Row"],
+          "id" | "clinic_date" | "created_at" | "updated_at"
+        > & {
           id?: number;
+          clinic_date?: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -229,6 +234,21 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["reminder_failures"]["Insert"]>;
+      };
+      push_subscriptions: {
+        Row: {
+          id: number;
+          queue_number: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["push_subscriptions"]["Row"], "id" | "created_at"> & {
+          id?: number;
+          created_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["push_subscriptions"]["Insert"]>;
       };
     };
     Views: Record<string, never>;

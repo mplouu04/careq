@@ -22,6 +22,9 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "CAREQ — Patient Queue Management",
   description: "Digital queue management for clinics",
+  manifest: "/manifest.json",
+  themeColor: "#0f766e",
+  icons: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
 };
 
 export default function RootLayout({

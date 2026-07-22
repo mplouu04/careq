@@ -25,6 +25,7 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 17 | `015_audit_remediation.sql` | Audit indexes, RLS scope, reminder failures, staff trigger hardening |
 | 18 | `016_staff_realtime.sql` | Realtime on `staff` + `REPLICA IDENTITY FULL` for doctor catalog sync |
 | 19 | `017_queue_metrics_rpc.sql` | SQL avg service time and daily history aggregation RPCs |
+| 20 | `018_queue_clinic_date.sql` | `queue.clinic_date` + index for same-day board/staff filters |
 
 **Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
 
@@ -73,4 +74,14 @@ After `017_queue_metrics_rpc.sql`:
 
 ```sql
 SELECT proname FROM pg_proc WHERE proname IN ('get_avg_service_minutes', 'get_queue_served_by_day');
+```
+
+After `018_queue_clinic_date.sql`:
+
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'queue' AND column_name = 'clinic_date';
+-- should return one row
+
+SELECT indexname FROM pg_indexes WHERE indexname = 'idx_queue_clinic_date_status_order';
 ```

@@ -16,6 +16,7 @@ import { Hourglass } from "lucide-react";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { isCalledLikeStatus } from "@/lib/queue-status";
+import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
 
 type QueueEntry = {
   id: number;
@@ -429,6 +430,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
         {alertsEnabled && (
           <p className="text-label-sm text-on-surface-variant mb-2">Alerts enabled</p>
         )}
+        <EnablePushAlerts queueNumber={queue.queue_number} className="mt-2" />
       </div>
 
       <div className="text-center mt-3">

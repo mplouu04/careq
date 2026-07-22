@@ -4,7 +4,7 @@ import { withRateLimit } from "@/lib/api/with-auth";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { maskPatientName } from "@/lib/services/patient.service";
 import { format } from "date-fns";
-import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
+import { getClinicDayEndIso, getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { requireStaff } from "@/lib/auth";
 import { captureException } from "@/lib/observability";
@@ -74,8 +74,9 @@ async function publicQueueRefHandler(request: Request) {
     return NextResponse.json({ success: false, error: "Missing ref" }, { status: 400 });
   }
 
-  const dayStart = getClinicDayStartIso();
-  const dayEnd = getClinicDayEndIso();
+  const today = getClinicTodayYmd();
+  const dayStart = getClinicDayStartIso(today);
+  const dayEnd = getClinicDayEndIso(today);
   const supabase = createAdminClient();
   const ref = normalizeQueueRef(refRaw);
   const queueSelect = `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
@@ -92,8 +93,7 @@ async function publicQueueRefHandler(request: Request) {
       .from("queue")
       .select(queueSelect)
       .eq("queue_number", ref)
-      .gte("created_at", dayStart)
-      .lte("created_at", dayEnd)
+      .eq("clinic_date", today)
       .maybeSingle(),
     supabase
       .from("checkins")
@@ -124,8 +124,7 @@ async function publicQueueRefHandler(request: Request) {
       .from("queue")
       .select(queueSelect)
       .eq("checkin_id", byRefRes.data.checkin_id)
-      .gte("created_at", dayStart)
-      .lte("created_at", dayEnd)
+      .eq("clinic_date", today)
       .maybeSingle();
     if (entryByCheckinRes.error) {
       captureException(entryByCheckinRes.error, { route: "/api/queue", ref });
@@ -188,8 +187,9 @@ async function publicQueueRefHandler(request: Request) {
 }
 
 async function staffQueueHandler() {
-  const dayStart = getClinicDayStartIso();
-  const dayEnd = getClinicDayEndIso();
+  const today = getClinicTodayYmd();
+  const dayStart = getClinicDayStartIso(today);
+  const dayEnd = getClinicDayEndIso(today);
   const supabase = createAdminClient();
 
   const auth = await requireStaff();
@@ -211,8 +211,7 @@ async function staffQueueHandler() {
            staff:doctor_id(first_name, last_name)
          )`
       )
-      .gte("created_at", dayStart)
-      .lte("created_at", dayEnd)
+      .eq("clinic_date", today)
       .order("skip_count", { ascending: true })
       .order("id", { ascending: true }),
     getAvgServiceTime(dayStart, dayEnd, supabase),

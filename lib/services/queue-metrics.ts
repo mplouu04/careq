@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format, subDays } from "date-fns";
+import { getClinicTodayYmd } from "@/lib/datetime";
 
 const AVG_CACHE_TTL_MS = 45_000;
 const DEFAULT_AVG_MINUTES = 10;
@@ -87,13 +88,14 @@ export async function getQueueReport(dayStart: string, historyDays = 7) {
     countsByDay.set(d, 0);
   }
 
+  const today = getClinicTodayYmd();
   const [avgMinutes, waitingRes, historyRpc, servedRes] = await Promise.all([
     getAvgServiceTime(dayStart, dayEnd, supabase),
     supabase
       .from("queue")
       .select("*", { count: "exact", head: true })
       .eq("status", "waiting")
-      .gte("created_at", dayStart),
+      .eq("clinic_date", today),
     supabase.rpc("get_queue_served_by_day", {
       p_start: historyStartIso,
       p_end: historyEndExclusive,

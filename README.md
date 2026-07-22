@@ -36,6 +36,7 @@ Modern rebuild of the Patient Queue Management System using **Next.js 14**, **Su
    - `supabase/migrations/015_audit_remediation.sql`
    - `supabase/migrations/016_staff_realtime.sql`
    - `supabase/migrations/017_queue_metrics_rpc.sql`
+   - `supabase/migrations/018_queue_clinic_date.sql`
 3. Enable **Realtime** on the `queue` and `checkins` tables (done by migrations)
 4. Create admin user in **Authentication → Users**:
    - Email: `admin@clinic.com`

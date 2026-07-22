@@ -33,12 +33,13 @@ describe("lib/env", () => {
     expect(getEnvSafe()).toBeNull();
   });
 
-  it("requires CRON_SECRET in production without VERCEL_ENV", async () => {
+  it("rejects mismatched VAPID config", async () => {
     process.env = {
       NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon",
       SUPABASE_SERVICE_ROLE_KEY: "service",
-      NODE_ENV: "production",
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: "only-public",
+      NODE_ENV: "test",
     };
     const { getEnvSafe } = await import("../lib/env");
     expect(getEnvSafe()).toBeNull();

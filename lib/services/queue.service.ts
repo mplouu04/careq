@@ -1,8 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit";
-import { getClinicDayStartIso } from "@/lib/datetime";
+import { getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { getQueueReport } from "@/lib/services/queue-metrics";
 import { isCalledLikeStatus } from "@/lib/queue-status";
+import { notifyPatientCalled } from "@/lib/services/queue-notify.service";
 
 async function getQueueStatus(queueId: number): Promise<string | null> {
   const supabase = createAdminClient();
@@ -56,6 +57,8 @@ export async function callNextPatient(params: {
     recordId: params.queueId,
     ipAddress: params.ip,
   });
+
+  void notifyPatientCalled(params.queueId);
 
   return { success: true as const };
 }
@@ -146,6 +149,8 @@ export async function recallPatient(params: {
     recordId: params.queueId,
     ipAddress: params.ip,
   });
+
+  void notifyPatientCalled(params.queueId);
 
   return { success: true as const };
 }
@@ -296,12 +301,12 @@ export async function getAnalyticsReport(days = 7) {
 
 export async function resetDailyQueue(params: { userId: string; ip: string }) {
   const supabase = createAdminClient();
-  const dayStart = getClinicDayStartIso();
+  const today = getClinicTodayYmd();
   const { data } = await supabase
     .from("queue")
     .update({ status: "cancelled" })
     .eq("status", "waiting")
-    .gte("created_at", dayStart)
+    .eq("clinic_date", today)
     .select("id");
 
   void logAudit({

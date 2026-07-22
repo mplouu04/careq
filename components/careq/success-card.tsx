@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { CareqCard } from "./careq-card";
 import { CareqButton } from "./careq-button";
@@ -16,6 +17,8 @@ type SuccessCardProps = {
   primaryCta: SuccessCta;
   secondaryCta?: SuccessCta;
   className?: string;
+  /** Extra content below CTAs (e.g. push notification opt-in). */
+  footer?: ReactNode;
 };
 
 export function SuccessCard({
@@ -24,6 +27,7 @@ export function SuccessCard({
   primaryCta,
   secondaryCta,
   className,
+  footer,
 }: SuccessCardProps) {
   return (
     <CareqCard className={cn("overflow-hidden p-6 text-center", className)}>
@@ -40,6 +44,7 @@ export function SuccessCard({
           </Button>
         )}
       </div>
+      {footer && <div className="mt-4">{footer}</div>}
     </CareqCard>
   );
 }

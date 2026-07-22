@@ -17,6 +17,10 @@ vi.mock("@/lib/audit", () => ({
   logAudit: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/lib/services/queue-notify.service", () => ({
+  notifyPatientCalled: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@/lib/staff-metadata", () => ({
   syncStaffMetadata: vi.fn().mockResolvedValue(undefined),
 }));

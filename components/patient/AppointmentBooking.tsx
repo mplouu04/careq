@@ -288,19 +288,46 @@ export function AppointmentBooking() {
     };
   }, [fetchCatalogs]);
 
-  // Re-fetch slots live when another patient books on the same doctor + date
+  // Re-fetch slots live when another patient books, or staff changes
+  // schedule hours / blocks for the selected doctor.
   useEffect(() => {
     if (!state.doctorId || !state.date) return;
+
+    const refetch = () => {
+      refetchSlotsRef.current(state.doctorId, state.date, state.appTypeId);
+    };
 
     const supabase = createClient();
     const channel = supabase
       .channel(`booking-slots-${state.doctorId}-${state.date}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, () => {
-        refetchSlotsRef.current(state.doctorId, state.date, state.appTypeId);
-      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, refetch)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "doctor_schedules",
+          filter: `doctor_id=eq.${state.doctorId}`,
+        },
+        refetch
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "doctor_blocks",
+          filter: `doctor_id=eq.${state.doctorId}`,
+        },
+        refetch
+      )
       .subscribe();
 
+    // Safety-net heartbeat for silently dropped WAL events
+    const heartbeat = setInterval(refetch, 15000);
+
     return () => {
+      clearInterval(heartbeat);
       void supabase.removeChannel(channel);
     };
   }, [state.doctorId, state.date, state.appTypeId]);

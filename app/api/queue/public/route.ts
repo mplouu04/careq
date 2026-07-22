@@ -5,12 +5,15 @@ import { requireStaff } from "@/lib/auth";
 import { withRateLimit } from "@/lib/api/with-auth";
 import { getClientIp } from "@/lib/rate-limit";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
-import { getClinicDayEndIso, getClinicDayStartIso } from "@/lib/datetime";
+import { getClinicDayEndIso, getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { completeQueueEntries } from "@/lib/services/queue.service";
 import { isCalledLikeStatus } from "@/lib/queue-status";
 
 export const dynamic = "force-dynamic";
+
+/** Matches QueueBoard UI slice for the upcoming list. */
+const WAITING_BOARD_LIMIT = 5;
 
 const DEFAULT_DISPLAY = {
   display_name: "CAREQ",
@@ -34,8 +37,9 @@ export const GET = withRateLimit(
   "queue_public",
   async (request: Request) => {
   const supabase = createAdminClient();
-  const dayStart = getClinicDayStartIso();
-  const dayEnd = getClinicDayEndIso();
+  const today = getClinicTodayYmd();
+  const dayStart = getClinicDayStartIso(today);
+  const dayEnd = getClinicDayEndIso(today);
   const screenId = new URL(request.url).searchParams.get("screenId");
   const screenIdNum = screenId != null ? parseInt(screenId, 10) : NaN;
 
@@ -48,22 +52,37 @@ export const GET = withRateLimit(
           .maybeSingle()
       : Promise.resolve({ data: null as null });
 
-  const [{ data: screen }, { data: roomRows }, { data: queueRows }, avgServiceTime] =
-    await Promise.all([
-      screenQuery,
-      supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
-      supabase
-        .from("queue")
-        .select(
-          "id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)"
-        )
-        .gte("created_at", dayStart)
-        .lte("created_at", dayEnd)
-        .in("status", ["waiting", "in_progress", "called"])
-        .order("skip_count", { ascending: true })
-        .order("id", { ascending: true }),
-      getAvgServiceTime(dayStart, dayEnd, supabase),
-    ]);
+  const queueSelect =
+    "id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)";
+
+  const [
+    { data: screen },
+    { data: roomRows },
+    { data: occupiedRows },
+    { data: waitingRows },
+    avgServiceTime,
+  ] = await Promise.all([
+    screenQuery,
+    supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
+    // All occupied rooms for today — no limit (every room card must be accurate)
+    supabase
+      .from("queue")
+      .select(queueSelect)
+      .eq("clinic_date", today)
+      .in("status", ["in_progress", "called"])
+      .order("skip_count", { ascending: true })
+      .order("id", { ascending: true }),
+    // Only the upcoming list the TV board displays
+    supabase
+      .from("queue")
+      .select(queueSelect)
+      .eq("clinic_date", today)
+      .eq("status", "waiting")
+      .order("skip_count", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(WAITING_BOARD_LIMIT),
+    getAvgServiceTime(dayStart, dayEnd, supabase),
+  ]);
 
   let display = { ...DEFAULT_DISPLAY };
   if (screen?.is_active) {
@@ -76,10 +95,11 @@ export const GET = withRateLimit(
     };
   }
 
-  const items = (queueRows ?? []) as QueueRow[];
+  const occupied = (occupiedRows ?? []) as QueueRow[];
+  const waiting = (waitingRows ?? []) as QueueRow[];
 
   const inProgressByRoom = new Map<number, { queue_number: string }>();
-  for (const item of items.filter((q) => isCalledLikeStatus(q.status))) {
+  for (const item of occupied.filter((q) => isCalledLikeStatus(q.status))) {
     if (item.room_id != null) {
       inProgressByRoom.set(Number(item.room_id), { queue_number: item.queue_number });
     }
@@ -92,18 +112,16 @@ export const GET = withRateLimit(
     current: inProgressByRoom.get(room.id) ?? null,
   }));
 
-  const waitingMapped = items
-    .filter((q) => q.status === "waiting")
-    .map((q, i) => ({
-      id: q.queue_number,
-      queueId: q.id,
-      queue_number: q.queue_number,
-      priority: q.priority ?? "normal",
-      position: i + 1,
-      est_wait_minutes: (i + 1) * avgServiceTime,
-    }));
+  const waitingMapped = waiting.map((q, i) => ({
+    id: q.queue_number,
+    queueId: q.id,
+    queue_number: q.queue_number,
+    priority: q.priority ?? "normal",
+    position: i + 1,
+    est_wait_minutes: (i + 1) * avgServiceTime,
+  }));
 
-  const nowServing = items
+  const nowServing = occupied
     .filter((q) => isCalledLikeStatus(q.status))
     .map((q) => ({
       id: q.queue_number,
@@ -137,9 +155,11 @@ export async function POST(request: Request) {
   }
 
   const supabase = createAdminClient();
+  const today = getClinicTodayYmd();
   const { data: inProgress } = await supabase
     .from("queue")
     .select("id, called_at")
+    .eq("clinic_date", today)
     .eq("status", "in_progress")
     .not("called_at", "is", null);
 

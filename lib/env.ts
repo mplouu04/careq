@@ -19,6 +19,10 @@ const envSchema = z
     CLINIC_ADDRESS: z.string().min(1).optional(),
     /** Days to retain rate_limits and audit_log rows (cron purge). Default 6 years for HIPAA. */
     RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(2190),
+    /** Web Push VAPID keys — all three must be set together, or all omitted. */
+    NEXT_PUBLIC_VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+    VAPID_PRIVATE_KEY: z.string().min(1).optional(),
+    VAPID_SUBJECT: z.string().min(1).optional(),
   })
   .superRefine((data, ctx) => {
     const isProd =
@@ -40,6 +44,21 @@ const envSchema = z
         code: "custom",
         path: ["RESEND_API_KEY"],
         message: "RESEND_API_KEY and RESEND_FROM_EMAIL must both be set or both omitted",
+      });
+    }
+
+    const vapidKeys = [
+      data.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+      data.VAPID_PRIVATE_KEY,
+      data.VAPID_SUBJECT,
+    ];
+    const vapidSet = vapidKeys.filter(Boolean).length;
+    if (vapidSet > 0 && vapidSet < 3) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["NEXT_PUBLIC_VAPID_PUBLIC_KEY"],
+        message:
+          "NEXT_PUBLIC_VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, and VAPID_SUBJECT must all be set or all omitted",
       });
     }
   });

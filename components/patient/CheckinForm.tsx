@@ -16,6 +16,7 @@ import {
   FormWarning,
   SuccessCard,
 } from "@/components/careq";
+import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
 
 type ApptType = { id: string; name: string };
 
@@ -202,6 +203,7 @@ export function CheckinForm() {
           label: "Track your status",
           href: `/status/${encodeURIComponent(successRef)}`,
         }}
+        footer={<EnablePushAlerts queueNumber={successRef} />}
       />
     );
   }
