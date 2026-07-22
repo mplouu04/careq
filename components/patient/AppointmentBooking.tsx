@@ -283,7 +283,12 @@ export function AppointmentBooking() {
       )
       .subscribe();
 
+    // Safety net: anon realtime cannot receive deactivation UPDATEs because the
+    // row leaves the doctors_public_read RLS policy, so poll to drop inactive doctors.
+    const heartbeat = setInterval(() => void fetchCatalogs({ silent: true }), 20000);
+
     return () => {
+      clearInterval(heartbeat);
       void supabase.removeChannel(channel);
     };
   }, [fetchCatalogs]);
