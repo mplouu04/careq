@@ -38,7 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "@/components/careq/step-indicator";
 import { TimeSlotPicker } from "@/components/patient/TimeSlotPicker";
 
-type Doctor = { id: string; first_name: string; last_name: string };
+type Doctor = { id: string; first_name: string; last_name: string; is_active: boolean };
 type ApptType = { id: string; name: string; duration: number };
 
 type BookingState = {
@@ -166,12 +166,20 @@ export function AppointmentBooking() {
         doctorsRes.json(),
         typesRes.json(),
       ]);
-      const nextDoctors: Doctor[] = doctorsData.doctors ?? [];
+      const nextDoctors: Doctor[] = (doctorsData.doctors ?? []).map(
+        (d: { id: string; first_name: string; last_name: string; is_active?: boolean }) => ({
+          ...d,
+          is_active: d.is_active !== false,
+        })
+      );
       setDoctors(nextDoctors);
       setTypes(typesData.types ?? []);
 
       const selectedId = bookingStateRef.current.doctorId;
-      if (selectedId && !nextDoctors.some((d) => d.id === selectedId)) {
+      const selected = selectedId
+        ? nextDoctors.find((d) => d.id === selectedId)
+        : undefined;
+      if (selectedId && (!selected || !selected.is_active)) {
         setState((s) => ({
           ...s,
           doctorId: "",
@@ -528,29 +536,38 @@ export function AppointmentBooking() {
                 <Skeleton key={i} className="h-36 rounded-xl" />
               ))}
             </div>
-          ) : doctors.length === 0 ? (
+          ) : doctors.every((d) => !d.is_active) ? (
             <p className="text-body-sm text-on-surface-variant">
               No doctors available for booking right now.
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {doctors.map((doctor, idx) => {
-                const selected = state.doctorId === doctor.id;
+                const available = doctor.is_active;
+                const selected = available && state.doctorId === doctor.id;
                 return (
                   <button
                     key={doctor.id}
                     type="button"
-                    onClick={() =>
-                      patch({ doctorId: doctor.id, date: "", time: "" })
-                    }
+                    disabled={!available}
+                    onClick={() => {
+                      if (!available) return;
+                      patch({ doctorId: doctor.id, date: "", time: "" });
+                    }}
                     className={cn(
                       "relative text-left rounded-xl border-2 p-5 transition-all",
-                      "hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      available
+                        ? "hover:shadow-md"
+                        : "cursor-not-allowed opacity-50",
                       selected
                         ? "border-primary bg-primary/10 shadow-sm"
-                        : "border-outline-variant bg-surface-container-lowest"
+                        : available
+                          ? "border-outline-variant bg-surface-container-lowest"
+                          : "border-outline-variant/60 bg-muted/40"
                     )}
-                    aria-pressed={selected}
+                    aria-pressed={available ? selected : undefined}
+                    aria-disabled={!available}
                   >
                     {selected && (
                       <span className="absolute top-3 right-3 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-white">
@@ -558,7 +575,10 @@ export function AppointmentBooking() {
                       </span>
                     )}
                     <div
-                      className="flex h-12 w-12 items-center justify-center rounded-full text-white font-semibold text-body-md mb-3"
+                      className={cn(
+                        "flex h-12 w-12 items-center justify-center rounded-full text-white font-semibold text-body-md mb-3",
+                        !available && "grayscale"
+                      )}
                       style={{
                         backgroundColor: AVATAR_COLORS[idx % AVATAR_COLORS.length],
                       }}
@@ -569,6 +589,11 @@ export function AppointmentBooking() {
                     <p className="font-semibold text-on-surface pr-8">
                       {doctorName(doctor)}
                     </p>
+                    {!available && (
+                      <p className="text-label-sm text-on-surface-variant mt-1">
+                        Unavailable
+                      </p>
+                    )}
                   </button>
                 );
               })}
