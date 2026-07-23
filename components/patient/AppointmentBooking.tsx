@@ -169,7 +169,7 @@ export function AppointmentBooking() {
       const nextDoctors: Doctor[] = (doctorsData.doctors ?? []).map(
         (d: { id: string; first_name: string; last_name: string; is_active?: boolean }) => ({
           ...d,
-          is_active: d.is_active !== false,
+          is_active: d.is_active === true,
         })
       );
       setDoctors(nextDoctors);
@@ -293,7 +293,7 @@ export function AppointmentBooking() {
 
     // Safety net: anon realtime cannot receive deactivation UPDATEs because the
     // row leaves the doctors_public_read RLS policy, so poll to drop inactive doctors.
-    const heartbeat = setInterval(() => void fetchCatalogs({ silent: true }), 20000);
+    const heartbeat = setInterval(() => void fetchCatalogs({ silent: true }), 5000);
 
     return () => {
       clearInterval(heartbeat);

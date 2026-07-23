@@ -186,21 +186,38 @@ export async function toggleStaffActive(params: {
     .eq("id", params.id)
     .single();
 
-  const newActive = !(current?.is_active ?? true);
-  await supabase.from("staff").update({ is_active: newActive }).eq("id", params.id);
-
-  if (current) {
-    await syncStaffMetadata({
-      userId: params.id,
-      firstName: current.first_name,
-      lastName: current.last_name,
-      role: current.role as StaffRole,
-      isActive: newActive,
-    });
-    await supabase.auth.admin.updateUserById(params.id, {
-      ban_duration: newActive ? "none" : "876000h",
-    });
+  if (!current) {
+    return { error: "Staff member not found", status: 404 as const };
   }
+
+  const newActive = !(current.is_active ?? true);
+  const { error: updateError } = await supabase
+    .from("staff")
+    .update({ is_active: newActive })
+    .eq("id", params.id);
+
+  if (updateError) {
+    return { error: "Failed to update staff status", status: 500 as const };
+  }
+
+  const { data: confirmed } = await supabase
+    .from("staff")
+    .select("is_active")
+    .eq("id", params.id)
+    .single();
+
+  const confirmedActive = confirmed?.is_active ?? newActive;
+
+  await syncStaffMetadata({
+    userId: params.id,
+    firstName: current.first_name,
+    lastName: current.last_name,
+    role: current.role as StaffRole,
+    isActive: confirmedActive,
+  });
+  await supabase.auth.admin.updateUserById(params.id, {
+    ban_duration: confirmedActive ? "none" : "876000h",
+  });
 
   void logAudit({
     userId: params.requestingUserId,
@@ -210,7 +227,7 @@ export async function toggleStaffActive(params: {
     ipAddress: params.ip,
   });
 
-  return { success: true as const, is_active: newActive };
+  return { success: true as const, is_active: confirmedActive };
 }
 
 export async function listDisplayScreens() {

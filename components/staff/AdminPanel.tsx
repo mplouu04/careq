@@ -261,7 +261,12 @@ export function AdminPanel() {
     });
     const data = await res.json();
     if (!res.ok) {
-      toast.error(data.error ?? "Failed");
+      const msg = String(data.error ?? "Failed");
+      if (msg.toLowerCase().includes("your own account")) {
+        toast.error("You cannot deactivate your own account. Sign in as another admin.");
+      } else {
+        toast.error(msg);
+      }
       return;
     }
     toast.success(`Staff ${data.is_active ? "activated" : "deactivated"}`);
