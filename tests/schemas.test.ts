@@ -8,9 +8,24 @@ import {
   StaffUpdateAppointmentSchema,
 } from "../lib/schemas/appointment";
 import { CheckinBodySchema } from "../lib/schemas/checkin";
-import { RegisterPatientSchema, PatientVerifySchema } from "../lib/schemas/patient";
+import {
+  RegisterPatientSchema,
+  PatientVerifySchema,
+  GuestPatientDetailsSchema,
+  parseGuestPatientFieldErrors,
+} from "../lib/schemas/patient";
 import { QueueActionSchema } from "../lib/schemas/queue";
 import { StaffActionSchema } from "../lib/schemas/admin";
+
+const validGuest = {
+  firstName: "Juan",
+  lastName: "Dela Cruz",
+  dob: "1990-01-15",
+  gender: "male",
+  address: "123 Manila Street",
+  phone: "09171234567",
+  consent: true,
+};
 
 describe("BookAppointmentSchema", () => {
   const base = {
@@ -37,15 +52,19 @@ describe("BookAppointmentSchema", () => {
   it("accepts full guest booking", () => {
     const result = BookAppointmentSchema.safeParse({
       ...base,
-      firstName: "Juan",
-      lastName: "Dela Cruz",
-      dob: "1990-01-15",
-      gender: "male",
-      address: "Manila",
-      phone: "09171234567",
-      consent: true,
+      ...validGuest,
     });
     expect(result.success).toBe(true);
+  });
+
+  it("rejects numeric guest names", () => {
+    const result = BookAppointmentSchema.safeParse({
+      ...base,
+      ...validGuest,
+      firstName: "938571",
+      lastName: "41245142",
+    });
+    expect(result.success).toBe(false);
   });
 });
 
@@ -88,6 +107,20 @@ describe("RegisterPatientSchema", () => {
     ).toBe(true);
   });
 
+  it("accepts names with hyphen and apostrophe", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "Anne-Marie",
+        lastName: "O'Brien",
+        dob: "1985-03-20",
+        gender: "female",
+        phone: "09171234567",
+        address: "123 Quezon City Ave",
+        consent: true,
+      }).success
+    ).toBe(true);
+  });
+
   it("rejects invalid DOB format", () => {
     expect(
       RegisterPatientSchema.safeParse({
@@ -100,6 +133,117 @@ describe("RegisterPatientSchema", () => {
         consent: true,
       }).success
     ).toBe(false);
+  });
+
+  it("rejects numeric names", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "938571",
+        lastName: "Santos",
+        dob: "1985-03-20",
+        gender: "female",
+        phone: "09171234567",
+        address: "Quezon City",
+        consent: true,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects future DOB", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "Maria",
+        lastName: "Santos",
+        dob: "3000-05-02",
+        gender: "female",
+        phone: "09171234567",
+        address: "Quezon City",
+        consent: true,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects under-18 DOB", () => {
+    const under18 = new Date();
+    under18.setFullYear(under18.getFullYear() - 10);
+    const ymd = under18.toISOString().slice(0, 10);
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "Maria",
+        lastName: "Santos",
+        dob: ymd,
+        gender: "female",
+        phone: "09171234567",
+        address: "Quezon City",
+        consent: true,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects short numeric address", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "Maria",
+        lastName: "Santos",
+        dob: "1985-03-20",
+        gender: "female",
+        phone: "09171234567",
+        address: "41421",
+        consent: true,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects phone not starting with 09", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "Maria",
+        lastName: "Santos",
+        dob: "1985-03-20",
+        gender: "female",
+        phone: "08171234567",
+        address: "Quezon City",
+        consent: true,
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects invalid optional email", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        firstName: "Maria",
+        lastName: "Santos",
+        dob: "1985-03-20",
+        gender: "female",
+        phone: "09171234567",
+        address: "Quezon City",
+        email: "not-an-email",
+        consent: true,
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("GuestPatientDetailsSchema / parseGuestPatientFieldErrors", () => {
+  it("returns field errors for invalid payload", () => {
+    const errors = parseGuestPatientFieldErrors({
+      firstName: "938571",
+      lastName: "41245142",
+      dob: "3000-05-02",
+      gender: "male",
+      address: "41421",
+      phone: "09269708814",
+      consent: true,
+    });
+    expect(errors.firstName).toBeTruthy();
+    expect(errors.lastName).toBeTruthy();
+    expect(errors.dob).toBeTruthy();
+    expect(errors.address).toBeTruthy();
+    expect(errors.phone).toBeUndefined();
+  });
+
+  it("accepts valid guest details", () => {
+    expect(GuestPatientDetailsSchema.safeParse(validGuest).success).toBe(true);
   });
 });
 

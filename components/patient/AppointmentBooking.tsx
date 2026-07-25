@@ -32,11 +32,19 @@ import {
 import { cn } from "@/lib/utils";
 import { CAREQ_PRIMARY } from "@/lib/design-tokens";
 import { getClinicTodayYmd } from "@/lib/datetime";
+import {
+  PATIENT_NAME_PATTERN_HTML,
+  maxDobForMinAge,
+  parseGuestPatientFieldErrors,
+} from "@/lib/schemas/patient";
 import { CareqButton } from "@/components/careq/careq-button";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "@/components/careq/step-indicator";
 import { TimeSlotPicker } from "@/components/patient/TimeSlotPicker";
+
+const FIELD_INPUT_CLASS =
+  "mt-2 flex w-full rounded-xl border bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]";
 
 type Doctor = { id: string; first_name: string; last_name: string; is_active: boolean };
 type ApptType = { id: string; name: string; duration: number };
@@ -129,9 +137,11 @@ export function AppointmentBooking() {
   const [slots, setSlots] = useState<string[]>([]);
   const [doctorsLoading, setDoctorsLoading] = useState(true);
   const [slotsLoading, setSlotsLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const todayYmd = getClinicTodayYmd();
   const todayDate = parseYmd(todayYmd);
+  const maxDobYmd = useMemo(() => maxDobForMinAge(todayYmd), [todayYmd]);
   const maxDate = useMemo(
     () => format(addDays(parseYmd(todayYmd), 30), "yyyy-MM-dd"),
     [todayYmd]
@@ -172,6 +182,9 @@ export function AppointmentBooking() {
           is_active: d.is_active === true,
         })
       );
+      // #region agent log
+      fetch('http://127.0.0.1:7324/ingest/9099ac45-e534-41a7-8f7c-65c33a310d1f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'37200f'},body:JSON.stringify({sessionId:'37200f',runId:'pre-fix',hypothesisId:'D',location:'AppointmentBooking.tsx:fetchCatalogs',message:'client mapped doctors',data:{silent:Boolean(opts?.silent),doctors:nextDoctors.map((d)=>({last:d.last_name,raw:doctorsData.doctors?.find((r:{id:string})=>r.id===d.id)?.is_active,mapped:d.is_active,available:d.is_active===true}))},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       setDoctors(nextDoctors);
       setTypes(typesData.types ?? []);
 
@@ -364,24 +377,55 @@ export function AppointmentBooking() {
     setState({ ...INITIAL_STATE, step: 1 });
     setViewMonth(startOfMonth(new Date()));
     setSlots([]);
+    setFieldErrors({});
   };
 
-  const guestDetailsValid =
-    state.fname.trim() &&
-    state.lname.trim() &&
-    state.phone.trim().replace(/\D/g, "").length === 11 &&
-    state.dob &&
-    state.gender &&
-    state.address.trim() &&
-    state.consent;
+  const guestPayload = () => ({
+    firstName: state.fname.trim(),
+    lastName: state.lname.trim(),
+    dob: state.dob,
+    gender: state.gender,
+    phone: state.phone.trim(),
+    address: state.address.trim(),
+    consent: state.consent,
+    email: state.email.trim(),
+  });
 
-  const step3Valid = publicId
-    ? state.termsAgreed
-    : guestDetailsValid && state.termsAgreed;
+  const validateGuestDetails = (): boolean => {
+    const errors = parseGuestPatientFieldErrors(guestPayload());
+    if (!state.consent) {
+      errors.consent = "Consent is required";
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const clearFieldError = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleStep3Continue = () => {
+    if (!publicId && !validateGuestDetails()) return;
+    if (!state.termsAgreed) {
+      toast.error("Agree to clinic terms to continue.");
+      return;
+    }
+    goStep(4);
+  };
 
   const handleConfirm = async () => {
     if (!state.termsAgreed) {
       toast.error("Agree to clinic terms to continue.");
+      return;
+    }
+    if (!publicId && !validateGuestDetails()) {
+      toast.error("Please fix the highlighted fields.");
+      goStep(3);
       return;
     }
     setConfirming(true);
@@ -398,14 +442,15 @@ export function AppointmentBooking() {
       if (publicId) {
         payload.patient_id = publicId;
       } else {
-        payload.firstName = state.fname.trim();
-        payload.lastName = state.lname.trim();
-        payload.phone = state.phone.replace(/\D/g, "");
-        payload.dob = state.dob;
-        payload.gender = state.gender;
-        payload.address = state.address.trim();
-        payload.consent = state.consent;
-        if (state.email.trim()) payload.email = state.email.trim();
+        const guest = guestPayload();
+        payload.firstName = guest.firstName;
+        payload.lastName = guest.lastName;
+        payload.phone = guest.phone.replace(/\D/g, "");
+        payload.dob = guest.dob;
+        payload.gender = guest.gender;
+        payload.address = guest.address;
+        payload.consent = guest.consent;
+        if (guest.email) payload.email = guest.email;
       }
 
       const res = await fetch("/api/appointments", {
@@ -798,11 +843,28 @@ export function AppointmentBooking() {
                     <input
                       id="fname"
                       type="text"
+                      required
+                      minLength={2}
+                      maxLength={50}
+                      pattern={PATIENT_NAME_PATTERN_HTML}
                       value={state.fname}
-                      onChange={(e) => patch({ fname: e.target.value })}
-                      className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                      onChange={(e) => {
+                        clearFieldError("firstName");
+                        patch({ fname: e.target.value });
+                      }}
+                      aria-invalid={!!fieldErrors.firstName}
+                      aria-describedby={fieldErrors.firstName ? "fname-error" : undefined}
+                      className={cn(
+                        FIELD_INPUT_CLASS,
+                        fieldErrors.firstName ? "border-destructive" : "border-input"
+                      )}
                       autoComplete="given-name"
                     />
+                    {fieldErrors.firstName && (
+                      <p id="fname-error" className="text-label-sm text-destructive mt-1">
+                        {fieldErrors.firstName}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label htmlFor="lname" className="text-body-sm font-medium text-on-surface">
@@ -811,11 +873,28 @@ export function AppointmentBooking() {
                     <input
                       id="lname"
                       type="text"
+                      required
+                      minLength={2}
+                      maxLength={50}
+                      pattern={PATIENT_NAME_PATTERN_HTML}
                       value={state.lname}
-                      onChange={(e) => patch({ lname: e.target.value })}
-                      className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                      onChange={(e) => {
+                        clearFieldError("lastName");
+                        patch({ lname: e.target.value });
+                      }}
+                      aria-invalid={!!fieldErrors.lastName}
+                      aria-describedby={fieldErrors.lastName ? "lname-error" : undefined}
+                      className={cn(
+                        FIELD_INPUT_CLASS,
+                        fieldErrors.lastName ? "border-destructive" : "border-input"
+                      )}
                       autoComplete="family-name"
                     />
+                    {fieldErrors.lastName && (
+                      <p id="lname-error" className="text-label-sm text-destructive mt-1">
+                        {fieldErrors.lastName}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -827,11 +906,26 @@ export function AppointmentBooking() {
                     <input
                       id="dob"
                       type="date"
+                      required
+                      min="1900-01-01"
+                      max={maxDobYmd}
                       value={state.dob}
-                      onChange={(e) => patch({ dob: e.target.value })}
-                      max={todayYmd}
-                      className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                      onChange={(e) => {
+                        clearFieldError("dob");
+                        patch({ dob: e.target.value });
+                      }}
+                      aria-invalid={!!fieldErrors.dob}
+                      aria-describedby={fieldErrors.dob ? "dob-error" : undefined}
+                      className={cn(
+                        FIELD_INPUT_CLASS,
+                        fieldErrors.dob ? "border-destructive" : "border-input"
+                      )}
                     />
+                    {fieldErrors.dob && (
+                      <p id="dob-error" className="text-label-sm text-destructive mt-1">
+                        {fieldErrors.dob}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label htmlFor="gender" className="text-body-sm font-medium text-on-surface">
@@ -839,9 +933,18 @@ export function AppointmentBooking() {
                     </label>
                     <select
                       id="gender"
+                      required
                       value={state.gender}
-                      onChange={(e) => patch({ gender: e.target.value })}
-                      className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                      onChange={(e) => {
+                        clearFieldError("gender");
+                        patch({ gender: e.target.value });
+                      }}
+                      aria-invalid={!!fieldErrors.gender}
+                      aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
+                      className={cn(
+                        FIELD_INPUT_CLASS,
+                        fieldErrors.gender ? "border-destructive" : "border-input"
+                      )}
                     >
                       <option value="">Select gender</option>
                       <option value="male">Male</option>
@@ -849,6 +952,11 @@ export function AppointmentBooking() {
                       <option value="other">Other</option>
                       <option value="prefer-not-to-say">Prefer not to say</option>
                     </select>
+                    {fieldErrors.gender && (
+                      <p id="gender-error" className="text-label-sm text-destructive mt-1">
+                        {fieldErrors.gender}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -859,11 +967,27 @@ export function AppointmentBooking() {
                   <input
                     id="address"
                     type="text"
+                    required
+                    minLength={10}
+                    maxLength={255}
                     value={state.address}
-                    onChange={(e) => patch({ address: e.target.value })}
-                    className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                    onChange={(e) => {
+                      clearFieldError("address");
+                      patch({ address: e.target.value });
+                    }}
+                    aria-invalid={!!fieldErrors.address}
+                    aria-describedby={fieldErrors.address ? "address-error" : undefined}
+                    className={cn(
+                      FIELD_INPUT_CLASS,
+                      fieldErrors.address ? "border-destructive" : "border-input"
+                    )}
                     autoComplete="street-address"
                   />
+                  {fieldErrors.address && (
+                    <p id="address-error" className="text-label-sm text-destructive mt-1">
+                      {fieldErrors.address}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -874,18 +998,34 @@ export function AppointmentBooking() {
                     id="phone"
                     type="tel"
                     inputMode="tel"
+                    required
                     placeholder="09XXXXXXXXX"
                     maxLength={11}
+                    pattern="09[0-9]{9}"
                     value={state.phone}
-                    onChange={(e) =>
-                      patch({ phone: e.target.value.replace(/\D/g, "").slice(0, 11) })
+                    onChange={(e) => {
+                      clearFieldError("phone");
+                      patch({ phone: e.target.value.replace(/\D/g, "").slice(0, 11) });
+                    }}
+                    aria-invalid={!!fieldErrors.phone}
+                    aria-describedby={
+                      fieldErrors.phone ? "phone-error" : "phone-hint"
                     }
-                    className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                    className={cn(
+                      FIELD_INPUT_CLASS,
+                      fieldErrors.phone ? "border-destructive" : "border-input"
+                    )}
                     autoComplete="tel"
                   />
-                  <p className="text-label-sm text-on-surface-variant mt-1">
-                    11-digit mobile number
-                  </p>
+                  {fieldErrors.phone ? (
+                    <p id="phone-error" className="text-label-sm text-destructive mt-1">
+                      {fieldErrors.phone}
+                    </p>
+                  ) : (
+                    <p id="phone-hint" className="text-label-sm text-on-surface-variant mt-1">
+                      11-digit mobile number starting with 09
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -896,24 +1036,46 @@ export function AppointmentBooking() {
                     id="email"
                     type="email"
                     value={state.email}
-                    onChange={(e) => patch({ email: e.target.value })}
-                    className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]"
+                    onChange={(e) => {
+                      clearFieldError("email");
+                      patch({ email: e.target.value });
+                    }}
+                    aria-invalid={!!fieldErrors.email}
+                    aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                    className={cn(
+                      FIELD_INPUT_CLASS,
+                      fieldErrors.email ? "border-destructive" : "border-input"
+                    )}
                     autoComplete="email"
                   />
+                  {fieldErrors.email && (
+                    <p id="email-error" className="text-label-sm text-destructive mt-1">
+                      {fieldErrors.email}
+                    </p>
+                  )}
                 </div>
 
-                <label className="flex items-start gap-2 text-body-sm cursor-pointer min-h-[44px]">
-                  <input
-                    type="checkbox"
-                    checked={state.consent}
-                    onChange={(e) => patch({ consent: e.target.checked })}
-                    className="mt-1 rounded"
-                  />
-                  <span>
-                    I consent to the storage and processing of my personal data.{" "}
-                    <span className="text-destructive">*</span>
-                  </span>
-                </label>
+                <div>
+                  <label className="flex items-start gap-2 text-body-sm cursor-pointer min-h-[44px]">
+                    <input
+                      type="checkbox"
+                      checked={state.consent}
+                      onChange={(e) => {
+                        clearFieldError("consent");
+                        patch({ consent: e.target.checked });
+                      }}
+                      aria-invalid={!!fieldErrors.consent}
+                      className="mt-1 rounded"
+                    />
+                    <span>
+                      I consent to the storage and processing of my personal data.{" "}
+                      <span className="text-destructive">*</span>
+                    </span>
+                  </label>
+                  {fieldErrors.consent && (
+                    <p className="text-label-sm text-destructive mt-1">{fieldErrors.consent}</p>
+                  )}
+                </div>
               </>
             )}
 
@@ -941,9 +1103,9 @@ export function AppointmentBooking() {
             </Button>
             <CareqButton
               type="button"
-              disabled={!step3Valid}
+              disabled={!state.termsAgreed}
               className="px-8"
-              onClick={() => goStep(4)}
+              onClick={handleStep3Continue}
             >
               Continue
             </CareqButton>

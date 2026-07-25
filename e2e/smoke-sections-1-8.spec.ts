@@ -32,7 +32,7 @@ test.describe("Smoke §1 — Registration", () => {
   test("1.3 empty required fields block advance", async ({ page }) => {
     await page.goto("/registration");
     await page.getByRole("button", { name: /next/i }).click();
-    await expect(page.getByText(/complete all personal details/i)).toBeVisible();
+    await expect(page.getByText(/please fix the highlighted fields/i)).toBeVisible();
   });
 
   test("1.4 ten-digit phone shows validation error", async ({ page }) => {
@@ -43,9 +43,9 @@ test.describe("Smoke §1 — Registration", () => {
     await page.getByLabel(/gender/i).selectOption({ index: 1 });
     await page.getByRole("button", { name: /next/i }).click();
     await page.getByLabel(/phone/i).fill("0912345678");
-    await page.getByLabel(/area/i).fill("Test Area");
+    await page.getByLabel(/^address/i).fill("123 Test Area St");
     await page.getByRole("button", { name: /next/i }).click();
-    await expect(page.getByText(/exactly 11 digits/i)).toBeVisible();
+    await expect(page.getByText(/11-digit mobile number starting with 09/i)).toBeVisible();
   });
 });
 

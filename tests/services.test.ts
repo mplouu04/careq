@@ -919,7 +919,7 @@ describe("parseJsonBody", () => {
         dob: "1990-01-01",
         gender: "male",
         phone: "09171234567",
-        address: "Test",
+        address: "123 Test Street",
         consent: true,
       }),
     });

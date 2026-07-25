@@ -330,8 +330,8 @@ export async function bookAppointment(body: {
     patientPublicId = pCheck.public_id;
   } else {
     const phoneDigits = normalizePhone(body.phone ?? "");
-    if (phoneDigits.length !== 11) {
-      return { error: "Phone number must be exactly 11 digits.", status: 400 as const };
+    if (phoneDigits.length !== 11 || !/^09\d{9}$/.test(phoneDigits)) {
+      return { error: "Enter an 11-digit mobile number starting with 09.", status: 400 as const };
     }
 
     const emailRaw = (body.email ?? "").toString().trim();

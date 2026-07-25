@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { User, Calendar, LogIn } from "lucide-react";
@@ -13,11 +13,19 @@ import {
   FormInput,
   FormSelect,
   FormError,
+  FormHelperText,
   StepIndicator,
   SuccessCard,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { storeVerifyToken } from "@/lib/verify-session";
+import { getClinicTodayYmd } from "@/lib/datetime";
+import {
+  PATIENT_NAME_PATTERN_HTML,
+  maxDobForMinAge,
+  parseGuestPatientFieldErrors,
+} from "@/lib/schemas/patient";
+import { cn } from "@/lib/utils";
 
 type RegStep = "personal" | "contact" | "consent";
 
@@ -27,6 +35,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const [loading, setLoading] = useState(false);
   const [gender, setGender] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState("");
@@ -43,6 +52,9 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const [successPublicId, setSuccessPublicId] = useState<string | null>(null);
   const [successVerifyToken, setSuccessVerifyToken] = useState<string | null>(null);
 
+  const todayYmd = getClinicTodayYmd();
+  const maxDobYmd = useMemo(() => maxDobForMinAge(todayYmd), [todayYmd]);
+
   function navigateAfterRegister(publicId: string, token?: string) {
     if (redirectTo) {
       router.push(`${redirectTo}?publicId=${publicId}`);
@@ -54,33 +66,50 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     }
   }
 
+  function clearFieldError(key: string) {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function guestPayload() {
+    return {
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      dob,
+      gender,
+      phone: phone.trim(),
+      address: address.trim(),
+      consent,
+      email: email.trim(),
+    };
+  }
+
   function validatePersonal(): boolean {
-    if (!firstName.trim() || !lastName.trim() || !dob || !gender) {
-      setError("Please complete all personal details.");
-      return false;
+    const all = parseGuestPatientFieldErrors(guestPayload());
+    const personalKeys = ["firstName", "lastName", "dob", "gender"] as const;
+    const errors: Record<string, string> = {};
+    for (const key of personalKeys) {
+      if (all[key]) errors[key] = all[key];
     }
-    const dobYear = parseInt(dob.slice(0, 4), 10);
-    const currentYear = new Date().getFullYear();
-    if (isNaN(dobYear) || dobYear < 1900 || dobYear > currentYear) {
-      setError(`Date of birth must be between 1900 and ${currentYear}.`);
-      return false;
-    }
-    setError(null);
-    return true;
+    setFieldErrors(errors);
+    setError(Object.keys(errors).length ? "Please fix the highlighted fields." : null);
+    return Object.keys(errors).length === 0;
   }
 
   function validateContact(): boolean {
-    const phoneDigits = phone.replace(/\D/g, "");
-    if (phoneDigits.length !== 11) {
-      setError("Phone number must be exactly 11 digits (e.g. 09XXXXXXXXX).");
-      return false;
+    const all = parseGuestPatientFieldErrors(guestPayload());
+    const contactKeys = ["phone", "address", "email"] as const;
+    const errors: Record<string, string> = {};
+    for (const key of contactKeys) {
+      if (all[key]) errors[key] = all[key];
     }
-    if (!address.trim()) {
-      setError("Area is required.");
-      return false;
-    }
-    setError(null);
-    return true;
+    setFieldErrors(errors);
+    setError(Object.keys(errors).length ? "Please fix the highlighted fields." : null);
+    return Object.keys(errors).length === 0;
   }
 
   function goNext() {
@@ -90,6 +119,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
 
   function goBack() {
     setError(null);
+    setFieldErrors({});
     if (step === "contact") setStep("personal");
     else if (step === "consent") setStep("contact");
     else router.push("/visit");
@@ -97,26 +127,35 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
 
   async function submitRegistration() {
     if (!consent) {
+      setFieldErrors({ consent: "Consent is required" });
       setError("You must consent to continue.");
       return;
     }
-    if (!validatePersonal() || !validateContact()) return;
+    if (!validatePersonal()) {
+      setStep("personal");
+      return;
+    }
+    if (!validateContact()) {
+      setStep("contact");
+      return;
+    }
 
     setLoading(true);
     setError(null);
-    const phoneDigits = phone.replace(/\D/g, "");
+    const payload = guestPayload();
+    const phoneDigits = payload.phone.replace(/\D/g, "");
 
     const res = await fetch("/api/patients", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        dob,
-        gender,
+        firstName: payload.firstName,
+        lastName: payload.lastName,
+        dob: payload.dob,
+        gender: payload.gender,
         phone: phoneDigits,
-        email: email.trim() || undefined,
-        address: address.trim(),
+        email: payload.email || undefined,
+        address: payload.address,
         consent: true,
       }),
     });
@@ -211,9 +250,23 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                       name="firstName"
                       type="text"
                       required
+                      minLength={2}
+                      maxLength={50}
+                      pattern={PATIENT_NAME_PATTERN_HTML}
                       value={firstName}
-                      onChange={(e) => setFirstName(e.target.value)}
+                      onChange={(e) => {
+                        clearFieldError("firstName");
+                        setFirstName(e.target.value);
+                      }}
+                      aria-invalid={!!fieldErrors.firstName}
+                      aria-describedby={fieldErrors.firstName ? "firstName-error" : undefined}
+                      className={cn(fieldErrors.firstName && "border-destructive")}
                     />
+                    {fieldErrors.firstName && (
+                      <FormHelperText id="firstName-error" className="text-destructive">
+                        {fieldErrors.firstName}
+                      </FormHelperText>
+                    )}
                   </div>
                   <div>
                     <FormLabel htmlFor="lastName" required>
@@ -224,9 +277,23 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                       name="lastName"
                       type="text"
                       required
+                      minLength={2}
+                      maxLength={50}
+                      pattern={PATIENT_NAME_PATTERN_HTML}
                       value={lastName}
-                      onChange={(e) => setLastName(e.target.value)}
+                      onChange={(e) => {
+                        clearFieldError("lastName");
+                        setLastName(e.target.value);
+                      }}
+                      aria-invalid={!!fieldErrors.lastName}
+                      aria-describedby={fieldErrors.lastName ? "lastName-error" : undefined}
+                      className={cn(fieldErrors.lastName && "border-destructive")}
                     />
+                    {fieldErrors.lastName && (
+                      <FormHelperText id="lastName-error" className="text-destructive">
+                        {fieldErrors.lastName}
+                      </FormHelperText>
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -240,10 +307,21 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                       type="date"
                       required
                       min="1900-01-01"
-                      max={new Date().toISOString().slice(0, 10)}
+                      max={maxDobYmd}
                       value={dob}
-                      onChange={(e) => setDob(e.target.value)}
+                      onChange={(e) => {
+                        clearFieldError("dob");
+                        setDob(e.target.value);
+                      }}
+                      aria-invalid={!!fieldErrors.dob}
+                      aria-describedby={fieldErrors.dob ? "dob-error" : undefined}
+                      className={cn(fieldErrors.dob && "border-destructive")}
                     />
+                    {fieldErrors.dob && (
+                      <FormHelperText id="dob-error" className="text-destructive">
+                        {fieldErrors.dob}
+                      </FormHelperText>
+                    )}
                   </div>
                   <div>
                     <FormLabel htmlFor="gender" required>
@@ -252,8 +330,14 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     <FormSelect
                       id="gender"
                       value={gender}
-                      onChange={(e) => setGender(e.target.value)}
+                      onChange={(e) => {
+                        clearFieldError("gender");
+                        setGender(e.target.value);
+                      }}
                       required
+                      aria-invalid={!!fieldErrors.gender}
+                      aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
+                      className={cn(fieldErrors.gender && "border-destructive")}
                     >
                       <option value="" disabled>
                         Select gender
@@ -263,6 +347,11 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                       <option value="other">Other</option>
                       <option value="prefer-not-to-say">Prefer not to say</option>
                     </FormSelect>
+                    {fieldErrors.gender && (
+                      <FormHelperText id="gender-error" className="text-destructive">
+                        {fieldErrors.gender}
+                      </FormHelperText>
+                    )}
                   </div>
                 </div>
               </fieldset>
@@ -285,11 +374,25 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     required
                     placeholder="09XXXXXXXXX"
                     maxLength={11}
+                    pattern="09[0-9]{9}"
                     value={phone}
-                    onChange={(e) =>
-                      setPhone(e.target.value.replace(/\D/g, "").slice(0, 11))
-                    }
+                    onChange={(e) => {
+                      clearFieldError("phone");
+                      setPhone(e.target.value.replace(/\D/g, "").slice(0, 11));
+                    }}
+                    aria-invalid={!!fieldErrors.phone}
+                    aria-describedby={fieldErrors.phone ? "phone-error" : "phone-hint"}
+                    className={cn(fieldErrors.phone && "border-destructive")}
                   />
+                  {fieldErrors.phone ? (
+                    <FormHelperText id="phone-error" className="text-destructive">
+                      {fieldErrors.phone}
+                    </FormHelperText>
+                  ) : (
+                    <FormHelperText id="phone-hint">
+                      11-digit mobile number starting with 09
+                    </FormHelperText>
+                  )}
                 </div>
                 <div>
                   <FormLabel htmlFor="email">
@@ -302,22 +405,45 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     placeholder="you@example.com"
                     autoComplete="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      clearFieldError("email");
+                      setEmail(e.target.value);
+                    }}
+                    aria-invalid={!!fieldErrors.email}
+                    aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                    className={cn(fieldErrors.email && "border-destructive")}
                   />
+                  {fieldErrors.email && (
+                    <FormHelperText id="email-error" className="text-destructive">
+                      {fieldErrors.email}
+                    </FormHelperText>
+                  )}
                 </div>
                 <div>
                   <FormLabel htmlFor="address" required>
-                    Area
+                    Address
                   </FormLabel>
                   <FormInput
                     id="address"
                     name="address"
                     type="text"
                     required
-                    maxLength={100}
+                    minLength={10}
+                    maxLength={255}
                     value={address}
-                    onChange={(e) => setAddress(e.target.value)}
+                    onChange={(e) => {
+                      clearFieldError("address");
+                      setAddress(e.target.value);
+                    }}
+                    aria-invalid={!!fieldErrors.address}
+                    aria-describedby={fieldErrors.address ? "address-error" : undefined}
+                    className={cn(fieldErrors.address && "border-destructive")}
                   />
+                  {fieldErrors.address && (
+                    <FormHelperText id="address-error" className="text-destructive">
+                      {fieldErrors.address}
+                    </FormHelperText>
+                  )}
                 </div>
               </fieldset>
             )}
@@ -331,7 +457,10 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                   <input
                     type="checkbox"
                     checked={consent}
-                    onChange={(e) => setConsent(e.target.checked)}
+                    onChange={(e) => {
+                      clearFieldError("consent");
+                      setConsent(e.target.checked);
+                    }}
                     className="mt-1 rounded border-input"
                   />
                   <span>
@@ -339,11 +468,18 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     <span className="text-destructive">*</span>
                   </span>
                 </label>
+                {fieldErrors.consent && (
+                  <FormHelperText className="text-destructive">{fieldErrors.consent}</FormHelperText>
+                )}
                 <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-3 text-body-sm text-on-surface-variant">
                   <p>
-                    <strong className="text-on-surface">{firstName} {lastName}</strong>
+                    <strong className="text-on-surface">
+                      {firstName} {lastName}
+                    </strong>
                   </p>
-                  <p>DOB: {dob} · {phone}</p>
+                  <p>
+                    DOB: {dob} · {phone}
+                  </p>
                   <p>{address}</p>
                 </div>
               </fieldset>
@@ -406,13 +542,12 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
             <User className="h-5 w-5 text-primary shrink-0" />
             <p>
               <strong className="text-foreground">Profile reference:</strong>{" "}
-              {matchedModal.publicId.slice(0, 8)}…{" "}
-              · <strong className="text-foreground">Matched by:</strong> {matchedModal.matchedBy}
+              {matchedModal.publicId.slice(0, 8)}… ·{" "}
+              <strong className="text-foreground">Matched by:</strong> {matchedModal.matchedBy}
             </p>
           </div>
         )}
       </ConfirmDialog>
-
     </>
   );
 }

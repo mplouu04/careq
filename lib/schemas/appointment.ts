@@ -1,4 +1,13 @@
 import { z } from "zod";
+import {
+  PatientAddressSchema,
+  PatientConsentSchema,
+  PatientDobSchema,
+  PatientEmailSchema,
+  PatientGenderSchema,
+  PatientNameSchema,
+  PatientPhoneSchema,
+} from "@/lib/schemas/patient";
 
 export const CancelAppointmentSchema = z.object({
   action: z.literal("cancel"),
@@ -13,13 +22,13 @@ export const StaffUpdateAppointmentSchema = z.object({
 });
 
 const guestFields = {
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  gender: z.string().min(1),
-  address: z.string().min(1),
-  phone: z.string().min(1),
-  consent: z.union([z.boolean(), z.string()]),
+  firstName: PatientNameSchema,
+  lastName: PatientNameSchema,
+  dob: PatientDobSchema,
+  gender: PatientGenderSchema,
+  address: PatientAddressSchema,
+  phone: PatientPhoneSchema,
+  consent: PatientConsentSchema,
 } as const;
 
 export const BookAppointmentSchema = z
@@ -36,7 +45,7 @@ export const BookAppointmentSchema = z
     gender: z.string().optional(),
     address: z.string().optional(),
     phone: z.string().optional(),
-    email: z.string().email().optional().or(z.literal("")),
+    email: PatientEmailSchema.optional(),
     consent: z.union([z.boolean(), z.string()]).optional(),
     reason: z.string().optional(),
   })
@@ -44,10 +53,11 @@ export const BookAppointmentSchema = z
     if (data.patient_id) return;
     for (const [field, schema] of Object.entries(guestFields)) {
       const value = data[field as keyof typeof data];
-      if (!schema.safeParse(value).success) {
+      const parsed = schema.safeParse(value);
+      if (!parsed.success) {
         ctx.addIssue({
           code: "custom",
-          message: `Missing field for new booking: ${field}`,
+          message: parsed.error.issues[0]?.message ?? `Invalid field for new booking: ${field}`,
           path: [field],
         });
       }

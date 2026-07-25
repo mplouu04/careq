@@ -328,9 +328,9 @@ export async function registerPatient(body: RegisterPatientInput) {
   const emailNorm = body.email ? body.email.toLowerCase() : null;
   const phoneDigits = normalizePhone(body.phone);
 
-  if (phoneDigits.length !== 11) {
+  if (phoneDigits.length !== 11 || !/^09\d{9}$/.test(phoneDigits)) {
     return {
-      error: "Phone number must be exactly 11 digits.",
+      error: "Enter an 11-digit mobile number starting with 09.",
       status: 400 as const,
     };
   }
