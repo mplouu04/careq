@@ -86,6 +86,17 @@
   }
 }
 
+/* ── Landing SaaS shell (scoped; does not override global Clinical Precision) ─ */
+.landing-saas {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-saas {
+    scroll-behavior: auto;
+  }
+}
+
 /* ── Legacy aliases (migrate screens off these gradually) ───────────────── */
 .careq-card {
   @apply rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm transition-shadow duration-200;

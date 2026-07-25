@@ -3,17 +3,27 @@
 import { useState, useId } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { UserPlus, LogIn, User, ArrowLeft } from "lucide-react";
+import {
+  UserPlus,
+  LogIn,
+  ArrowLeft,
+  ShieldCheck,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import {
   CareqCard,
   CareqButton,
   ConfirmDialog,
+  FormFieldGroup,
   FormLabel,
   FormInput,
   FormHelperText,
   FormError,
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import { storeVerifyToken } from "@/lib/verify-session";
 
@@ -30,6 +40,7 @@ export function PatientSearch() {
   const formId = useId();
   const dobHintId = `${formId}-dob-hint`;
   const phoneHintId = `${formId}-phone-hint`;
+  const errorId = `${formId}-error`;
 
   const [dob, setDob] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
@@ -55,9 +66,19 @@ export function PatientSearch() {
     return null;
   })();
 
+  const dobInvalid = submitAttempted && (!dob || !dobValid);
+  const phoneInvalid = submitAttempted && (!phoneDigits || !phoneValid);
+
   function setApiErrorWith(message: string) {
     setApiError(true);
     setApiErrorMessage(message);
+  }
+
+  function clearFeedback() {
+    setSubmitAttempted(false);
+    setNoMatch(false);
+    setApiError(false);
+    setApiErrorMessage("");
   }
 
   async function handleVerify(e: React.FormEvent) {
@@ -140,20 +161,21 @@ export function PatientSearch() {
     return (
       <>
         <CareqCard className="overflow-hidden w-full">
-          <div className="px-5 sm:px-6 py-8 text-center space-y-6">
-            <div className="mx-auto w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
-              <User className="h-7 w-7 text-primary" aria-hidden />
+          <div className="bg-primary/5 px-6 py-4 border-b border-outline-variant" />
+          <div className="px-6 py-8 text-center space-y-6">
+            <div className="mx-auto w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="h-7 w-7 text-green-600" aria-hidden />
             </div>
             <div className="space-y-2">
-              <h2 className="text-headline-sm text-on-surface">
+              <h2 className="text-headline-md text-on-surface">
                 Welcome, {match.firstName}
               </h2>
               <p className="text-body-md text-on-surface-variant">Is this you?</p>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <div className="flex flex-col gap-3">
               <CareqButton
                 type="button"
-                className="min-h-11 cursor-pointer"
+                className="w-full h-12 min-h-12 cursor-pointer"
                 onClick={confirmIdentity}
               >
                 <LogIn className="h-4 w-4" />
@@ -162,7 +184,7 @@ export function PatientSearch() {
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11 rounded-xl cursor-pointer"
+                className="w-full h-12 min-h-12 rounded-xl cursor-pointer"
                 onClick={resetForm}
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -190,89 +212,125 @@ export function PatientSearch() {
   return (
     <>
       <CareqCard className="overflow-hidden w-full">
-        <form onSubmit={handleVerify} className="px-5 sm:px-6 py-5 space-y-4">
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <FormLabel htmlFor={`${formId}-dob`} required>
-                  Date of birth
-                </FormLabel>
-                <FormInput
-                  id={`${formId}-dob`}
-                  type="date"
-                  value={dob}
-                  onChange={(e) => {
-                    setDob(e.target.value);
-                    setSubmitAttempted(false);
-                    setNoMatch(false);
-                    setApiError(false);
-                    setApiErrorMessage("");
-                  }}
-                  max={new Date().toLocaleDateString("en-CA")}
-                  min="1900-01-01"
-                  required
-                  aria-required="true"
-                  aria-describedby={dobHintId}
-                />
-              </div>
-              <div>
-                <FormLabel htmlFor={`${formId}-phone`} required>
-                  Phone number
-                </FormLabel>
-                <FormInput
-                  id={`${formId}-phone`}
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel"
-                  maxLength={15}
-                  placeholder="09XX XXX XXXX"
-                  value={phoneInput}
-                  onChange={(e) => {
-                    setPhoneInput(e.target.value.replace(/\D/g, ""));
-                    setSubmitAttempted(false);
-                    setNoMatch(false);
-                    setApiError(false);
-                    setApiErrorMessage("");
-                  }}
-                  required
-                  aria-required="true"
-                  aria-describedby={phoneHintId}
-                  className="font-mono-careq tracking-widest"
-                />
-              </div>
-            </div>
+        <div className="px-6 pt-6 pb-4 border-b border-outline-variant text-center space-y-3">
+          <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+            <ShieldCheck className="h-6 w-6 text-primary" aria-hidden />
+          </div>
+          <div className="space-y-1">
+            <h2 className="text-headline-sm text-on-surface">Verify your identity</h2>
+            <p className="text-body-sm text-on-surface-variant">
+              Enter your date of birth and phone number to continue.
+            </p>
+          </div>
+        </div>
 
+        <form onSubmit={handleVerify} className="px-6 py-6 space-y-4" noValidate>
+          <FormFieldGroup>
+            <FormLabel htmlFor={`${formId}-dob`} required>
+              Date of birth
+            </FormLabel>
+            <FormInput
+              id={`${formId}-dob`}
+              type="date"
+              value={dob}
+              onChange={(e) => {
+                setDob(e.target.value);
+                clearFeedback();
+              }}
+              max={new Date().toLocaleDateString("en-CA")}
+              min="1900-01-01"
+              required
+              aria-required="true"
+              aria-invalid={dobInvalid || undefined}
+              aria-describedby={cn(dobHintId, validationMessage || apiError || noMatch ? errorId : undefined)}
+            />
             <FormHelperText id={dobHintId}>
               Use the date of birth on your patient record.
             </FormHelperText>
+          </FormFieldGroup>
+
+          <FormFieldGroup>
+            <FormLabel htmlFor={`${formId}-phone`} required>
+              Phone number
+            </FormLabel>
+            <FormInput
+              id={`${formId}-phone`}
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              maxLength={15}
+              placeholder="09XX XXX XXXX"
+              value={phoneInput}
+              onChange={(e) => {
+                setPhoneInput(e.target.value.replace(/\D/g, ""));
+                clearFeedback();
+              }}
+              required
+              aria-required="true"
+              aria-invalid={phoneInvalid || undefined}
+              aria-describedby={cn(phoneHintId, validationMessage || apiError || noMatch ? errorId : undefined)}
+              className="font-mono-careq tracking-widest"
+            />
             <FormHelperText id={phoneHintId}>
               Enter your full mobile number or just the last 7 digits.
             </FormHelperText>
+          </FormFieldGroup>
 
-            {validationMessage && <FormError message={validationMessage} />}
-            {apiError && <FormError message={apiErrorMessage} />}
-            {noMatch && <FormError message={NO_MATCH_MESSAGE} />}
+          {validationMessage && (
+            <div id={errorId}>
+              <FormError message={validationMessage} />
+            </div>
+          )}
+          {apiError && (
+            <div id={errorId}>
+              <FormError message={apiErrorMessage} />
+            </div>
+          )}
+          {noMatch && (
+            <Alert variant="destructive" className="mb-0" id={errorId}>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {NO_MATCH_MESSAGE}{" "}
+                <Link
+                  href="/registration"
+                  className="inline-flex items-center gap-1 font-medium underline underline-offset-2 hover:opacity-90"
+                >
+                  <UserPlus className="h-3.5 w-3.5" aria-hidden />
+                  Register
+                </Link>
+              </AlertDescription>
+            </Alert>
+          )}
 
+          <div className="pt-2 space-y-4">
             <CareqButton
               type="submit"
-              className={cn("w-full sm:w-auto min-h-11 cursor-pointer")}
+              className="w-full h-12 min-h-12 cursor-pointer"
               disabled={loading}
             >
-              {loading ? "Verifying…" : "Continue"}
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  Verifying…
+                </>
+              ) : (
+                "Continue"
+              )}
             </CareqButton>
 
             <p className="text-body-sm text-on-surface-variant text-center">
               <button
                 type="button"
                 onClick={() => setPrivacyOpen(true)}
-                className="text-primary underline decoration-dotted underline-offset-2 cursor-pointer hover:decoration-solid transition-colors"
+                className="inline-flex items-center gap-1.5 text-primary underline decoration-dotted underline-offset-2 cursor-pointer hover:decoration-solid transition-colors"
               >
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
                 How we protect your data
               </button>
             </p>
           </div>
 
-          <p className="text-body-sm text-on-surface-variant text-center pt-2 border-t border-outline-variant">
+          <p className="text-body-sm text-on-surface-variant text-center pt-4 border-t border-outline-variant">
             New patient?{" "}
             <Link
               href="/registration"

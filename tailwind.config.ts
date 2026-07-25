@@ -13,6 +13,7 @@ const config: Config = {
         sans: ["var(--font-sans)", "DM Sans", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)", "DM Serif Display", "Georgia", "serif"],
         mono: ["var(--font-mono)", "JetBrains Mono", "ui-monospace", "monospace"],
+        inter: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
       },
       colors: {
         surface: {

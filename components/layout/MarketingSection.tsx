@@ -9,9 +9,9 @@ type MarketingSectionProps = {
 };
 
 const variantClass = {
-  default: "bg-background",
-  muted: "bg-surface-container-lowest",
-  primary: "bg-primary text-primary-foreground",
+  default: "bg-[#F8F9FB]",
+  muted: "bg-white",
+  primary: "bg-gradient-to-br from-blue-600 to-blue-800 text-white",
 };
 
 export function MarketingSection({
@@ -24,12 +24,12 @@ export function MarketingSection({
     <section
       id={id}
       className={cn(
-        "py-xxl px-margin-mobile md:px-margin-desktop",
+        "py-16 md:py-24 px-6",
         variantClass[variant],
         className
       )}
     >
-      <div className="max-w-careq mx-auto">{children}</div>
+      <div className="max-w-[1140px] mx-auto">{children}</div>
     </section>
   );
 }

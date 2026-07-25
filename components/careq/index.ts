@@ -9,6 +9,7 @@ export { StatCard } from "./stat-card";
 export { SuccessCard, type SuccessCta } from "./success-card";
 export { StepIndicator, type StepItem } from "./step-indicator";
 export {
+  FormFieldGroup,
   FormLabel,
   FormInput,
   FormSelect,
