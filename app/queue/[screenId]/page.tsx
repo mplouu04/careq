@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { QueueBoard } from "@/components/queue/QueueBoard";
+import { QueueBoardSkeleton } from "@/components/careq";
 
 export default function QueueDisplayScreenPage({
   params,
@@ -7,7 +8,7 @@ export default function QueueDisplayScreenPage({
   params: { screenId: string };
 }) {
   return (
-    <Suspense fallback={<div className="h-screen bg-surface flex items-center justify-center">Loading board…</div>}>
+    <Suspense fallback={<QueueBoardSkeleton />}>
       <QueueBoard screenId={params.screenId} />
     </Suspense>
   );

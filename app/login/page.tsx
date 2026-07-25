@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { LoginForm } from "@/components/staff/LoginForm";
-import { CareqCard } from "@/components/careq";
+import { CareqCard, FormPageSkeleton } from "@/components/careq";
 
 export default function LoginPage() {
   return (
@@ -31,7 +31,7 @@ export default function LoginPage() {
             </p>
           </div>
           <CareqCard className="p-6 md:p-8 border-t-4 border-t-primary">
-            <Suspense fallback={<p className="text-center text-muted-foreground">Loading...</p>}>
+            <Suspense fallback={<FormPageSkeleton />}>
               <LoginForm />
             </Suspense>
           </CareqCard>

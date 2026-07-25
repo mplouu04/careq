@@ -3,6 +3,7 @@ import { logAudit } from "@/lib/audit";
 import { STAFF_ROLES, type StaffRole } from "@/lib/constants";
 import { sanitize, isValidEmail } from "@/lib/utils";
 import { syncStaffMetadata } from "@/lib/staff-metadata";
+import { agentDebugLog } from "@/lib/debug-agent-log";
 
 export async function listStaff() {
   const supabase = createAdminClient();
@@ -175,6 +176,13 @@ export async function toggleStaffActive(params: {
   requestingUserId: string;
   ip: string;
 }) {
+  // #region agent log
+  agentDebugLog("A", "admin.service.ts:toggleStaffActive:entry", "toggle entry", {
+    selfDeactivate: params.id === params.requestingUserId,
+    targetIdSuffix: params.id.slice(-6),
+    requesterIdSuffix: params.requestingUserId.slice(-6),
+  });
+  // #endregion
   if (params.id === params.requestingUserId) {
     return { error: "You cannot deactivate your own account", status: 400 as const };
   }
@@ -197,6 +205,13 @@ export async function toggleStaffActive(params: {
     .eq("id", params.id);
 
   if (updateError) {
+    // #region agent log
+    agentDebugLog("B", "admin.service.ts:toggleStaffActive:updateError", "staff update failed", {
+      updateError: updateError.message,
+      wantedActive: newActive,
+      priorActive: current.is_active,
+    });
+    // #endregion
     return { error: "Failed to update staff status", status: 500 as const };
   }
 
@@ -208,16 +223,41 @@ export async function toggleStaffActive(params: {
 
   const confirmedActive = confirmed?.is_active ?? newActive;
 
-  await syncStaffMetadata({
-    userId: params.id,
-    firstName: current.first_name,
-    lastName: current.last_name,
-    role: current.role as StaffRole,
-    isActive: confirmedActive,
+  // #region agent log
+  agentDebugLog("B", "admin.service.ts:toggleStaffActive:confirmed", "toggle confirmed from DB", {
+    priorActive: current.is_active,
+    wantedActive: newActive,
+    confirmedActive,
+    role: current.role,
   });
-  await supabase.auth.admin.updateUserById(params.id, {
-    ban_duration: confirmedActive ? "none" : "876000h",
+  // #endregion
+
+  // Auth updateUserById (via syncStaffMetadata) was observed to flip staff.is_active
+  // back to true within ~10s after a successful deactivate. Skip metadata sync on
+  // deactivate; LoginForm + getStaffSession read staff.is_active from DB.
+  // On activate, sync metadata so staff_active becomes true again.
+  if (confirmedActive) {
+    await syncStaffMetadata({
+      userId: params.id,
+      firstName: current.first_name,
+      lastName: current.last_name,
+      role: current.role as StaffRole,
+      isActive: true,
+    });
+  }
+
+  // #region agent log
+  const { data: afterToggle } = await supabase
+    .from("staff")
+    .select("is_active")
+    .eq("id", params.id)
+    .single();
+  agentDebugLog("F", "admin.service.ts:toggleStaffActive:afterToggle", "is_active after toggle (no auth sync on deactivate)", {
+    afterToggleActive: afterToggle?.is_active,
+    confirmedActive,
+    skippedMetadataSync: !confirmedActive,
   });
+  // #endregion
 
   void logAudit({
     userId: params.requestingUserId,
@@ -227,7 +267,7 @@ export async function toggleStaffActive(params: {
     ipAddress: params.ip,
   });
 
-  return { success: true as const, is_active: confirmedActive };
+  return { success: true as const, is_active: afterToggle?.is_active ?? confirmedActive };
 }
 
 export async function listDisplayScreens() {

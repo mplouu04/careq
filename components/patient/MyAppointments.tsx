@@ -1,8 +1,10 @@
 "use client";
 
-import { appointmentApi } from "@/lib/api/client";
+import { appointmentApi, appointmentsDataApi } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Calendar, ClipboardList } from "lucide-react";
@@ -11,6 +13,7 @@ import {
   CareqButton,
   ConfirmDialog,
   EmptyState,
+  AppointmentListSkeleton,
   FormLabel,
   FormInput,
   StatusBadge,
@@ -31,6 +34,15 @@ type Appointment = {
   reason: string;
   status: string;
 };
+
+type LookupResult = {
+  appointments: Appointment[];
+  patientName: string;
+};
+
+type ActiveLookup =
+  | { method: "phone"; phone: string; dob: string }
+  | { method: "reference"; reference: string; phone: string };
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "Pending",
@@ -73,24 +85,113 @@ function parseDobInput(value: string): string | null {
 
 const TERMINAL_STATUSES = ["cancelled", "completed", "no_show"];
 
+function lookupQueryKey(lookup: ActiveLookup) {
+  if (lookup.method === "phone") {
+    return queryKeys.appointments.byPhone(lookup.phone, lookup.dob);
+  }
+  return queryKeys.appointments.byReference(lookup.reference, lookup.phone);
+}
+
 export function MyAppointments() {
+  const queryClient = useQueryClient();
   const [lookupMethod, setLookupMethod] = useState<LookupMethod>("phone");
   const [phone, setPhone] = useState("");
   const [dob, setDob] = useState("");
   const [reference, setReference] = useState("");
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [checkinIds, setCheckinIds] = useState<Set<string>>(new Set());
-  const [patientName, setPatientName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [activeLookup, setActiveLookup] = useState<ActiveLookup | null>(null);
   const [cancelRef, setCancelRef] = useState<string | null>(null);
   const [cancelPhone, setCancelPhone] = useState("");
 
+  const queryKey = useMemo(
+    () => (activeLookup ? lookupQueryKey(activeLookup) : ["appointments", "idle"]),
+    [activeLookup]
+  );
+
+  const lookupQuery = useQuery({
+    queryKey,
+    queryFn: async (): Promise<LookupResult> => {
+      if (!activeLookup) return { appointments: [], patientName: "" };
+      if (activeLookup.method === "phone") {
+        const data = await appointmentsDataApi.byPhone(
+          activeLookup.phone,
+          activeLookup.dob
+        );
+        return {
+          appointments: (data.appointments ?? []) as Appointment[],
+          patientName: data.patientName ?? "",
+        };
+      }
+      const data = await appointmentsDataApi.byReference(
+        activeLookup.reference,
+        activeLookup.phone
+      );
+      const appointments = (data.appointments ?? []) as Appointment[];
+      if (appointments.length === 0) {
+        toast.error(
+          "No appointment found. Check your reference number and registered phone (must match the number on file)."
+        );
+      }
+      return {
+        appointments,
+        patientName: data.patientName ?? "",
+      };
+    },
+    enabled: Boolean(activeLookup),
+    staleTime: 10_000,
+    retry: 1,
+  });
+
+  const appointments = lookupQuery.data?.appointments ?? [];
+  const patientName = lookupQuery.data?.patientName ?? "";
+  const searched = Boolean(activeLookup) && (lookupQuery.isSuccess || lookupQuery.isError);
+  const loading = lookupQuery.isFetching;
+
+  useEffect(() => {
+    if (lookupQuery.isError) {
+      toast.error(
+        lookupQuery.error instanceof Error
+          ? lookupQuery.error.message
+          : "Unable to load appointments. Please check your connection."
+      );
+    }
+  }, [lookupQuery.isError, lookupQuery.error]);
+
+  const checkinIds = useMemo(
+    () => new Set(appointments.map((a) => String(a.checkinId))),
+    [appointments]
+  );
+  const checkinIdsRef = useRef(checkinIds);
+  useEffect(() => {
+    checkinIdsRef.current = checkinIds;
+  }, [checkinIds]);
+
+  useEffect(() => {
+    if (checkinIds.size === 0 || !activeLookup) return;
+
+    const supabase = createClient();
+    const channel = supabase
+      .channel("myappointments-live")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "checkins" },
+        (payload) => {
+          const changedId = String(
+            (payload.new as { checkin_id?: string | number })?.checkin_id ?? ""
+          );
+          if (checkinIdsRef.current.has(changedId)) {
+            void queryClient.invalidateQueries({ queryKey });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [checkinIds, activeLookup, queryClient, queryKey]);
+
   function resetResults() {
-    setSearched(false);
-    setAppointments([]);
-    setCheckinIds(new Set());
-    setPatientName("");
+    setActiveLookup(null);
   }
 
   function handleLookupMethodChange(method: LookupMethod) {
@@ -98,38 +199,17 @@ export function MyAppointments() {
     resetResults();
   }
 
-  const lookupByPhone = useCallback(async () => {
-    const isoDob = parseDobInput(dob);
-    if (!phone || !isoDob) {
-      toast.error("Please enter both phone number and date of birth.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${isoDob}`
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error ?? "Unable to look up appointments.");
-        setAppointments([]);
-        setPatientName("");
+  function lookup() {
+    if (lookupMethod === "phone") {
+      const isoDob = parseDobInput(dob);
+      if (!phone || !isoDob) {
+        toast.error("Please enter both phone number and date of birth.");
         return;
       }
-      const appts: Appointment[] = data.appointments ?? [];
-      setAppointments(appts);
-      setCheckinIds(new Set(appts.map((a) => String(a.checkinId))));
-      setPatientName(data.patientName ?? "");
-    } catch {
-      toast.error("Unable to load appointments. Please check your connection.");
-      setAppointments([]);
-    } finally {
-      setLoading(false);
-      setSearched(true);
+      setActiveLookup({ method: "phone", phone: phone.trim(), dob: isoDob });
+      return;
     }
-  }, [phone, dob]);
 
-  const lookupByReference = useCallback(async () => {
     const ref = reference.trim();
     const phoneForLookup = phone.trim();
     if (!ref) {
@@ -145,86 +225,49 @@ export function MyAppointments() {
       toast.error("Invalid reference format.");
       return;
     }
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        reference: normalizedRef,
-        phone: phoneForLookup,
-      });
-      const res = await fetch(`/api/appointments?${params.toString()}`);
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data.error ?? "Unable to look up appointments.");
-        setAppointments([]);
-        setPatientName("");
-        return;
-      }
-      const appts: Appointment[] = data.appointments ?? [];
-      setAppointments(appts);
-      setCheckinIds(new Set(appts.map((a) => String(a.checkinId))));
-      setPatientName(data.patientName ?? "");
-      if (appts.length === 0) {
-        toast.error(
-          "No appointment found. Check your reference number and registered phone (must match the number on file)."
-        );
-      }
-    } catch {
-      toast.error("Unable to load appointments. Please check your connection.");
-      setAppointments([]);
-    } finally {
-      setLoading(false);
-      setSearched(true);
-    }
-  }, [reference, phone]);
-
-  const lookup = useCallback(async () => {
-    if (lookupMethod === "phone") {
-      await lookupByPhone();
-    } else {
-      await lookupByReference();
-    }
-  }, [lookupMethod, lookupByPhone, lookupByReference]);
-
-  // Keep a stable ref so the realtime handler always sees the latest IDs
-  // without needing to re-subscribe every time the list changes.
-  const checkinIdsRef = useRef(checkinIds);
-  useEffect(() => {
-    checkinIdsRef.current = checkinIds;
-  }, [checkinIds]);
-
-  // Subscribe to checkins changes after a successful lookup and silently
-  // refresh the list when any of this patient's appointments are updated.
-  useEffect(() => {
-    if (checkinIds.size === 0) return;
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel("myappointments-live")
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "checkins" },
-        (payload) => {
-          const changedId = String((payload.new as { checkin_id?: string | number })?.checkin_id ?? "");
-          if (checkinIdsRef.current.has(changedId)) {
-            void lookup();
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  // Re-subscribe only when the set of tracked IDs changes (i.e. after a new lookup).
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkinIds]);
+    setActiveLookup({
+      method: "reference",
+      reference: normalizedRef,
+      phone: phoneForLookup,
+    });
+  }
 
   function openCancelDialog(ref: string) {
     setCancelRef(ref);
     setCancelPhone("");
   }
 
-  async function confirmCancel(ref: string) {
+  const cancelMutation = useMutation({
+    mutationFn: ({ ref, phoneForCancel }: { ref: string; phoneForCancel: string }) =>
+      appointmentApi.cancel(ref, phoneForCancel),
+    onMutate: async ({ ref }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<LookupResult>(queryKey);
+      if (previous) {
+        queryClient.setQueryData<LookupResult>(queryKey, {
+          ...previous,
+          appointments: previous.appointments.map((a) =>
+            a.reference === ref ? { ...a, status: "cancelled" } : a
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (err, _vars, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKey, context.previous);
+      }
+      toast.error(err instanceof Error ? err.message : "Cancel failed");
+    },
+    onSuccess: () => {
+      toast.success("Appointment cancelled.");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  function confirmCancel(ref: string) {
     const phoneForCancel =
       lookupMethod === "phone" ? phone.trim() : cancelPhone.trim();
     if (!phoneForCancel) {
@@ -232,13 +275,7 @@ export function MyAppointments() {
       return;
     }
     setCancelRef(null);
-    try {
-      await appointmentApi.cancel(ref, phoneForCancel);
-      toast.success("Appointment cancelled.");
-      await lookup();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Cancel failed");
-    }
+    cancelMutation.mutate({ ref, phoneForCancel });
   }
 
   return (
@@ -358,7 +395,11 @@ export function MyAppointments() {
         </div>
       </CareqCard>
 
-      {searched && (
+      {activeLookup && loading && !lookupQuery.data ? (
+        <AppointmentListSkeleton />
+      ) : null}
+
+      {searched && !loading && (
         <>
           {patientName && (
             <p className="text-headline-sm text-foreground">
@@ -374,7 +415,10 @@ export function MyAppointments() {
           ) : (
             <div className="space-y-3">
               {appointments.map((a) => (
-                <CareqCard key={a.checkinId} className="p-4 md:p-5 space-y-3 border-outline-variant">
+                <CareqCard
+                  key={a.checkinId}
+                  className="p-4 md:p-5 space-y-3 border-outline-variant animate-in fade-in duration-200"
+                >
                   <div className="flex justify-between items-start gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="font-mono text-headline-sm text-primary truncate">
@@ -401,6 +445,7 @@ export function MyAppointments() {
                       variant="outline"
                       className="text-destructive border-destructive/30 hover:bg-destructive/10"
                       onClick={() => openCancelDialog(a.reference)}
+                      disabled={cancelMutation.isPending}
                     >
                       Cancel Appointment
                     </Button>

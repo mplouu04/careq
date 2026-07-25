@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { catalogApi } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
 import {
   addDays,
   addMonths,
@@ -38,6 +41,7 @@ import {
   parseGuestPatientFieldErrors,
 } from "@/lib/schemas/patient";
 import { CareqButton } from "@/components/careq/careq-button";
+import { DoctorCardsSkeleton } from "@/components/careq/skeletons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "@/components/careq/step-indicator";
@@ -127,17 +131,13 @@ function doctorInitials(d: Doctor): string {
 export function AppointmentBooking() {
   const params = useSearchParams();
   const publicId = params.get("publicId");
+  const queryClient = useQueryClient();
 
   const [state, setState] = useState<BookingState>(INITIAL_STATE);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
   const [confirming, setConfirming] = useState(false);
-
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [types, setTypes] = useState<ApptType[]>([]);
-  const [slots, setSlots] = useState<string[]>([]);
-  const [doctorsLoading, setDoctorsLoading] = useState(true);
-  const [slotsLoading, setSlotsLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const catalogErrorToasted = useRef(false);
 
   const todayYmd = getClinicTodayYmd();
   const todayDate = parseYmd(todayYmd);
@@ -148,200 +148,157 @@ export function AppointmentBooking() {
   );
   const maxDateObj = parseYmd(maxDate);
 
+  const doctorsQuery = useQuery({
+    queryKey: queryKeys.doctors.list(),
+    queryFn: async () => {
+      const data = await catalogApi.doctors();
+      return (data.doctors ?? []).map((d) => ({
+        ...d,
+        is_active: d.is_active === true,
+      })) as Doctor[];
+    },
+    staleTime: 5_000,
+    refetchInterval: 5_000,
+  });
+
+  const typesQuery = useQuery({
+    queryKey: queryKeys.appointmentTypes.list(),
+    queryFn: async () => {
+      const data = await catalogApi.appointmentTypes();
+      return (data.types ?? []) as ApptType[];
+    },
+    staleTime: 30_000,
+  });
+
+  const doctors = doctorsQuery.data ?? [];
+  const types = typesQuery.data ?? [];
+  const doctorsLoading = doctorsQuery.isPending || typesQuery.isPending;
+
   const selectedDoctor = doctors.find((d) => d.id === state.doctorId);
   const selectedType = types.find((t) => String(t.id) === state.appTypeId);
+  const duration = selectedType?.duration ?? 30;
 
-  const bookingStateRef = useRef({
-    doctorId: state.doctorId,
-    date: state.date,
-    appTypeId: state.appTypeId,
-  });
-  useEffect(() => {
-    bookingStateRef.current = {
-      doctorId: state.doctorId,
-      date: state.date,
-      appTypeId: state.appTypeId,
-    };
-  }, [state.doctorId, state.date, state.appTypeId]);
+  const slotsEnabled = Boolean(state.doctorId && state.date && state.appTypeId);
 
-  const fetchCatalogs = useCallback(async (opts?: { silent?: boolean }) => {
-    if (!opts?.silent) setDoctorsLoading(true);
-    try {
-      const [doctorsRes, typesRes] = await Promise.all([
-        fetch("/api/doctors", { cache: "no-store" }),
-        fetch("/api/appointment-types", { cache: "no-store" }),
-      ]);
-      if (!doctorsRes.ok || !typesRes.ok) throw new Error("catalog");
-      const [doctorsData, typesData] = await Promise.all([
-        doctorsRes.json(),
-        typesRes.json(),
-      ]);
-      const nextDoctors: Doctor[] = (doctorsData.doctors ?? []).map(
-        (d: { id: string; first_name: string; last_name: string; is_active?: boolean }) => ({
-          ...d,
-          is_active: d.is_active === true,
-        })
-      );
-      // #region agent log
-      fetch('http://127.0.0.1:7324/ingest/9099ac45-e534-41a7-8f7c-65c33a310d1f',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'37200f'},body:JSON.stringify({sessionId:'37200f',runId:'pre-fix',hypothesisId:'D',location:'AppointmentBooking.tsx:fetchCatalogs',message:'client mapped doctors',data:{silent:Boolean(opts?.silent),doctors:nextDoctors.map((d)=>({last:d.last_name,raw:doctorsData.doctors?.find((r:{id:string})=>r.id===d.id)?.is_active,mapped:d.is_active,available:d.is_active===true}))},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-      setDoctors(nextDoctors);
-      setTypes(typesData.types ?? []);
-
-      const selectedId = bookingStateRef.current.doctorId;
-      const selected = selectedId
-        ? nextDoctors.find((d) => d.id === selectedId)
-        : undefined;
-      if (selectedId && (!selected || !selected.is_active)) {
-        setState((s) => ({
-          ...s,
-          doctorId: "",
-          date: "",
-          time: "",
-          step: s.step > 1 ? 1 : s.step,
-        }));
-        toast.message("The selected doctor is no longer available. Please choose another.");
-      }
-    } catch {
-      if (!opts?.silent) {
-        toast.error("Unable to load booking options. Please refresh the page.");
-      }
-    } finally {
-      if (!opts?.silent) setDoctorsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchCatalogs();
-  }, [fetchCatalogs]);
-
-  const refetchSlots = useCallback(
-    async (doctorId: string, date: string, appTypeId: string) => {
-      if (!doctorId || !date || !appTypeId) {
-        setSlots([]);
-        return;
-      }
-      const type = types.find((t) => String(t.id) === appTypeId);
-      const duration = type?.duration ?? 30;
-      const qs = new URLSearchParams({
-        doctorId,
-        date,
-        durationMinutes: String(duration),
-        appointmentTypeId: appTypeId,
+  const slotsQuery = useQuery({
+    queryKey: queryKeys.doctors.availability(
+      state.doctorId,
+      state.date,
+      state.appTypeId,
+      duration
+    ),
+    queryFn: async () => {
+      const d = await catalogApi.availability({
+        doctorId: state.doctorId,
+        date: state.date,
+        durationMinutes: duration,
+        appointmentTypeId: state.appTypeId,
       });
-      setSlotsLoading(true);
-      try {
-        const r = await fetch(`/api/doctors/availability?${qs}`);
-        if (!r.ok) {
-          setSlots([]);
-          toast.error("Unable to load available time slots.");
-          return;
-        }
-        const d = await r.json();
-        const available: string[] = d.available_slots ?? d.slots ?? [];
-        setSlots(available);
-        if (d.no_schedule && available.length === 0) {
-          toast.error(
-            "No availability — doctor schedule may not be configured for this day."
-          );
-        }
-      } catch {
-        setSlots([]);
-        toast.error("Unable to load available time slots.");
-      } finally {
-        setSlotsLoading(false);
+      const available: string[] = d.available_slots ?? d.slots ?? [];
+      if (d.no_schedule && available.length === 0) {
+        toast.error(
+          "No availability — doctor schedule may not be configured for this day."
+        );
       }
+      return available;
     },
-    [types]
-  );
+    enabled: slotsEnabled,
+    staleTime: 5_000,
+  });
+
+  const slots = slotsQuery.data ?? [];
+  const slotsLoading = slotsEnabled && slotsQuery.isPending;
 
   useEffect(() => {
-    refetchSlots(state.doctorId, state.date, state.appTypeId);
-  }, [state.doctorId, state.date, state.appTypeId, refetchSlots]);
+    if ((doctorsQuery.isError || typesQuery.isError) && !catalogErrorToasted.current) {
+      catalogErrorToasted.current = true;
+      toast.error("Unable to load booking options. Please refresh the page.");
+    }
+  }, [doctorsQuery.isError, typesQuery.isError]);
 
-  // Keep a stable ref to refetchSlots so the channel effect below
-  // does not re-subscribe every time the callback identity changes.
-  const refetchSlotsRef = useRef(refetchSlots);
   useEffect(() => {
-    refetchSlotsRef.current = refetchSlots;
-  }, [refetchSlots]);
+    if (!state.doctorId || doctorsLoading) return;
+    const selected = doctors.find((d) => d.id === state.doctorId);
+    if (!selected || !selected.is_active) {
+      setState((s) => ({
+        ...s,
+        doctorId: "",
+        date: "",
+        time: "",
+        step: s.step > 1 ? 1 : s.step,
+      }));
+      toast.message("The selected doctor is no longer available. Please choose another.");
+    }
+  }, [doctors, doctorsLoading, state.doctorId]);
+
+  useEffect(() => {
+    if (slotsQuery.isError) {
+      toast.error("Unable to load available time slots.");
+    }
+  }, [slotsQuery.isError]);
 
   useEffect(() => {
     const onTabFocus = () => {
       if (document.visibilityState !== "visible") return;
-      void fetchCatalogs({ silent: true });
-      const { doctorId, date, appTypeId } = bookingStateRef.current;
-      if (doctorId && date && appTypeId) {
-        void refetchSlotsRef.current(doctorId, date, appTypeId);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.appointmentTypes.list() });
+      if (slotsEnabled) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
       }
     };
-    const onVisibilityChange = () => onTabFocus();
-    const onWindowFocus = () => onTabFocus();
-    const onPageShow = (event: PageTransitionEvent) => {
-      if (event.persisted) onTabFocus();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("focus", onWindowFocus);
-    window.addEventListener("pageshow", onPageShow);
+    document.addEventListener("visibilitychange", onTabFocus);
+    window.addEventListener("focus", onTabFocus);
+    window.addEventListener("pageshow", onTabFocus);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", onWindowFocus);
-      window.removeEventListener("pageshow", onPageShow);
+      document.removeEventListener("visibilitychange", onTabFocus);
+      window.removeEventListener("focus", onTabFocus);
+      window.removeEventListener("pageshow", onTabFocus);
     };
-  }, [fetchCatalogs]);
+  }, [queryClient, slotsEnabled]);
 
-  // Live doctor catalog when admin creates/deactivates staff
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("booking-doctors-catalog")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "staff" },
-        () => {
-          void fetchCatalogs({ silent: true });
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff" }, () => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+      })
       .subscribe();
 
-    // Safety net: anon realtime cannot receive deactivation UPDATEs because the
-    // row leaves the doctors_public_read RLS policy, so poll to drop inactive doctors.
-    const heartbeat = setInterval(() => void fetchCatalogs({ silent: true }), 5000);
-
     return () => {
-      clearInterval(heartbeat);
       void supabase.removeChannel(channel);
     };
-  }, [fetchCatalogs]);
+  }, [queryClient]);
 
-  // Re-fetch slots live when another patient books, or staff changes
-  // schedule hours / blocks for the selected doctor.
   useEffect(() => {
     if (!state.doctorId || !state.date) return;
 
-    const refetch = () => {
-      refetchSlotsRef.current(state.doctorId, state.date, state.appTypeId);
+    const invalidateSlots = () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.doctors.availability(
+          state.doctorId,
+          state.date,
+          state.appTypeId,
+          duration
+        ),
+      });
     };
 
     const supabase = createClient();
-    // Listen unfiltered on schedule/block tables: admin edits are rare and the
-    // doctor_id filter can silently drop UPDATE/DELETE events. refetch already
-    // re-queries only the selected doctor/date, so this stays correct.
     const channel = supabase
       .channel(`booking-slots-${state.doctorId}-${state.date}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_schedules" }, refetch)
-      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_blocks" }, refetch)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, invalidateSlots)
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_schedules" }, invalidateSlots)
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_blocks" }, invalidateSlots)
       .subscribe();
 
-    // Safety-net heartbeat for silently dropped WAL events
-    const heartbeat = setInterval(refetch, 15000);
+    const heartbeat = setInterval(invalidateSlots, 15000);
 
     return () => {
       clearInterval(heartbeat);
       void supabase.removeChannel(channel);
     };
-  }, [state.doctorId, state.date, state.appTypeId]);
+  }, [state.doctorId, state.date, state.appTypeId, duration, queryClient]);
 
   const goStep = (step: number) => {
     setState((s) => ({ ...s, step }));
@@ -376,7 +333,6 @@ export function AppointmentBooking() {
   const resetFlow = () => {
     setState({ ...INITIAL_STATE, step: 1 });
     setViewMonth(startOfMonth(new Date()));
-    setSlots([]);
     setFieldErrors({});
   };
 
@@ -463,7 +419,14 @@ export function AppointmentBooking() {
       if (!res.ok) {
         if (data.code === "slot_unavailable") {
           toast.error(data.error ?? "That slot was just taken. Please choose another time.");
-          await refetchSlots(state.doctorId, state.date, state.appTypeId);
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.doctors.availability(
+              state.doctorId,
+              state.date,
+              state.appTypeId,
+              duration
+            ),
+          });
           patch({ step: 2, time: "" });
         } else {
           toast.error(data.error ?? "Booking failed");
@@ -472,6 +435,7 @@ export function AppointmentBooking() {
       }
 
       patch({ reference: data.appointmentID, step: 5 });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
     } catch {
       toast.error("Booking failed. Please try again.");
     } finally {
@@ -576,11 +540,7 @@ export function AppointmentBooking() {
           </h2>
 
           {doctorsLoading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-36 rounded-xl" />
-              ))}
-            </div>
+            <DoctorCardsSkeleton count={3} className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" />
           ) : doctors.every((d) => !d.is_active) ? (
             <p className="text-body-sm text-on-surface-variant">
               No doctors available for booking right now.

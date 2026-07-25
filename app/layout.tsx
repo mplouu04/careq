@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Sans, DM_Serif_Display, JetBrains_Mono } from "next/font/google";
+import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -37,8 +38,10 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${dmSerif.variable} ${jetbrainsMono.variable} font-sans antialiased min-h-screen bg-background text-foreground`}
       >
-        {children}
-        <Toaster richColors position="top-center" />
+        <QueryProvider>
+          {children}
+          <Toaster richColors position="top-center" />
+        </QueryProvider>
       </body>
     </html>
   );

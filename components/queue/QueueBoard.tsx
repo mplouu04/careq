@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
+import { queueDataApi } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
+import { QueueBoardSkeleton } from "@/components/careq";
 
 type DisplayConfig = {
   display_name: string;
@@ -47,40 +51,25 @@ function priorityLabel(priority: string | undefined) {
 
 type RealtimeStatus = "connecting" | "connected" | "error";
 
+const DEFAULT_DISPLAY: DisplayConfig = {
+  display_name: "CAREQ",
+  location: "",
+  theme_color: CAREQ_DEFAULT_THEME_COLOR,
+  show_wait_time: true,
+  show_priority: true,
+};
+
 export function QueueBoard({ screenId }: { screenId?: string }) {
   const searchParams = useSearchParams();
   const tvMode = searchParams.get("theme") === "tv";
-  const [rooms, setRooms] = useState<RoomPanel[]>([]);
-  const [waiting, setWaiting] = useState<WaitingItem[]>([]);
-  const [avgServiceTime, setAvgServiceTime] = useState(10);
-  const [display, setDisplay] = useState<DisplayConfig>({
-    display_name: "CAREQ",
-    location: "",
-    theme_color: CAREQ_DEFAULT_THEME_COLOR,
-    show_wait_time: true,
-    show_priority: true,
-  });
+  const queryClient = useQueryClient();
   const [now, setNow] = useState<Date | null>(null);
-  const [loadError, setLoadError] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const qs = screenId ? `?screenId=${encodeURIComponent(screenId)}` : "";
-      const res = await fetch(`/api/queue/public${qs}`);
-      if (!res.ok) {
-        setLoadError(true);
-        return;
-      }
-      const data = await res.json();
-      setLoadError(false);
-      if (data.display) setDisplay(data.display);
-      setRooms(data.rooms ?? []);
-      setWaiting((data.waiting ?? []).slice(0, 5));
-      setAvgServiceTime(data.avg_service_time ?? 10);
-    } catch {
-      setLoadError(true);
-    }
-  }, [screenId]);
+  const { data, isPending, isError, isFetching } = useQuery({
+    queryKey: queryKeys.queue.public(screenId),
+    queryFn: () => queueDataApi.public(screenId),
+    staleTime: 3_000,
+  });
 
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
@@ -93,17 +82,35 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
   );
 
   const { isLive } = useRealtimePoll({
-    fetchFn: load,
+    fetchFn: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.queue.public(screenId),
+      });
+    },
     subscribe: subscribeQueue,
     fallbackIntervalMs: 15000,
   });
 
-  const realtimeStatus: RealtimeStatus = isLive ? "connected" : loadError ? "error" : "connecting";
+  const loadError = isError;
+  const realtimeStatus: RealtimeStatus = isLive
+    ? "connected"
+    : loadError
+      ? "error"
+      : "connecting";
 
   useEffect(() => {
     const clock = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(clock);
   }, []);
+
+  if (isPending && !data) {
+    return <QueueBoardSkeleton />;
+  }
+
+  const display = data?.display ?? DEFAULT_DISPLAY;
+  const rooms = (data?.rooms ?? []) as RoomPanel[];
+  const waiting = ((data?.waiting ?? []) as WaitingItem[]).slice(0, 5);
+  const avgServiceTime = data?.avg_service_time ?? 10;
 
   const timeStr = now
     ? now.toLocaleTimeString("en-PH", {
@@ -123,6 +130,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
         "relative flex flex-col lg:flex-row h-screen overflow-hidden",
         tvMode ? "bg-zinc-950" : "bg-surface"
       )}
+      aria-busy={isFetching}
     >
       {tvMode ? (
         <div
@@ -188,7 +196,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
             <div
               key={room.id}
               className={cn(
-                "current-patient-card text-center flex flex-col justify-center",
+                "current-patient-card text-center flex flex-col justify-center animate-in fade-in duration-300",
                 tvMode ? "py-8 px-6 min-h-[200px]" : "py-6 px-4 min-h-[140px]"
               )}
             >
@@ -203,17 +211,15 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                 {room.name}
               </p>
               {room.current ? (
-                <>
-                  <div
-                    className={cn(
-                      "font-mono-careq font-bold leading-none",
-                      tvMode ? "text-headline-lg" : "text-4xl"
-                    )}
-                    style={{ color: themeColor }}
-                  >
-                    {room.current.queue_number}
-                  </div>
-                </>
+                <div
+                  className={cn(
+                    "font-mono-careq font-bold leading-none",
+                    tvMode ? "text-headline-lg" : "text-4xl"
+                  )}
+                  style={{ color: themeColor }}
+                >
+                  {room.current.queue_number}
+                </div>
               ) : (
                 <p className="text-body-md text-on-surface-variant py-4">
                   {tvMode ? "—" : "No patient in this room"}
@@ -259,7 +265,10 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
               const estWait = q.est_wait_minutes ?? pos * avgServiceTime;
               const pri = priorityLabel(q.priority);
               return (
-                <li key={q.queueId ?? q.id} className="upcoming-item">
+                <li
+                  key={q.queueId ?? q.id}
+                  className="upcoming-item animate-in fade-in duration-300"
+                >
                   <div
                     className={cn(
                       "font-mono-careq font-bold shrink-0",

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,8 @@ import {
   SuccessCard,
 } from "@/components/careq";
 import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
+import { catalogApi } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
 
 type ApptType = { id: string; name: string };
 
@@ -33,6 +36,7 @@ type AppointmentPreview = {
 
 export function CheckinForm() {
   const params = useSearchParams();
+  const queryClient = useQueryClient();
   const urlToken = params.get("verifyToken");
   const verifyToken = urlToken ?? readVerifyToken();
 
@@ -42,7 +46,6 @@ export function CheckinForm() {
     }
   }, [urlToken]);
 
-  const [types, setTypes] = useState<ApptType[]>([]);
   const [apptType, setApptType] = useState("");
   const [reason, setReason] = useState("");
   const [termsAgreed, setTermsAgreed] = useState(false);
@@ -56,6 +59,23 @@ export function CheckinForm() {
   const [successRef, setSuccessRef] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"appointment" | "walk-in">("appointment");
 
+  const typesQuery = useQuery({
+    queryKey: queryKeys.appointmentTypes.list(),
+    queryFn: async () => {
+      const d = await catalogApi.appointmentTypes();
+      return (d.types ?? []) as ApptType[];
+    },
+    staleTime: 30_000,
+  });
+
+  const types = typesQuery.data ?? [];
+
+  useEffect(() => {
+    if (typesQuery.isError) {
+      toast.error("Unable to load visit types.");
+    }
+  }, [typesQuery.isError]);
+
   useEffect(() => {
     const mode = params.get("tab") ?? params.get("mode");
     if (mode === "appointment") setActiveTab("appointment");
@@ -63,35 +83,20 @@ export function CheckinForm() {
     else if (verifyToken) setActiveTab("walk-in");
   }, [params, verifyToken]);
 
-  const fetchTypes = useCallback(async () => {
-    try {
-      const r = await fetch("/api/appointment-types", { cache: "no-store" });
-      if (!r.ok) throw new Error("Failed to load appointment types");
-      const d = await r.json();
-      setTypes(d.types ?? []);
-    } catch {
-      toast.error("Unable to load visit types.");
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchTypes();
-  }, [fetchTypes]);
-
   useEffect(() => {
     const onTabFocus = () => {
       if (document.visibilityState !== "visible") return;
-      void fetchTypes();
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.appointmentTypes.list(),
+      });
     };
-    const onVisibilityChange = () => onTabFocus();
-    const onWindowFocus = () => onTabFocus();
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("focus", onWindowFocus);
+    document.addEventListener("visibilitychange", onTabFocus);
+    window.addEventListener("focus", onTabFocus);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("focus", onWindowFocus);
+      document.removeEventListener("visibilitychange", onTabFocus);
+      window.removeEventListener("focus", onTabFocus);
     };
-  }, [fetchTypes]);
+  }, [queryClient]);
 
   useEffect(() => {
     if (ref.length < 3 || phone.trim().length < 7) {

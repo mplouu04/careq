@@ -1,41 +1,27 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock, Users, CircleDot } from "lucide-react";
-import { StatCard } from "@/components/careq";
-import { Skeleton } from "@/components/ui/skeleton";
+import { StatCard, StatsRowSkeleton } from "@/components/careq";
 import { clinicHoursLabel, isClinicOpenNow } from "@/lib/clinic-hours";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
-
-type PublicStats = {
-  waiting_count: number;
-  avg_service_time: number;
-};
+import { queueDataApi } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
 
 export function ClinicStatusBar({ className }: { className?: string }) {
-  const [stats, setStats] = useState<PublicStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [unavailable, setUnavailable] = useState(false);
-  const [open, setOpen] = useState(true);
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(() => isClinicOpenNow());
 
-  const load = useCallback(async () => {
-    setOpen(isClinicOpenNow());
-    try {
-      const r = await fetch("/api/queue/public");
-      if (!r.ok) throw new Error("Failed to load queue status");
-      const d: { waiting?: unknown[]; avg_service_time?: number } = await r.json();
-      setStats({
-        waiting_count: d.waiting?.length ?? 0,
-        avg_service_time: d.avg_service_time ?? 10,
-      });
-      setUnavailable(false);
-    } catch {
-      setUnavailable(true);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data, isPending, isError } = useQuery({
+    queryKey: queryKeys.queue.public(),
+    queryFn: async () => {
+      setOpen(isClinicOpenNow());
+      return queueDataApi.public();
+    },
+    staleTime: 5_000,
+  });
 
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
@@ -48,22 +34,19 @@ export function ClinicStatusBar({ className }: { className?: string }) {
   );
 
   useRealtimePoll({
-    fetchFn: load,
+    fetchFn: async () => {
+      setOpen(isClinicOpenNow());
+      await queryClient.invalidateQueries({ queryKey: queryKeys.queue.public() });
+    },
     subscribe: subscribeQueue,
     fallbackIntervalMs: 15000,
   });
 
-  if (loading) {
-    return (
-      <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3 ${className ?? ""}`}>
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-24 rounded-xl" />
-      </div>
-    );
+  if (isPending) {
+    return <StatsRowSkeleton className={className} />;
   }
 
-  if (unavailable) {
+  if (isError) {
     return (
       <div
         className={`grid grid-cols-1 sm:grid-cols-3 gap-3 ${className ?? ""}`}
@@ -91,8 +74,8 @@ export function ClinicStatusBar({ className }: { className?: string }) {
     );
   }
 
-  const waiting = stats?.waiting_count ?? 0;
-  const avg = stats?.avg_service_time ?? 10;
+  const waiting = data?.waiting?.length ?? 0;
+  const avg = data?.avg_service_time ?? 10;
   const estWait =
     waiting > 0 ? `~${Math.min(avg * waiting, 120)} min` : open ? `~${avg} min` : "Closed";
 
@@ -100,7 +83,7 @@ export function ClinicStatusBar({ className }: { className?: string }) {
     <div
       className={`grid grid-cols-1 sm:grid-cols-3 gap-3 ${className ?? ""}`}
       aria-live="polite"
-      aria-busy={loading}
+      aria-busy={isPending}
     >
       <StatCard
         label="Est. wait"

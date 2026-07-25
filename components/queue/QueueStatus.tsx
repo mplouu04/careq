@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import {
@@ -9,7 +10,7 @@ import {
   XCircle,
   Megaphone,
 } from "lucide-react";
-import { CareqCard, StatusBadge, CareqButton } from "@/components/careq";
+import { CareqCard, StatusBadge, CareqButton, FormPageSkeleton } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Hourglass } from "lucide-react";
@@ -17,6 +18,8 @@ import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { isCalledLikeStatus } from "@/lib/queue-status";
 import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
+import { queueDataApi } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
 
 type QueueEntry = {
   id: number;
@@ -146,17 +149,29 @@ function fireMissedNotification(queueNumber: string) {
 }
 
 export function QueueStatus({ refNumber }: { refNumber: string }) {
-  const [queue, setQueue] = useState<QueueEntry | null>(null);
-  const [position, setPosition] = useState<number | null>(null);
-  const [estWait, setEstWait] = useState<number | null>(null);
-  const [room, setRoom] = useState("");
-  const [doctor, setDoctor] = useState("");
-  const [notFound, setNotFound] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [rateLimited, setRateLimited] = useState(false);
+  const queryClient = useQueryClient();
   const [alertsEnabled, setAlertsEnabled] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
   const prevPositionRef = useRef<number | null>(null);
+
+  const normalizedRef = useMemo(() => normalizeQueueRef(refNumber), [refNumber]);
+
+  const { data, isPending, isError, refetch } = useQuery({
+    queryKey: queryKeys.queue.byRef(normalizedRef),
+    queryFn: () => queueDataApi.byRef(refNumber),
+    staleTime: 3_000,
+    retry: 1,
+  });
+
+  const queue =
+    data?.kind === "ok" ? (data.queue as QueueEntry | undefined) ?? null : null;
+  const position = data?.kind === "ok" ? data.position : null;
+  const estWait = data?.kind === "ok" ? data.est_wait_minutes : null;
+  const room = data?.kind === "ok" ? data.room : "";
+  const doctor = data?.kind === "ok" ? data.doctor : "";
+  const notFound = data?.kind === "not_found";
+  const rateLimited = data?.kind === "rate_limited";
+  const loadError = isError;
 
   // Only fire notifications when the user has opted in
   useEffect(() => {
@@ -195,51 +210,6 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     setAlertsEnabled(permission === "granted");
   }
 
-  const load = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/queue?ref=${encodeURIComponent(refNumber)}`, {
-        cache: "no-store",
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.status === 404 || (res.ok && !data.success)) {
-        setLoadError(false);
-        setRateLimited(false);
-        setNotFound(true);
-        return;
-      }
-
-      if (res.status === 429) {
-        setLoadError(false);
-        setNotFound(false);
-        setRateLimited(true);
-        return;
-      }
-
-      if (!res.ok || !data.success) {
-        setNotFound(false);
-        setRateLimited(false);
-        setLoadError(true);
-        return;
-      }
-
-      setLoadError(false);
-      setNotFound(false);
-      setRateLimited(false);
-      setQueue(data.queue);
-      setPosition(data.position ?? null);
-      setEstWait(data.est_wait_minutes ?? null);
-      setRoom(data.room ?? "");
-      setDoctor(data.doctor ?? "");
-    } catch {
-      setNotFound(false);
-      setRateLimited(false);
-      setLoadError(true);
-    }
-  }, [refNumber]);
-
-  const normalizedRef = useMemo(() => normalizeQueueRef(refNumber), [refNumber]);
-
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
       const supabase = createClient();
@@ -260,7 +230,11 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   );
 
   const { isLive } = useRealtimePoll({
-    fetchFn: load,
+    fetchFn: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.queue.byRef(normalizedRef),
+      });
+    },
     subscribe: subscribeQueue,
     fallbackIntervalMs: 5000,
     livePollIntervalMs: 0,
@@ -276,7 +250,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
           <p className="text-body-sm text-on-surface-variant mb-4">
             Wait a moment and try again.
           </p>
-          <CareqButton type="button" onClick={load} className="cursor-pointer">
+          <CareqButton type="button" onClick={() => void refetch()} className="cursor-pointer">
             Retry
           </CareqButton>
         </CareqCard>
@@ -291,7 +265,7 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
           <AlertTriangle className="w-10 h-10 text-destructive mx-auto mb-3" />
           <p className="text-headline-sm text-on-surface mb-1">Connection error</p>
           <p className="text-body-sm text-on-surface-variant mb-4">Unable to load status.</p>
-          <CareqButton type="button" onClick={load} className="cursor-pointer">
+          <CareqButton type="button" onClick={() => void refetch()} className="cursor-pointer">
             Retry
           </CareqButton>
         </CareqCard>
@@ -314,13 +288,10 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
     );
   }
 
-  if (!queue) {
+  if (isPending || !queue) {
     return (
       <div className="max-w-md mx-auto">
-        <CareqCard className="p-8 text-center">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-3" />
-          <p className="text-body-sm text-on-surface-variant">Loading…</p>
-        </CareqCard>
+        <FormPageSkeleton />
       </div>
     );
   }

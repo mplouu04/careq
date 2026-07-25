@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { ExternalLink } from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ConfirmDialog } from "@/components/careq";
+import { AdminPanelSkeleton, ConfirmDialog } from "@/components/careq";
 import { ADMIN_TABS } from "@/lib/admin-tokens";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import {
@@ -32,6 +32,8 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getClinicTodayYmd } from "@/lib/datetime";
+import { queryKeys } from "@/lib/query-keys";
+import { adminApi, api, catalogApi, queueApi } from "@/lib/api/client";
 
 type StaffRow = {
   id: string;
@@ -100,19 +102,13 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function AdminPanel() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<AdminTab>("staff");
-  const [staffList, setStaffList] = useState<StaffRow[]>([]);
-  const [types, setTypes] = useState<ApptType[]>([]);
-  const [settings, setSettings] = useState<DisplayScreen[]>([]);
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [apptFilter, setApptFilter] = useState<
     "upcoming" | "no_show" | "cancelled" | "all"
   >("upcoming");
-  const [roomsList, setRoomsList] = useState<RoomRow[]>([]);
-  const [adminDoctors, setAdminDoctors] = useState<DoctorRow[]>([]);
   const [scheduleDoctorId, setScheduleDoctorId] = useState("");
   const [schedules, setSchedules] = useState<ScheduleDay[]>([]);
-  const [initialLoading, setInitialLoading] = useState(true);
 
   const [editStaff, setEditStaff] = useState<StaffRow | null>(null);
   const [editFirstName, setEditFirstName] = useState("");
@@ -124,34 +120,122 @@ export function AdminPanel() {
   const [editTypeDuration, setEditTypeDuration] = useState("");
   const [editTypeDesc, setEditTypeDesc] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const [s, t, set, a, roomsRes, doctorsRes] = await Promise.all([
-        fetch("/api/admin/staff").then((r) => (r.ok ? r.json() : { staff: [] })),
-        fetch("/api/appointment-types?all=1").then((r) => (r.ok ? r.json() : { types: [] })),
-        fetch("/api/admin/settings").then((r) => (r.ok ? r.json() : { screens: [] })),
-        fetch(`/api/appointments?filter=${apptFilter}`).then((r) =>
-          r.ok ? r.json() : { appointments: [] }
-        ),
-        fetch("/api/rooms?all=1").then((r) => (r.ok ? r.json() : { rooms: [] })),
-        fetch("/api/admin/doctors").then((r) => (r.ok ? r.json() : { doctors: [] })),
-      ]);
-      setStaffList(s.staff ?? []);
-      setTypes(t.types ?? []);
-      setSettings(set.screens ?? []);
-      setAppointments(a.appointments ?? []);
-      setRoomsList(roomsRes.rooms ?? []);
-      setAdminDoctors(doctorsRes.doctors ?? []);
-    } catch {
-      toast.error("Failed to load admin data. Please refresh.");
-    } finally {
-      setInitialLoading(false);
-    }
-  }, [apptFilter]);
+  const staffQuery = useQuery({
+    queryKey: queryKeys.admin.staff(),
+    queryFn: async () => {
+      const d = await adminApi.staff();
+      return (d.staff ?? []) as StaffRow[];
+    },
+  });
+
+  const typesQuery = useQuery({
+    queryKey: queryKeys.appointmentTypes.list({ all: true }),
+    queryFn: async () => {
+      const d = await catalogApi.appointmentTypes(true);
+      return (d.types ?? []) as ApptType[];
+    },
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: queryKeys.admin.settings(),
+    queryFn: async () => {
+      const d = await adminApi.settings();
+      return (d.screens ?? []) as DisplayScreen[];
+    },
+  });
+
+  const appointmentsQuery = useQuery({
+    queryKey: queryKeys.admin.appointments(apptFilter),
+    queryFn: async () => {
+      const d = await adminApi.appointments(apptFilter);
+      return (d.appointments ?? []) as Appointment[];
+    },
+  });
+
+  const roomsQuery = useQuery({
+    queryKey: queryKeys.rooms.list({ all: true }),
+    queryFn: async () => {
+      const d = await catalogApi.rooms(true);
+      return (d.rooms ?? []).map((r) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description ?? null,
+        is_active: r.is_active ?? true,
+      })) as RoomRow[];
+    },
+  });
+
+  const doctorsQuery = useQuery({
+    queryKey: queryKeys.admin.doctors(),
+    queryFn: async () => {
+      const d = await adminApi.doctors();
+      return (d.doctors ?? []) as DoctorRow[];
+    },
+  });
+
+  const scheduleQuery = useQuery({
+    queryKey: queryKeys.admin.doctorSchedule(scheduleDoctorId),
+    queryFn: async () => {
+      const d = await adminApi.doctorSchedule(scheduleDoctorId);
+      return (d.schedules ?? []) as ScheduleDay[];
+    },
+    enabled: !!scheduleDoctorId,
+  });
+
+  const staffList = staffQuery.data ?? [];
+  const types = typesQuery.data ?? [];
+  const settings = settingsQuery.data ?? [];
+  const appointments = appointmentsQuery.data ?? [];
+  const roomsList = roomsQuery.data ?? [];
+  const adminDoctors = doctorsQuery.data ?? [];
+
+  const initialLoading =
+    (staffQuery.isPending && !staffQuery.data) ||
+    (typesQuery.isPending && !typesQuery.data) ||
+    (settingsQuery.isPending && !settingsQuery.data) ||
+    (roomsQuery.isPending && !roomsQuery.data) ||
+    (doctorsQuery.isPending && !doctorsQuery.data);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!scheduleDoctorId) {
+      setSchedules([]);
+      return;
+    }
+    if (scheduleQuery.data) {
+      setSchedules(scheduleQuery.data);
+    }
+  }, [scheduleDoctorId, scheduleQuery.data]);
+
+  const loadErrorToasted = useRef(false);
+  useEffect(() => {
+    if (loadErrorToasted.current) return;
+    if (
+      staffQuery.isError ||
+      typesQuery.isError ||
+      settingsQuery.isError ||
+      roomsQuery.isError ||
+      doctorsQuery.isError
+    ) {
+      loadErrorToasted.current = true;
+      toast.error("Failed to load admin data. Please refresh.");
+    }
+  }, [
+    staffQuery.isError,
+    typesQuery.isError,
+    settingsQuery.isError,
+    roomsQuery.isError,
+    doctorsQuery.isError,
+  ]);
+
+  useEffect(() => {
+    if (scheduleQuery.isError) {
+      toast.error(
+        scheduleQuery.error instanceof Error
+          ? scheduleQuery.error.message
+          : "Failed to load schedule"
+      );
+    }
+  }, [scheduleQuery.isError, scheduleQuery.error]);
 
   // Auto-refresh the appointments list when checkins change while the
   // appointments tab is active. Uses a ref so the effect can read the
@@ -167,7 +251,9 @@ export function AdminPanel() {
       .channel("admin-checkins-refresh")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, () => {
         if (activeTabRef.current === "appointments") {
-          load();
+          void queryClient.invalidateQueries({
+            queryKey: [...queryKeys.admin.all, "appointments"],
+          });
         }
       })
       .on(
@@ -188,7 +274,9 @@ export function AdminPanel() {
             }
           }
           if (activeTabRef.current === "appointments") {
-            load();
+            void queryClient.invalidateQueries({
+              queryKey: [...queryKeys.admin.all, "appointments"],
+            });
           }
         }
       )
@@ -197,7 +285,113 @@ export function AdminPanel() {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [queryClient]);
+
+  function flipActive<T extends { id: string; is_active: boolean }>(
+    list: T[] | undefined,
+    id: string
+  ): T[] | undefined {
+    return list?.map((item) =>
+      item.id === id ? { ...item, is_active: !item.is_active } : item
+    );
+  }
+
+  const toggleStaffMutation = useMutation({
+    mutationFn: (id: string) => adminApi.toggleStaff(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.admin.staff() });
+      const previous = queryClient.getQueryData<StaffRow[]>(queryKeys.admin.staff());
+      queryClient.setQueryData(queryKeys.admin.staff(), flipActive(previous, id));
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.admin.staff(), context.previous);
+      }
+      const msg = err instanceof Error ? err.message : "Failed";
+      if (msg.toLowerCase().includes("your own account")) {
+        toast.error("You cannot deactivate your own account. Sign in as another admin.");
+      } else {
+        toast.error(msg);
+      }
+    },
+    onSuccess: (data) => {
+      toast.success(`Staff ${data.is_active ? "activated" : "deactivated"}`);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.staff() });
+    },
+  });
+
+  const toggleTypeMutation = useMutation({
+    mutationFn: (id: string) => adminApi.toggleAppointmentType(id),
+    onMutate: async (id) => {
+      const key = queryKeys.appointmentTypes.list({ all: true });
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<ApptType[]>(key);
+      queryClient.setQueryData(key, flipActive(previous, id));
+      return { previous, key };
+    },
+    onError: (err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+      toast.error(err instanceof Error ? err.message : "Failed");
+    },
+    onSuccess: () => {
+      toast.success("Toggled");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.appointmentTypes.list({ all: true }),
+      });
+    },
+  });
+
+  const toggleDisplayMutation = useMutation({
+    mutationFn: (id: string) => adminApi.toggleDisplay(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.admin.settings() });
+      const previous = queryClient.getQueryData<DisplayScreen[]>(queryKeys.admin.settings());
+      queryClient.setQueryData(queryKeys.admin.settings(), flipActive(previous, id));
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.admin.settings(), context.previous);
+      }
+      toast.error(err instanceof Error ? err.message : "Failed");
+    },
+    onSuccess: () => {
+      toast.success("Toggled");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.settings() });
+    },
+  });
+
+  const toggleRoomMutation = useMutation({
+    mutationFn: (room: RoomRow) => adminApi.toggleRoom(room),
+    onMutate: async (room) => {
+      const key = queryKeys.rooms.list({ all: true });
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<RoomRow[]>(key);
+      queryClient.setQueryData(key, flipActive(previous, room.id));
+      return { previous, key, wasActive: room.is_active };
+    },
+    onError: (err, _room, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(context.key, context.previous);
+      }
+      toast.error(err instanceof Error ? err.message : "Failed to update room");
+    },
+    onSuccess: (_data, _room, context) => {
+      toast.success(context?.wasActive ? "Room deactivated" : "Room activated");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.rooms.list({ all: true }) });
+    },
+  });
 
   async function createStaff(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -207,70 +401,46 @@ export function AdminPanel() {
       toast.error("Password must be at least 8 characters.");
       return;
     }
-    const res = await fetch("/api/admin/staff", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/admin/staff", {
         action: "register",
         email: fd.get("email"),
         password,
         firstName: fd.get("firstName"),
         lastName: fd.get("lastName"),
         role: fd.get("role"),
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Failed to create staff");
-      return;
+      });
+      toast.success("Staff account created");
+      (e.target as HTMLFormElement).reset();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.staff() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.doctors() });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create staff");
     }
-    toast.success("Staff account created");
-    (e.target as HTMLFormElement).reset();
-    load();
   }
 
   async function updateStaff() {
     if (!editStaff) return;
-    const res = await fetch("/api/admin/staff", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/admin/staff", {
         action: "update",
         id: editStaff.id,
         firstName: editFirstName,
         lastName: editLastName,
         email: editEmail,
         role: editRole,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Update failed");
-      return;
+      });
+      toast.success("Staff updated");
+      setEditStaff(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.staff() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.doctors() });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Update failed");
     }
-    toast.success("Staff updated");
-    setEditStaff(null);
-    load();
   }
 
-  async function toggleStaff(id: string) {
-    const res = await fetch("/api/admin/staff", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggle_active", id }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      const msg = String(data.error ?? "Failed");
-      if (msg.toLowerCase().includes("your own account")) {
-        toast.error("You cannot deactivate your own account. Sign in as another admin.");
-      } else {
-        toast.error(msg);
-      }
-      return;
-    }
-    toast.success(`Staff ${data.is_active ? "activated" : "deactivated"}`);
-    load();
+  function toggleStaff(id: string) {
+    toggleStaffMutation.mutate(id);
   }
 
   async function addApptType(e: React.FormEvent<HTMLFormElement>) {
@@ -280,26 +450,25 @@ export function AdminPanel() {
     const duration = Number(fd.get("duration"));
     if (!name) { toast.error("Name is required"); return; }
     if (!duration || duration < 1) { toast.error("Duration must be ≥1"); return; }
-    const res = await fetch("/api/appointment-types", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add", name, duration, description: fd.get("description") }),
-    });
-    const data = await res.json();
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return; }
-    toast.success("Appointment type added");
-    (e.target as HTMLFormElement).reset();
-    load();
+    try {
+      await api.post("/api/appointment-types", {
+        action: "add",
+        name,
+        duration,
+        description: fd.get("description"),
+      });
+      toast.success("Appointment type added");
+      (e.target as HTMLFormElement).reset();
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.appointmentTypes.list({ all: true }),
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   }
 
-  async function toggleType(id: string) {
-    await fetch("/api/appointment-types", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggle", id }),
-    });
-    toast.success("Toggled");
-    load();
+  function toggleType(id: string) {
+    toggleTypeMutation.mutate(id);
   }
 
   async function saveEditType() {
@@ -307,22 +476,22 @@ export function AdminPanel() {
     const duration = Number(editTypeDuration);
     if (!editTypeName.trim()) { toast.error("Name required"); return; }
     if (!duration || duration < 1) { toast.error("Duration must be ≥1"); return; }
-    const res = await fetch("/api/appointment-types", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/appointment-types", {
         action: "update",
         id: editType.id,
         name: editTypeName,
         duration,
         description: editTypeDesc || null,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return; }
-    toast.success("Updated");
-    setEditType(null);
-    load();
+      });
+      toast.success("Updated");
+      setEditType(null);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.appointmentTypes.list({ all: true }),
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   }
 
   async function addDisplay(e: React.FormEvent<HTMLFormElement>) {
@@ -334,44 +503,39 @@ export function AdminPanel() {
       toast.error("Display name and location are required");
       return;
     }
-    await fetch("/api/admin/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/admin/settings", {
         action: "add",
         display_name,
         location,
         theme_color: fd.get("themeColor") || CAREQ_DEFAULT_THEME_COLOR,
-      }),
-    });
-    toast.success("Display screen added");
-    (e.target as HTMLFormElement).reset();
-    load();
+      });
+      toast.success("Display screen added");
+      (e.target as HTMLFormElement).reset();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.settings() });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   }
 
-  async function toggleDisplay(id: string) {
-    await fetch("/api/admin/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggle", id }),
-    });
-    toast.success("Toggled");
-    load();
+  function toggleDisplay(id: string) {
+    toggleDisplayMutation.mutate(id);
   }
 
   async function updateAppt(checkinId: string, action: string) {
-    const res = await fetch("/api/appointments", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "staff_update", checkinId, status: action }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Update failed");
-      return;
+    try {
+      await api.post("/api/appointments", {
+        action: "staff_update",
+        checkinId,
+        status: action,
+      });
+      toast.success("Appointment updated");
+      void queryClient.invalidateQueries({
+        queryKey: [...queryKeys.admin.all, "appointments"],
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Update failed");
     }
-    toast.success("Appointment updated");
-    load();
   }
 
   async function addRoom(e: React.FormEvent<HTMLFormElement>) {
@@ -382,58 +546,26 @@ export function AdminPanel() {
       toast.error("Room name is required");
       return;
     }
-    const res = await fetch("/api/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/rooms", {
         name,
         description: String(fd.get("description") ?? "") || null,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Failed to add room");
-      return;
+      });
+      toast.success("Room added");
+      (e.target as HTMLFormElement).reset();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.rooms.list({ all: true }) });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to add room");
     }
-    toast.success("Room added");
-    (e.target as HTMLFormElement).reset();
-    load();
   }
 
-  async function toggleRoom(room: RoomRow) {
-    const res = await fetch("/api/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "update",
-        id: room.id,
-        name: room.name,
-        description: room.description,
-        is_active: !room.is_active,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Failed to update room");
-      return;
-    }
-    toast.success(room.is_active ? "Room deactivated" : "Room activated");
-    load();
+  function toggleRoom(room: RoomRow) {
+    toggleRoomMutation.mutate(room);
   }
 
-  async function loadDoctorSchedule(doctorId: string) {
+  function loadDoctorSchedule(doctorId: string) {
     setScheduleDoctorId(doctorId);
-    if (!doctorId) {
-      setSchedules([]);
-      return;
-    }
-    const res = await fetch(`/api/admin/doctors?doctorId=${doctorId}`);
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Failed to load schedule");
-      return;
-    }
-    setSchedules(data.schedules ?? []);
+    if (!doctorId) setSchedules([]);
   }
 
   async function saveDoctorSchedule() {
@@ -441,10 +573,8 @@ export function AdminPanel() {
       toast.error("Select a doctor first");
       return;
     }
-    const res = await fetch("/api/admin/doctors", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await api.post("/api/admin/doctors", {
         type: "schedule",
         doctorId: scheduleDoctorId,
         schedules: schedules.map((s) => ({
@@ -453,40 +583,30 @@ export function AdminPanel() {
           start_time: s.start_time,
           end_time: s.end_time,
         })),
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      toast.error(data.error ?? "Failed to save schedule");
-      return;
+      });
+      toast.success("Clinic hours saved");
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.admin.doctorSchedule(scheduleDoctorId),
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save schedule");
     }
-    toast.success("Clinic hours saved");
   }
 
   async function purgeHistory() {
     if (!confirm("Purge old completed/cancelled queue records? This cannot be undone.")) return;
-    const res = await fetch("/api/queue/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "purge_history" }),
-    });
-    const data = await res.json();
-    if (!res.ok) { toast.error(data.error ?? "Failed"); return; }
-    toast.success(`Purged: ${data.queue_deleted} queue rows, ${data.checkins_deleted} orphan checkins`);
+    try {
+      const data = await queueApi.purgeHistory();
+      toast.success(
+        `Purged: ${data.queue_deleted} queue rows, ${data.checkins_deleted} orphan checkins`
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
   }
 
   if (initialLoading) {
-    return (
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_1fr]">
-        <Skeleton className="h-64 rounded-xl" />
-        <div className="space-y-4">
-          <Skeleton className="h-10 w-48" />
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-lg" />
-          ))}
-        </div>
-      </div>
-    );
+    return <AdminPanelSkeleton />;
   }
 
   return (

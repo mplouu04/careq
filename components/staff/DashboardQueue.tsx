@@ -1,8 +1,10 @@
 "use client";
 
-import { queueApi } from "@/lib/api/client";
+import { catalogApi, queueApi, queueDataApi, type StaffQueuePayload } from "@/lib/api/client";
+import { queryKeys } from "@/lib/query-keys";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   RefreshCw,
@@ -29,6 +31,7 @@ import {
   CareqCard,
   CareqButton,
   ConfirmDialog,
+  DashboardSkeleton,
   EmptyState,
   FormLabel,
   StatCard,
@@ -88,6 +91,14 @@ type ColumnConfig = {
   listClass?: string;
 };
 
+type ParsedQueue = {
+  waiting: QueueWaiting[];
+  inProgress: QueueInProgress[];
+  completed: QueueCompleted[];
+  noShow: QueueCompleted[];
+  avg: number;
+};
+
 const QUEUE_COLUMNS: ColumnConfig[] = [
   {
     id: "waiting",
@@ -121,97 +132,180 @@ const QUEUE_COLUMNS: ColumnConfig[] = [
   },
 ];
 
+function parseStaffQueue(data: StaffQueuePayload): ParsedQueue {
+  const appointment = data.appointment;
+  return {
+    waiting: (appointment?.waiting ?? []) as QueueWaiting[],
+    inProgress: (appointment?.inProgress ?? []) as QueueInProgress[],
+    completed: (appointment?.completed ?? []) as QueueCompleted[],
+    noShow: (appointment?.noShow ?? []) as QueueCompleted[],
+    avg: appointment?.avg_service_time ?? 10,
+  };
+}
+
+function emptyQueue(): ParsedQueue {
+  return { waiting: [], inProgress: [], completed: [], noShow: [], avg: 10 };
+}
+
+type QueueAction =
+  | { type: "call_next"; queueId: number; doctorId: string; roomId: string; doctorLabel: string; roomLabel: string }
+  | { type: "skip"; queueId: number }
+  | { type: "mark_done"; queueId: number }
+  | { type: "mark_no_show"; queueId: number }
+  | { type: "recall"; queueId: number; doctorId: string; roomId: string; doctorLabel: string; roomLabel: string };
+
+function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
+  const next = {
+    waiting: [...prev.waiting],
+    inProgress: [...prev.inProgress],
+    completed: [...prev.completed],
+    noShow: [...prev.noShow],
+    avg: prev.avg,
+  };
+
+  if (action.type === "call_next" || action.type === "recall") {
+    const idx = next.waiting.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    const [item] = next.waiting.splice(idx, 1);
+    next.inProgress = [
+      {
+        id: item.id,
+        queueId: item.queueId,
+        queue_number: item.queue_number,
+        name: item.name,
+        time: item.time,
+        doctor: action.doctorLabel,
+        room: action.roomLabel,
+      },
+      ...next.inProgress,
+    ];
+    return next;
+  }
+
+  if (action.type === "skip") {
+    const idx = next.inProgress.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    const [item] = next.inProgress.splice(idx, 1);
+    next.waiting = [
+      {
+        id: item.id,
+        queueId: item.queueId,
+        queue_number: item.queue_number,
+        name: item.name,
+        time: item.time,
+        reason: "",
+        position: next.waiting.length + 1,
+        est_wait_minutes: next.avg,
+        skip_count: 1,
+      },
+      ...next.waiting,
+    ];
+    return next;
+  }
+
+  if (action.type === "mark_done") {
+    const idx = next.inProgress.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    const [item] = next.inProgress.splice(idx, 1);
+    next.completed = [
+      {
+        id: item.id,
+        queueId: item.queueId,
+        queue_number: item.queue_number,
+        name: item.name,
+        time: item.time,
+      },
+      ...next.completed,
+    ];
+    return next;
+  }
+
+  if (action.type === "mark_no_show") {
+    const idx = next.inProgress.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    const [item] = next.inProgress.splice(idx, 1);
+    next.noShow = [
+      {
+        id: item.id,
+        queueId: item.queueId,
+        queue_number: item.queue_number,
+        name: item.name,
+        time: item.time,
+      },
+      ...next.noShow,
+    ];
+    return next;
+  }
+
+  return prev;
+}
+
 export function DashboardQueue({ staff }: { staff: StaffProfile }) {
-  const [waiting, setWaiting] = useState<QueueWaiting[]>([]);
-  const [inProgress, setInProgress] = useState<QueueInProgress[]>([]);
-  const [completed, setCompleted] = useState<QueueCompleted[]>([]);
-  const [noShow, setNoShow] = useState<QueueCompleted[]>([]);
-  const [, setAvgServiceTime] = useState(10);
-  const [doctors, setDoctors] = useState<Doctor[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
+  const queryClient = useQueryClient();
   const [doctorId, setDoctorId] = useState("");
   const [roomId, setRoomId] = useState("");
-  const [stats, setStats] = useState({ served: 0, waiting: 0, avg: 10 });
-  const [history, setHistory] = useState<{ date: string; served: number }[]>([]);
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
   const [today, setToday] = useState("");
   const [queueTab, setQueueTab] = useState<ColumnId>("waiting");
-  const queueLoadedRef = useRef(false);
-  const statsLoadedRef = useRef(false);
+  const lastAutoCompleteRef = useRef(0);
+  const AUTO_COMPLETE_MIN_INTERVAL_MS = 120_000;
+
+  const queueQuery = useQuery({
+    queryKey: queryKeys.queue.staff(),
+    queryFn: async () => parseStaffQueue(await queueDataApi.staff()),
+    staleTime: 2_000,
+  });
+
+  const analyticsQuery = useQuery({
+    queryKey: queryKeys.queue.analytics(),
+    queryFn: () => queueApi.analytics(),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+
+  const doctorsQuery = useQuery({
+    queryKey: queryKeys.doctors.list(),
+    queryFn: async () => {
+      const d = await catalogApi.doctors();
+      return (d.doctors ?? []) as Doctor[];
+    },
+    staleTime: 30_000,
+  });
+
+  const roomsQuery = useQuery({
+    queryKey: queryKeys.rooms.list(),
+    queryFn: async () => {
+      const d = await catalogApi.rooms();
+      return (d.rooms ?? []) as Room[];
+    },
+    staleTime: 30_000,
+  });
+
+  const queue = queueQuery.data ?? emptyQueue();
+  const waiting = queue.waiting;
+  const inProgress = queue.inProgress;
+  const completed = queue.completed;
+  const noShow = queue.noShow;
+  const doctors = doctorsQuery.data ?? [];
+  const rooms = roomsQuery.data ?? [];
+  const history = analyticsQuery.data?.history ?? [];
+  const stats = {
+    served: analyticsQuery.data?.served_today ?? completed.length,
+    waiting: analyticsQuery.data?.waiting_count ?? waiting.length,
+    avg: analyticsQuery.data?.avg_service_time ?? queue.avg,
+  };
 
   const doctorItems = useMemo(() => doctorSelectItems(doctors), [doctors]);
   const roomItems = useMemo(() => roomSelectItems(rooms), [rooms]);
 
-  const lastAutoCompleteRef = useRef(0);
-  const AUTO_COMPLETE_MIN_INTERVAL_MS = 120_000;
-
-  const loadQueue = useCallback(async () => {
-    try {
-      const res = await fetch("/api/queue");
-      if (!res.ok) {
-        if (!queueLoadedRef.current) {
-          toast.error("Unable to load queue. Please refresh the page.");
-        }
-        return;
-      }
-      const data = await res.json();
-      if (data.appointment) {
-        const waitingList = data.appointment.waiting ?? [];
-        const completedList = data.appointment.completed ?? [];
-        const avg = data.appointment.avg_service_time ?? 10;
-        setWaiting(waitingList);
-        setInProgress(data.appointment.inProgress ?? []);
-        setCompleted(completedList);
-        setNoShow(data.appointment.noShow ?? []);
-        setAvgServiceTime(avg);
-        setStats({
-          served: completedList.length,
-          waiting: waitingList.length,
-          avg,
-        });
-      }
-      queueLoadedRef.current = true;
-    } catch {
-      if (!queueLoadedRef.current) {
-        toast.error("Unable to load queue. Please check your connection.");
-      }
-    }
-  }, []);
-
-  const loadStats = useCallback(async () => {
-    try {
-      const data = await queueApi.analytics();
-      setStats({
-        served: data.served_today ?? 0,
-        waiting: data.waiting_count ?? 0,
-        avg: data.avg_service_time ?? 10,
-      });
-      setHistory(data.history ?? []);
-      statsLoadedRef.current = true;
-    } catch {
-      if (!statsLoadedRef.current) {
-        toast.error("Unable to load queue statistics.");
-      }
-    }
-  }, []);
-
-  const maybeAutoComplete = useCallback(() => {
+  const maybeAutoComplete = () => {
     const now = Date.now();
     if (now - lastAutoCompleteRef.current < AUTO_COMPLETE_MIN_INTERVAL_MS) return;
     lastAutoCompleteRef.current = now;
-    fetch("/api/queue/public", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ auto: true }),
-    }).catch(() => {});
-  }, []);
-
-  const refreshDashboard = useCallback(async () => {
-    maybeAutoComplete();
-    await loadQueue();
-  }, [loadQueue, maybeAutoComplete]);
+    void queueDataApi.autoComplete();
+  };
 
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
@@ -224,21 +318,14 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   );
 
   const { isLive } = useRealtimePoll({
-    fetchFn: refreshDashboard,
+    fetchFn: async () => {
+      maybeAutoComplete();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.queue.staff() });
+    },
     subscribe: subscribeQueue,
     fallbackIntervalMs: 5000,
   });
 
-  // Analytics (history chart) on a slower cadence — live counts come from loadQueue
-  useEffect(() => {
-    void loadStats();
-    const id = setInterval(() => {
-      void loadStats();
-    }, 60_000);
-    return () => clearInterval(id);
-  }, [loadStats]);
-
-  // Second channel: alert staff when a walk-in patient checks in (type_id = 2)
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
@@ -260,16 +347,6 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     };
   }, []);
 
-  const loadDoctors = useCallback(() => {
-    fetch("/api/doctors", { cache: "no-store" })
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load doctors");
-        return r.json();
-      })
-      .then((d) => setDoctors(d.doctors ?? []))
-      .catch(() => toast.error("Unable to load doctors."));
-  }, []);
-
   useEffect(() => {
     setToday(
       new Date().toLocaleDateString("en-PH", {
@@ -279,34 +356,21 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         day: "numeric",
       })
     );
-    loadDoctors();
-    fetch("/api/rooms")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load rooms");
-        return r.json();
-      })
-      .then((d) => setRooms(d.rooms ?? []))
-      .catch(() => toast.error("Unable to load rooms."));
-  }, [loadDoctors]);
+  }, []);
 
-  // Keep doctor dropdown in sync when admin creates/deactivates staff
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel("dashboard-doctors-catalog")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "staff" },
-        () => {
-          loadDoctors();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "staff" }, () => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+      })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [loadDoctors]);
+  }, [queryClient]);
 
   useEffect(() => {
     if (!doctors.length) return;
@@ -323,7 +387,55 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     }
   }, [doctors, staff.id, staff.role]);
 
-  async function performAction(
+  const actionMutation = useMutation({
+    mutationFn: async (action: QueueAction) => {
+      switch (action.type) {
+        case "call_next":
+          return queueApi.call(action.queueId, action.doctorId, action.roomId);
+        case "skip":
+          return queueApi.skip(action.queueId);
+        case "mark_done":
+          return queueApi.done(action.queueId);
+        case "mark_no_show":
+          return queueApi.noShow(action.queueId);
+        case "recall":
+          return queueApi.recall(action.queueId, action.doctorId, action.roomId);
+      }
+    },
+    onMutate: async (action) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.queue.staff() });
+      const previous = queryClient.getQueryData<ParsedQueue>(queryKeys.queue.staff());
+      if (previous) {
+        queryClient.setQueryData(queryKeys.queue.staff(), applyOptimistic(previous, action));
+      }
+      return { previous };
+    },
+    onError: (err, _action, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.queue.staff(), context.previous);
+      }
+      toast.error(err instanceof Error ? err.message : "Action failed");
+    },
+    onSuccess: (data, action) => {
+      toast.success(
+        action.type === "call_next"
+          ? "Patient called!"
+          : action.type === "mark_done"
+            ? "Marked as done"
+            : action.type === "mark_no_show"
+              ? (data as { message?: string }).message ?? "Marked as no-show"
+              : action.type === "skip"
+                ? "Patient skipped"
+                : "Updated"
+      );
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.queue.staff() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.queue.analytics() });
+    },
+  });
+
+  function performAction(
     name: string,
     queueId: number,
     overrideDoctorId?: string,
@@ -331,43 +443,47 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   ) {
     const useDoctorId = overrideDoctorId ?? doctorId ?? doctors[0]?.id;
     const useRoomId = overrideRoomId ?? roomId ?? rooms[0]?.id;
-    try {
-      let data: { success: boolean; message?: string };
-      switch (name) {
-        case "call_next":
-          data = await queueApi.call(queueId, useDoctorId!, useRoomId!);
-          break;
-        case "skip":
-          data = await queueApi.skip(queueId);
-          break;
-        case "mark_done":
-          data = await queueApi.done(queueId);
-          break;
-        case "mark_no_show":
-          data = await queueApi.noShow(queueId);
-          break;
-        case "recall":
-          data = await queueApi.recall(queueId, useDoctorId!, useRoomId!);
-          break;
-        default:
-          throw new Error("Unknown action");
-      }
-      toast.success(
-        name === "call_next"
-          ? "Patient called!"
-          : name === "mark_done"
-            ? "Marked as done"
-            : name === "mark_no_show"
-              ? data.message ?? "Marked as no-show"
-              : name === "skip"
-                ? "Patient skipped"
-                : "Updated"
-      );
-      loadQueue();
-      loadStats();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Action failed");
+    const matchedDoctor = doctors.find((d) => d.id === useDoctorId);
+    const matchedRoom = rooms.find((r) => r.id === useRoomId);
+    const dLabel = matchedDoctor ? doctorLabel(matchedDoctor) : "Doctor";
+    const rLabel = matchedRoom ? roomLabel(matchedRoom) : "Room";
+
+    let action: QueueAction;
+    switch (name) {
+      case "call_next":
+        action = {
+          type: "call_next",
+          queueId,
+          doctorId: useDoctorId!,
+          roomId: useRoomId!,
+          doctorLabel: dLabel,
+          roomLabel: rLabel,
+        };
+        break;
+      case "skip":
+        action = { type: "skip", queueId };
+        break;
+      case "mark_done":
+        action = { type: "mark_done", queueId };
+        break;
+      case "mark_no_show":
+        action = { type: "mark_no_show", queueId };
+        break;
+      case "recall":
+        action = {
+          type: "recall",
+          queueId,
+          doctorId: useDoctorId!,
+          roomId: useRoomId!,
+          doctorLabel: dLabel,
+          roomLabel: rLabel,
+        };
+        break;
+      default:
+        toast.error("Unknown action");
+        return;
     }
+    actionMutation.mutate(action);
   }
 
   async function resetDaily() {
@@ -375,11 +491,28 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     try {
       const data = await queueApi.resetDaily();
       toast.success(`Queue reset. ${data.cancelled} entries cancelled.`);
-      loadQueue();
-      loadStats();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.queue.staff() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.queue.analytics() });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Reset failed");
     }
+  }
+
+  if (queueQuery.isPending && !queueQuery.data) {
+    return <DashboardSkeleton />;
+  }
+
+  if (queueQuery.isError && !queueQuery.data) {
+    return (
+      <EmptyState
+        icon={AlertCircle}
+        title="Unable to load queue"
+        description="Please refresh the page or try again."
+        action={
+          <CareqButton onClick={() => void queueQuery.refetch()}>Retry</CareqButton>
+        }
+      />
+    );
   }
 
   const nextWaiting = waiting[0];
@@ -430,21 +563,30 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         ) : null;
       case "in_progress":
         return inProgress.length === 0 ? (
-          <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-            No patients in progress
-          </p>
+          <EmptyState
+            icon={Activity}
+            title="No patients in progress"
+            description="Call the next patient when ready."
+            className="border-0 bg-transparent py-8"
+          />
         ) : null;
       case "completed":
         return completed.length === 0 ? (
-          <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-            No completions yet today
-          </p>
+          <EmptyState
+            icon={CheckCircle2}
+            title="No completions yet"
+            description="Finished visits will show up here."
+            className="border-0 bg-transparent py-8"
+          />
         ) : null;
       case "no_show":
         return noShow.length === 0 ? (
-          <p className="px-4 py-6 text-body-sm text-on-surface-variant text-center">
-            No no-shows today
-          </p>
+          <EmptyState
+            icon={UserX}
+            title="No no-shows today"
+            description="Missed visits will appear here."
+            className="border-0 bg-transparent py-8"
+          />
         ) : null;
     }
   }
@@ -502,7 +644,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   }
 
   return (
-    <div>
+    <div aria-busy={queueQuery.isFetching}>
       <div className="mb-4">
         <h2 className="text-headline-md text-on-surface">Today&apos;s queue</h2>
         <p className="text-body-sm text-on-surface-variant">{today}</p>
@@ -702,7 +844,7 @@ function WaitingRow({
   onRecall: () => void;
 }) {
   return (
-    <li className="px-3 py-2 max-h-[72px]">
+    <li className="px-3 py-2 max-h-[72px] animate-in fade-in duration-200">
       <div className="flex items-center gap-2 min-h-[44px]">
         <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
           {q.queue_number ?? q.id}
@@ -740,7 +882,7 @@ function InProgressRow({
 }) {
   const location = `${q.doctor} · ${q.room}`;
   return (
-    <li className="px-3 py-2">
+    <li className="px-3 py-2 animate-in fade-in duration-200">
       <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
         <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
           {q.queue_number ?? q.id}
@@ -792,7 +934,7 @@ function QueueListRow({
   highlightId?: boolean;
 }) {
   return (
-    <li className="px-3 py-2 flex items-center justify-between gap-2 min-h-[44px]">
+    <li className="px-3 py-2 flex items-center justify-between gap-2 min-h-[44px] animate-in fade-in duration-200">
       <span
         className={cn(
           "font-mono-careq text-body-sm truncate shrink-0",

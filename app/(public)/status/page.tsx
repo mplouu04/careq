@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
-import { CareqPage, CareqCard, CareqButton, PageHeader } from "@/components/careq";
+import { CareqPage, CareqCard, CareqButton, PageHeader, FormPageSkeleton } from "@/components/careq";
 import { FormLabel, FormInput } from "@/components/careq";
 
 function StatusLookupInner() {
@@ -71,7 +71,7 @@ export default function StatusLookupPage() {
     <Suspense
       fallback={
         <CareqPage narrow>
-          <p className="text-center text-muted-foreground py-10">Loading...</p>
+          <FormPageSkeleton />
         </CareqPage>
       }
     >

@@ -19,3 +19,13 @@ export {
   CareqCardHeader,
   formInputClass,
 } from "./form-primitives";
+export {
+  StatsRowSkeleton,
+  QueueColumnsSkeleton,
+  DashboardSkeleton,
+  AdminPanelSkeleton,
+  DoctorCardsSkeleton,
+  AppointmentListSkeleton,
+  QueueBoardSkeleton,
+  FormPageSkeleton,
+} from "./skeletons";
