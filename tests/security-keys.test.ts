@@ -77,4 +77,12 @@ describe("Supabase service-role key guardrails", () => {
     expect(src).toMatch(/^SUPABASE_SERVICE_ROLE_KEY=/m);
     expect(src).not.toMatch(/NEXT_PUBLIC.*SERVICE_ROLE/);
   });
+
+  it("admin client forces fetch cache: no-store (Next.js Data Cache footgun)", () => {
+    const adminPath = path.join(ROOT, "lib/supabase/admin.ts");
+    const src = fs.readFileSync(adminPath, "utf8");
+
+    expect(src).toMatch(/global:\s*\{/);
+    expect(src).toMatch(/cache:\s*["']no-store["']/);
+  });
 });
