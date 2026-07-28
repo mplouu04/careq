@@ -103,7 +103,7 @@ test.describe("doctor activation propagates to /appointments without reload", ()
     await expect(santos).toBeEnabled();
   });
 
-  test("focus refetch surfaces a server-side reactivate", async ({ page }) => {
+  test("visibilitychange surfaces a server-side reactivate", async ({ page }) => {
     const state: MutableState = { doctors: [...DOCTORS_ONE_INACTIVE] };
     await mockCatalog(page, state);
 
@@ -114,10 +114,22 @@ test.describe("doctor activation propagates to /appointments without reload", ()
 
     state.doctors = [...DOCTORS_ACTIVE];
 
-    // React Query's `refetchOnWindowFocus: true` on the doctors query means
-    // a window focus event should trigger a refetch. Playwright's `page.focus`
-    // on the body approximates that from the browser's perspective.
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    // Same trigger as the deactivate case: the booking hook's own
+    // visibilitychange handler invalidates the doctors query. TanStack Query
+    // v5's focus manager only subscribes to document.visibilitychange (not a
+    // synthetic window `focus` event), so use the reliable path here too.
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
 
     await expect(cruz).toBeEnabled({ timeout: 10_000 });
   });
