@@ -105,6 +105,19 @@ export async function isVerificationLockedOut(
 export async function recordVerificationFailure(ip: string): Promise<void> {
   try {
     const supabase = createAdminClient();
+    const { error } = await supabase.rpc("record_verification_failure", {
+      p_ip: ip,
+      p_max_failures: PATIENT_VERIFY_LOCKOUT.maxFailures,
+    });
+
+    if (!error) return;
+
+    // Fallback when RPC is not yet migrated: non-atomic read-then-write
+    logWarn("[rate-limit] record_verification_failure RPC unavailable — using fallback", {
+      ip,
+      error: error.message,
+    });
+
     const { data: existing, error: selectError } = await supabase
       .from("rate_limits")
       .select("id, request_count")

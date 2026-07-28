@@ -4,29 +4,25 @@ import { parseJsonBody } from "@/lib/api/parse-body";
 import { getClientIp } from "@/lib/rate-limit";
 import { QueueCallBodySchema } from "@/lib/schemas/admin";
 import { callNextPatient } from "@/lib/services/queue.service";
+import { jsonServiceResult, parseQueueIdParam } from "@/lib/api/queue-commands";
 
 export const dynamic = "force-dynamic";
 
 export const POST = withStaffAuth(async (request: Request, context?: { params?: Record<string, string> }) => {
-  const queueId = parseInt(context?.params?.id ?? "", 10);
-  if (Number.isNaN(queueId) || queueId <= 0) {
-    return NextResponse.json({ error: "Invalid queue id" }, { status: 400 });
-  }
+  const parsedId = parseQueueIdParam(context?.params);
+  if ("error" in parsedId) return parsedId.error;
 
   const parsed = await parseJsonBody(request, QueueCallBodySchema);
   if ("error" in parsed) return parsed.error;
 
   const staffSession = (request as Request & { staffSession?: { userId: string } }).staffSession!;
   const result = await callNextPatient({
-    queueId,
+    queueId: parsedId.queueId,
     doctorId: parsed.data.doctorId,
     roomNumber: parsed.data.roomNumber,
     userId: staffSession.userId,
     ip: getClientIp(request),
   });
 
-  if ("error" in result) {
-    return NextResponse.json({ error: result.error }, { status: result.status });
-  }
-  return NextResponse.json({ success: true });
+  return jsonServiceResult(result);
 });

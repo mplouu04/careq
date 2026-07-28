@@ -15,13 +15,16 @@ async function getQueueStatus(queueId: number): Promise<string | null> {
   return data?.status ?? null;
 }
 
-export async function callNextPatient(params: {
-  queueId: number;
-  doctorId: string;
-  roomNumber: string | number;
-  userId: string;
-  ip: string;
-}) {
+async function callOrRecallPatient(
+  params: {
+    queueId: number;
+    doctorId: string;
+    roomNumber: string | number;
+    userId: string;
+    ip: string;
+  },
+  auditAction: "queue_call" | "queue_recall"
+) {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("queue")
@@ -47,12 +50,15 @@ export async function callNextPatient(params: {
         status: 409 as const,
       };
     }
-    return { error: "Failed to call patient", status: 500 as const };
+    return {
+      error: auditAction === "queue_call" ? "Failed to call patient" : "Failed to recall",
+      status: 500 as const,
+    };
   }
 
   void logAudit({
     userId: params.userId,
-    action: "queue_call",
+    action: auditAction,
     tableName: "queue",
     recordId: params.queueId,
     ipAddress: params.ip,
@@ -61,6 +67,16 @@ export async function callNextPatient(params: {
   void notifyPatientCalled(params.queueId);
 
   return { success: true as const };
+}
+
+export async function callNextPatient(params: {
+  queueId: number;
+  doctorId: string;
+  roomNumber: string | number;
+  userId: string;
+  ip: string;
+}) {
+  return callOrRecallPatient(params, "queue_call");
 }
 
 export async function skipPatient(params: {
@@ -114,45 +130,7 @@ export async function recallPatient(params: {
   userId: string;
   ip: string;
 }) {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("queue")
-    .update({
-      status: "in_progress",
-      called_by: params.doctorId,
-      room_id: params.roomNumber,
-      called_at: new Date().toISOString(),
-    })
-    .eq("id", params.queueId)
-    .eq("status", "waiting")
-    .select("id")
-    .maybeSingle();
-
-  if (error || !data) {
-    const currentStatus = await getQueueStatus(params.queueId);
-    if (isCalledLikeStatus(currentStatus)) {
-      return { error: "Already called", status: 409 as const };
-    }
-    if (currentStatus && currentStatus !== "waiting") {
-      return {
-        error: `Queue entry is already ${String(currentStatus).replace("_", " ")}`,
-        status: 409 as const,
-      };
-    }
-    return { error: "Failed to recall", status: 500 as const };
-  }
-
-  void logAudit({
-    userId: params.userId,
-    action: "queue_recall",
-    tableName: "queue",
-    recordId: params.queueId,
-    ipAddress: params.ip,
-  });
-
-  void notifyPatientCalled(params.queueId);
-
-  return { success: true as const };
+  return callOrRecallPatient(params, "queue_recall");
 }
 
 export async function markNoShow(params: {
@@ -178,7 +156,7 @@ export async function markNoShow(params: {
     };
   }
 
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("queue")
     .update({
       status: "no_show",
@@ -186,17 +164,28 @@ export async function markNoShow(params: {
       room_id: null,
       called_at: null,
     })
-    .eq("id", params.queueId);
+    .eq("id", params.queueId)
+    .in("status", ["waiting", "in_progress"])
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     return { error: "Failed to mark no-show", status: 500 as const };
+  }
+
+  if (!updated) {
+    return {
+      error: "Only waiting or in-progress patients can be marked no-show",
+      status: 409 as const,
+    };
   }
 
   if (row.checkin_id) {
     await supabase
       .from("checkins")
       .update({ status: "no_show" })
-      .eq("checkin_id", row.checkin_id);
+      .eq("checkin_id", row.checkin_id)
+      .not("status", "in", '("cancelled","completed","no_show")');
   }
 
   void logAudit({
@@ -229,7 +218,7 @@ export async function markDone(params: {
     .maybeSingle();
 
   if (!row) {
-    return { error: "Failed to mark done", status: 500 as const };
+    return { error: "Queue entry is not in progress", status: 409 as const };
   }
 
   const { error } = await supabase
@@ -249,7 +238,8 @@ export async function markDone(params: {
     await supabase
       .from("checkins")
       .update({ status: "completed" })
-      .eq("checkin_id", row.checkin_id);
+      .eq("checkin_id", row.checkin_id)
+      .not("status", "in", '("cancelled","completed","no_show")');
   }
 
   void logAudit({

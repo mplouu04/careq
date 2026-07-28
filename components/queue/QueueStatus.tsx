@@ -212,21 +212,24 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
 
   const subscribeQueue = useMemo(
     () => (onChange: () => void) => {
+      const filterNumber = queue?.queue_number
+        ? normalizeQueueRef(queue.queue_number)
+        : normalizedRef;
       const supabase = createClient();
       return supabase
-        .channel(`queue-status-${normalizedRef}`)
+        .channel(`queue-status-${filterNumber}`)
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
             table: "queue",
-            filter: `queue_number=eq.${normalizedRef}`,
+            filter: `queue_number=eq.${filterNumber}`,
           },
           onChange
         );
     },
-    [normalizedRef]
+    [normalizedRef, queue?.queue_number]
   );
 
   const { isLive } = useRealtimePoll({

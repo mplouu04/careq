@@ -36,7 +36,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
     );
   } else if (last7.length === 7) {
     patientsQuery = patientsQuery.or(
-      `phone_normalized.like.%${last7},phone.like.%${last7}`
+      `phone_last7.eq.${last7},phone_normalized.like.%${last7},phone.like.%${last7}`
     );
   }
 
@@ -218,10 +218,21 @@ export async function cancelAppointment(
     return { error: "Phone number does not match.", status: 403 as const };
   }
 
-  await supabase
+  const { data: updated, error } = await supabase
     .from("checkins")
     .update({ status: "cancelled" })
-    .eq("checkin_id", checkin.checkin_id);
+    .eq("checkin_id", checkin.checkin_id)
+    .not("status", "in", '("cancelled","completed","no_show")')
+    .select("checkin_id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: "Failed to cancel appointment", status: 500 as const };
+  }
+
+  if (!updated) {
+    return { error: "This appointment cannot be cancelled.", status: 409 as const };
+  }
 
   void logAudit({
     action: "appt_cancel_patient",
@@ -294,6 +305,7 @@ export async function bookAppointment(body: {
     .maybeSingle();
   const durationMinutes = apptTypeRow?.duration ?? 30;
   const priority = apptTypeRow?.default_priority ?? "normal";
+  const maxConcurrent = apptTypeRow?.max_concurrent ?? 1;
 
   const availableSlots = await getDoctorAvailableSlots(doctorId, appointmentDate, durationMinutes, appTypeId);
   if (!availableSlots.includes(timeNorm)) {
@@ -431,22 +443,29 @@ export async function bookAppointment(body: {
     reason,
     consentAppt,
     priority,
+    durationMinutes,
+    maxConcurrent,
   });
 
-  if ("error" in checkin) {
-    return checkin;
+  if ("checkin_id" in checkin) {
+    return {
+      success: true as const,
+      appointmentID: checkin.reference_number,
+      publicId: patientPublicId,
+      patient_created: patientCreated,
+      patient_reused: patientReused,
+      matched_by: matchedBy,
+      no_show_count: noShowCount ?? 0,
+    };
   }
 
-  return {
-    success: true as const,
-    appointmentID: checkin!.reference_number,
-    publicId: patientPublicId,
-    patient_created: patientCreated,
-    patient_reused: patientReused,
-    matched_by: matchedBy,
-    no_show_count: noShowCount ?? 0,
-  };
+  return checkin;
 }
+
+type InsertAppointmentResult =
+  | { checkin_id: number; reference_number: string }
+  | { error: string; status: 409; code: "slot_unavailable" | "duplicate_appointment" }
+  | { error: string; status: 500 };
 
 async function insertAppointmentCheckin(params: {
   patientId: string;
@@ -457,36 +476,51 @@ async function insertAppointmentCheckin(params: {
   reason: string | null;
   consentAppt: boolean;
   priority: string;
-}) {
+  durationMinutes: number;
+  maxConcurrent: number;
+}): Promise<InsertAppointmentResult> {
   const supabase = createAdminClient();
+  const appointmentDateIso = `${params.appointmentDate}T${params.timeNorm}:00`;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     const ref = await nextAppointmentReference(params.appointmentDate);
-    const { data, error } = await supabase
-      .from("checkins")
-      .insert({
-        patient_id: params.patientId,
-        doctor_id: params.doctorId,
-        app_type_id: params.appTypeId,
-        appointment_date: `${params.appointmentDate}T${params.timeNorm}:00`,
-        scheduled_time: params.timeNorm,
-        reason: params.reason,
-        consent: params.consentAppt,
-        reference_number: ref,
-        type_id: CHECKIN_TYPE.APPOINTMENT,
-        status: "pending",
-        priority: params.priority,
-      })
-      .select("checkin_id, reference_number")
-      .single();
+    const { data, error } = await supabase.rpc("book_appointment_slot", {
+      p_patient_id: Number(params.patientId),
+      p_doctor_id: params.doctorId,
+      p_app_type_id: Number(params.appTypeId),
+      p_appointment_date: appointmentDateIso,
+      p_scheduled_time: params.timeNorm,
+      p_duration_minutes: params.durationMinutes,
+      p_max_concurrent: params.maxConcurrent,
+      p_reference_number: ref,
+      p_reason: params.reason,
+      p_consent: params.consentAppt,
+      p_priority: params.priority,
+    });
 
     if (!error && data) {
-      return data;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row?.out_checkin_id != null) {
+        return {
+          checkin_id: row.out_checkin_id as number,
+          reference_number: (row.out_reference_number as string) ?? ref,
+        };
+      }
+    }
+
+    const msg = error?.message ?? "";
+    if (msg.includes("slot_unavailable")) {
+      return {
+        error: "This time slot is no longer available. Please choose another.",
+        status: 409 as const,
+        code: "slot_unavailable" as const,
+      };
     }
 
     if (error?.code === "23505") {
       const isRefCollision =
-        error.message?.includes("uq_checkins_reference") ||
+        msg.includes("uq_checkins_reference") ||
+        msg.includes("reference_number") ||
         error.details?.includes("reference_number");
       if (isRefCollision) continue;
 
@@ -565,28 +599,43 @@ export async function listStaffAppointments(filter: string) {
   return { appointments: data ?? [], error };
 }
 
+/** Allowed staff appointment status transitions (current → action → next). */
+const STAFF_APPOINTMENT_TRANSITIONS: Record<
+  "confirm" | "cancel" | "no_show",
+  { from: string[]; to: string }
+> = {
+  confirm: { from: ["pending"], to: "checked_in" },
+  cancel: { from: ["pending", "checked_in", "in_progress"], to: "cancelled" },
+  no_show: { from: ["pending", "checked_in"], to: "no_show" },
+};
+
 export async function staffUpdateAppointment(params: {
   checkinId: number;
   status: "confirm" | "cancel" | "no_show";
   userId: string;
   ip: string;
 }) {
-  const statusMap: Record<string, string> = {
-    confirm: "checked_in",
-    cancel: "cancelled",
-    no_show: "no_show",
-  };
-  const newStatus = statusMap[params.status] ?? params.status;
+  const transition = STAFF_APPOINTMENT_TRANSITIONS[params.status];
+  if (!transition) {
+    return { error: "Invalid status action", status: 400 as const };
+  }
 
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("checkins")
-    .update({ status: newStatus })
+    .update({ status: transition.to })
     .eq("checkin_id", params.checkinId)
+    .in("status", transition.from)
     .select("checkin_id");
 
-  if (error || !data?.length) {
-    return { error: "Update failed", status: 404 as const };
+  if (error) {
+    return { error: "Update failed", status: 500 as const };
+  }
+  if (!data?.length) {
+    return {
+      error: "Appointment cannot be updated from its current status",
+      status: 409 as const,
+    };
   }
 
   void logAudit({
@@ -597,5 +646,5 @@ export async function staffUpdateAppointment(params: {
     ipAddress: params.ip,
   });
 
-  return { success: true as const, status: newStatus };
+  return { success: true as const, status: transition.to };
 }

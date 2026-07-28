@@ -37,9 +37,9 @@ const ROUTE_AUTH: Record<string, { kind: AuthKind; notes?: string }> = {
   "queue/[id]/skip/route.ts": { kind: "staff" },
   "queue/[id]/recall/route.ts": { kind: "staff" },
   "queue/[id]/no-show/route.ts": { kind: "staff" },
-  "admin/doctors/route.ts": { kind: "staff" },
-  "admin/staff/route.ts": { kind: "staff" },
-  "admin/settings/route.ts": { kind: "staff" },
+  "admin/doctors/route.ts": { kind: "staff", notes: "admin role required" },
+  "admin/staff/route.ts": { kind: "staff", notes: "admin role required" },
+  "admin/settings/route.ts": { kind: "staff", notes: "admin role required" },
   "cron/reminders/route.ts": { kind: "cron" },
   "cron/retention/route.ts": { kind: "cron" },
 };
@@ -128,7 +128,10 @@ describe("API route auth inventory", () => {
 describe("public queue endpoint safety", () => {
   it("GET /api/queue/public does not return patient names or phone numbers", () => {
     const src = readRoute("queue/public/route.ts");
-    expect(src).not.toMatch(/first_name|last_name|phone|date_of_birth/);
+    // Doctor staff names are used for display; patient PII must stay out of selects/responses
+    expect(src).toMatch(/Doctor name only/);
+    expect(src).not.toMatch(/patients\(|phone|date_of_birth/);
+    expect(src).toMatch(/staff:doctor_id\(first_name, last_name\)/);
     expect(src).toMatch(/withRateLimit/);
   });
 
@@ -146,5 +149,29 @@ describe("public queue endpoint safety", () => {
     expect(src).toMatch(/requireStaff/);
     const postBlock = src.slice(src.indexOf("export async function POST"));
     expect(postBlock).toMatch(/requireStaff/);
+  });
+});
+
+describe("admin route role guards", () => {
+  const adminRoutes = [
+    "admin/doctors/route.ts",
+    "admin/staff/route.ts",
+    "admin/settings/route.ts",
+  ];
+
+  it("restricts all /api/admin routes to admin role", () => {
+    for (const file of adminRoutes) {
+      const src = readRoute(file);
+      expect(src, `${file} should pass ["admin"] to withStaffAuth`).toMatch(
+        /withStaffAuth\([\s\S]*?,\s*\["admin"\]\)/
+      );
+      const withoutAdmin = src.replace(/,\s*\["admin"\]/g, "");
+      expect(
+        withoutAdmin.includes('withStaffAuth(async') &&
+          !src.includes('["admin"]'),
+        `${file} must not expose unscoped withStaffAuth handlers`
+      ).toBe(false);
+      expect(src.match(/,\s*\["admin"\]/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    }
   });
 });

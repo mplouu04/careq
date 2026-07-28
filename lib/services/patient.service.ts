@@ -259,10 +259,10 @@ export async function verifyPatientByDobAndPhone(
     .select("id, first_name, phone, phone_normalized")
     .eq("date_of_birth", dob);
 
-  // Narrow candidates in SQL; still confirm with patientPhonesMatch for format edge cases
+  // Prefer indexed phone_last7; fall back to wildcard for pre-migration DBs
   if (last7.length === 7) {
     query = query.or(
-      `phone_normalized.like.%${last7},phone.like.%${last7}`
+      `phone_last7.eq.${last7},phone_normalized.like.%${last7},phone.like.%${last7}`
     );
   }
 

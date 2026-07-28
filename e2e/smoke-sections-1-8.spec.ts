@@ -117,16 +117,59 @@ test.describe("Smoke §5 — Queue Status", () => {
 });
 
 test.describe("Smoke §7 — Queue Board", () => {
+  /** Stub public queue so CI works without live Supabase (rate-limit RPC fails closed). */
+  async function mockPublicQueue(page: import("@playwright/test").Page) {
+    await page.route(/\/api\/queue\/public/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          display: {
+            display_name: "CAREQ",
+            location: "",
+            theme_color: "#2563EB",
+            show_wait_time: true,
+            show_priority: true,
+          },
+          rooms: [
+            {
+              id: 1,
+              name: "Room 1",
+              current: { queue_number: "A-001", status: "in_progress", doctor_name: "Dr. Santos" },
+            },
+            { id: 2, name: "Room 2", current: null },
+          ],
+          waiting: [
+            {
+              id: "A-002",
+              queueId: 2,
+              queue_number: "A-002",
+              position: 1,
+              est_wait_minutes: 10,
+              priority: "normal",
+            },
+          ],
+          avg_service_time: 10,
+        }),
+      });
+    });
+  }
+
   test("7.1 TV board shows Now Serving and Upcoming", async ({ page }) => {
+    await mockPublicQueue(page);
     await page.goto("/queue");
-    await expect(page.getByRole("heading", { name: /now serving/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /now serving/i })).toBeVisible({
+      timeout: 15000,
+    });
     await expect(page.getByRole("heading", { name: /upcoming/i })).toBeVisible();
   });
 
   test("7.5 clock displays current time", async ({ page }) => {
+    await mockPublicQueue(page);
     await page.goto("/queue");
     const clock = page.locator('[data-testid="queue-clock"], time, .font-mono-careq').first();
-    await expect(clock).toBeVisible({ timeout: 10000 });
+    await expect(clock).toBeVisible({ timeout: 15000 });
   });
 });
 

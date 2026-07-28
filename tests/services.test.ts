@@ -105,12 +105,34 @@ describe("appointment.service cancelAppointment", () => {
           },
         })
       )
-      .mockReturnValueOnce(chain({ data: null, error: null }));
+      .mockReturnValueOnce(chain({ data: { checkin_id: 1 }, error: null }));
 
     const { cancelAppointment } = await import("../lib/services/appointment.service");
     const result = await cancelAppointment("APT20260610001", "1234567");
 
     expect(result).toEqual({ success: true });
+  });
+
+  it("returns 409 when concurrent status change prevents cancel", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: {
+            checkin_id: 1,
+            status: "pending",
+            patients: { phone: "09171234567", phone_normalized: "09171234567" },
+          },
+        })
+      )
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { cancelAppointment } = await import("../lib/services/appointment.service");
+    const result = await cancelAppointment("APT20260610001", "09171234567");
+
+    expect(result).toEqual({
+      error: "This appointment cannot be cancelled.",
+      status: 409,
+    });
   });
 });
 
@@ -471,6 +493,60 @@ describe("queue.service recallPatient", () => {
   });
 });
 
+describe("queue.service markNoShow", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
+  });
+
+  it("marks waiting queue entry and linked checkin as no_show", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({ data: { id: 1, status: "waiting", checkin_id: 42 }, error: null })
+      )
+      .mockReturnValueOnce(chain({ data: { id: 1 }, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { markNoShow } = await import("../lib/services/queue.service");
+    const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toMatchObject({ success: true });
+    const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
+    expect(tables).toContain("checkins");
+  });
+
+  it("returns 409 when concurrent status change prevents no-show", async () => {
+    mockFrom
+      .mockReturnValueOnce(
+        chain({ data: { id: 1, status: "waiting", checkin_id: 42 }, error: null })
+      )
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { markNoShow } = await import("../lib/services/queue.service");
+    const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({
+      error: "Only waiting or in-progress patients can be marked no-show",
+      status: 409,
+    });
+  });
+
+  it("returns 400 when status is already terminal", async () => {
+    mockFrom.mockReturnValueOnce(
+      chain({ data: { id: 1, status: "completed", checkin_id: 42 }, error: null })
+    );
+
+    const { markNoShow } = await import("../lib/services/queue.service");
+    const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({
+      error: "Only waiting or in-progress patients can be marked no-show",
+      status: 400,
+    });
+  });
+});
+
 describe("queue.service markDone", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -492,13 +568,16 @@ describe("queue.service markDone", () => {
     expect(tables).toContain("checkins");
   });
 
-  it("returns 500 when queue row is not in_progress", async () => {
+  it("returns 409 when queue row is not in_progress", async () => {
     mockFrom.mockReturnValueOnce(chain({ data: null, error: null }));
 
     const { markDone } = await import("../lib/services/queue.service");
     const result = await markDone({ queueId: 99, userId: "user-1", ip: "127.0.0.1" });
 
-    expect(result).toEqual({ error: "Failed to mark done", status: 500 });
+    expect(result).toEqual({
+      error: "Queue entry is not in progress",
+      status: 409,
+    });
     const tables = mockFrom.mock.calls.map((c: unknown[]) => c[0]);
     expect(tables).not.toContain("checkins");
   });

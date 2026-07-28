@@ -13,7 +13,7 @@ import { isCalledLikeStatus } from "@/lib/queue-status";
 export const dynamic = "force-dynamic";
 
 /** Matches QueueBoard UI slice for the upcoming list. */
-const WAITING_BOARD_LIMIT = 5;
+const WAITING_BOARD_LIMIT = 6;
 
 const DEFAULT_DISPLAY = {
   display_name: "CAREQ",
@@ -23,6 +23,8 @@ const DEFAULT_DISPLAY = {
   show_priority: true,
 };
 
+type StaffName = { first_name: string; last_name: string };
+
 type QueueRow = {
   id: number;
   queue_number: string;
@@ -31,7 +33,28 @@ type QueueRow = {
   room_id: number | null;
   skip_count?: number;
   called_at: string | null;
+  checkins?: unknown;
 };
+
+function formatDoctorName(staff: StaffName | null | undefined): string | undefined {
+  if (!staff?.first_name) return undefined;
+  const last = staff.last_name?.trim();
+  return last ? `Dr. ${staff.last_name}` : `Dr. ${staff.first_name}`;
+}
+
+function doctorNameFromQueueRow(row: QueueRow): string | undefined {
+  const checkinRaw = row.checkins;
+  const checkin = (Array.isArray(checkinRaw) ? checkinRaw[0] : checkinRaw) as
+    | { staff?: StaffName | StaffName[] | null }
+    | null
+    | undefined;
+  const staffRaw = checkin?.staff;
+  const staff = (Array.isArray(staffRaw) ? staffRaw[0] : staffRaw) as
+    | StaffName
+    | null
+    | undefined;
+  return formatDoctorName(staff);
+}
 
 export const GET = withRateLimit(
   "queue_public",
@@ -52,8 +75,9 @@ export const GET = withRateLimit(
           .maybeSingle()
       : Promise.resolve({ data: null as null });
 
+  // Doctor name only — no patient PII on the public TV board
   const queueSelect =
-    "id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id)";
+    "id, queue_number, status, priority, room_id, skip_count, called_at, checkins!inner(checkin_id, staff:doctor_id(first_name, last_name))";
 
   const [
     { data: screen },
@@ -98,10 +122,17 @@ export const GET = withRateLimit(
   const occupied = (occupiedRows ?? []) as QueueRow[];
   const waiting = (waitingRows ?? []) as QueueRow[];
 
-  const inProgressByRoom = new Map<number, { queue_number: string }>();
+  const inProgressByRoom = new Map<
+    number,
+    { queue_number: string; status: string; doctor_name?: string }
+  >();
   for (const item of occupied.filter((q) => isCalledLikeStatus(q.status))) {
     if (item.room_id != null) {
-      inProgressByRoom.set(Number(item.room_id), { queue_number: item.queue_number });
+      inProgressByRoom.set(Number(item.room_id), {
+        queue_number: item.queue_number,
+        status: item.status,
+        doctor_name: doctorNameFromQueueRow(item),
+      });
     }
   }
 

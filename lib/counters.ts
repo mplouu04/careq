@@ -31,9 +31,19 @@ export async function nextAppointmentReference(appointmentDate: string): Promise
   return `APT${ymd}${n}`;
 }
 
+const CHECKIN_TO_QUEUE_MAX_ATTEMPTS = 3;
+
 export async function checkinToQueue(
   checkinId: number,
   prefix: "APPT" | "WALK"
+): Promise<string> {
+  return attemptCheckinToQueue(checkinId, prefix, 0);
+}
+
+async function attemptCheckinToQueue(
+  checkinId: number,
+  prefix: "APPT" | "WALK",
+  attempt: number
 ): Promise<string> {
   const supabase = createAdminClient();
   const { data, error } = await supabase.rpc("checkin_to_queue", {
@@ -55,20 +65,16 @@ export async function checkinToQueue(
     if (msg.includes("already_in_queue")) {
       throw new CheckinError("Patient is already in the queue.", 409);
     }
+    if (error.code === "23505" && attempt < CHECKIN_TO_QUEUE_MAX_ATTEMPTS - 1) {
+      return attemptCheckinToQueue(checkinId, prefix, attempt + 1);
+    }
     if (error.code === "23505") {
-      return retryCheckinToQueue(checkinId, prefix);
+      throw new CheckinError("Failed to assign queue number. Please try again.", 409);
     }
     throw new CheckinError(error.message, 500);
   }
 
   return data as string;
-}
-
-async function retryCheckinToQueue(
-  checkinId: number,
-  prefix: "APPT" | "WALK"
-): Promise<string> {
-  return checkinToQueue(checkinId, prefix);
 }
 
 export class CheckinError extends Error {

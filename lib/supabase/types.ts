@@ -36,6 +36,7 @@ export type Database = {
           gender: string;
           phone: string;
           phone_normalized: string | null;
+          phone_last7: string | null;
           email: string | null;
           address: string;
           consent: boolean;
@@ -43,8 +44,12 @@ export type Database = {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database["public"]["Tables"]["patients"]["Row"], "id" | "created_at" | "updated_at"> & {
+        Insert: Omit<
+          Database["public"]["Tables"]["patients"]["Row"],
+          "id" | "phone_last7" | "created_at" | "updated_at"
+        > & {
           id?: number;
+          phone_last7?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -286,6 +291,43 @@ export type Database = {
         Args: {
           p_date: string;
           p_key: string;
+        };
+        Returns: number;
+      };
+      checkin_to_queue: {
+        Args: {
+          p_checkin_id: number;
+          p_prefix: string;
+        };
+        Returns: string;
+      };
+      book_appointment_slot: {
+        Args: {
+          p_patient_id: number;
+          p_doctor_id: string;
+          p_app_type_id: number;
+          p_appointment_date: string;
+          p_scheduled_time: string;
+          p_duration_minutes: number;
+          p_max_concurrent: number;
+          p_reference_number: string;
+          p_reason: string | null;
+          p_consent: boolean;
+          p_priority: string;
+        };
+        Returns: { out_checkin_id: number; out_reference_number: string }[];
+      };
+      upsert_doctor_schedules: {
+        Args: {
+          p_doctor_id: string;
+          p_schedules: Json;
+        };
+        Returns: number;
+      };
+      record_verification_failure: {
+        Args: {
+          p_ip: string;
+          p_max_failures?: number;
         };
         Returns: number;
       };

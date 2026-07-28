@@ -77,9 +77,25 @@ describe("isVerificationLockedOut", () => {
 describe("recordVerificationFailure", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRpc.mockReset();
+    mockFrom.mockReset();
   });
 
-  it("inserts first failure when none exist", async () => {
+  it("uses record_verification_failure RPC when available", async () => {
+    mockRpc.mockResolvedValue({ data: 1, error: null });
+
+    const { recordVerificationFailure } = await import("@/lib/rate-limit");
+    await recordVerificationFailure("10.0.0.1");
+
+    expect(mockRpc).toHaveBeenCalledWith("record_verification_failure", {
+      p_ip: "10.0.0.1",
+      p_max_failures: 5,
+    });
+    expect(mockFrom).not.toHaveBeenCalled();
+  });
+
+  it("falls back to insert when RPC is unavailable", async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: "function missing" } });
     const insert = vi.fn().mockReturnValue(chain({ data: null, error: null }));
     mockFrom.mockImplementation((table: string) => {
       if (table === "rate_limits") {
@@ -103,7 +119,8 @@ describe("recordVerificationFailure", () => {
     });
   });
 
-  it("creates lockout row after fifth consecutive failure", async () => {
+  it("creates lockout row after fifth consecutive failure via fallback", async () => {
+    mockRpc.mockResolvedValue({ data: null, error: { message: "function missing" } });
     const insert = vi.fn().mockReturnValue(chain({ data: null, error: null }));
     const del = vi.fn().mockReturnValue(chain({ data: null, error: null }));
     mockFrom.mockImplementation(() => ({

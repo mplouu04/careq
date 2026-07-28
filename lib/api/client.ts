@@ -66,9 +66,30 @@ export type StaffQueuePayload = {
   };
 };
 
+export type PublicRoomPanel = {
+  id: number;
+  name: string;
+  description?: string;
+  current: {
+    queue_number: string;
+    status: string;
+    doctor_name?: string;
+  } | null;
+};
+
+export type PublicWaitingItem = {
+  id: string | number;
+  queueId?: number;
+  queue_number?: string;
+  position: number;
+  est_wait_minutes: number;
+  priority?: string;
+};
+
 export type PublicQueuePayload = {
-  waiting?: unknown[];
-  rooms?: unknown[];
+  waiting?: PublicWaitingItem[];
+  rooms?: PublicRoomPanel[];
+  nowServing?: unknown[];
   avg_service_time?: number;
   display?: {
     display_name: string;

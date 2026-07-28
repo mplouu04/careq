@@ -29,10 +29,12 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 21 | `018_schedule_realtime.sql` | Realtime on `doctor_schedules` / `doctor_blocks` for live slot updates |
 | 22 | `019_push_subscriptions.sql` | `push_subscriptions` table for Web Push turn notifications |
 | 23 | `020_schedule_replica_identity.sql` | `REPLICA IDENTITY FULL` on schedule/block tables so UPDATE/DELETE emit realtime events |
+| 24 | `021_staff_trigger_insert_only.sql` | Staff auth trigger only runs on INSERT (not UPDATE) |
+| 25 | `022_audit_hardening.sql` | Slot booking RPC, `phone_last7` index, schedule upsert RPC, atomic verify-failure counter |
 
 **Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
 
-**Note:** Two files share the `018_` prefix (`018_queue_clinic_date.sql` then `018_schedule_realtime.sql`). Apply in the order listed above; future migrations should use `021_` and beyond.
+**Note:** Two files share the `018_` prefix (`018_queue_clinic_date.sql` then `018_schedule_realtime.sql`). Apply in the order listed above.
 
 ## Verification queries
 
@@ -112,4 +114,19 @@ After `020_schedule_replica_identity.sql`:
 SELECT relname, relreplident FROM pg_class
 WHERE relname IN ('doctor_schedules','doctor_blocks');
 -- relreplident should be 'f' (full) for both
+```
+
+After `022_audit_hardening.sql`:
+
+```sql
+SELECT column_name FROM information_schema.columns
+WHERE table_name = 'patients' AND column_name = 'phone_last7';
+
+SELECT proname FROM pg_proc
+WHERE proname IN (
+  'book_appointment_slot',
+  'upsert_doctor_schedules',
+  'record_verification_failure'
+);
+-- should return three rows
 ```

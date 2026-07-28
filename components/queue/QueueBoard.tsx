@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
 import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
-import { queueDataApi } from "@/lib/api/client";
+import {
+  queueDataApi,
+  type PublicRoomPanel,
+  type PublicWaitingItem,
+} from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
-import { QueueBoardSkeleton } from "@/components/careq";
 
 type DisplayConfig = {
   display_name: string;
@@ -19,23 +22,28 @@ type DisplayConfig = {
   show_priority: boolean;
 };
 
-type RoomPanel = {
-  id: number;
-  name: string;
-  description?: string;
-  current: {
-    queue_number: string;
-  } | null;
+type RoomPanel = PublicRoomPanel;
+type WaitingItem = PublicWaitingItem;
+
+type RealtimeStatus = "connecting" | "connected" | "error";
+
+type CalledBanner = {
+  ticket: string;
+  room: string;
+  key: string;
 };
 
-type WaitingItem = {
-  id: string | number;
-  queueId?: number;
-  queue_number?: string;
-  position: number;
-  est_wait_minutes: number;
-  priority?: string;
+const DEFAULT_DISPLAY: DisplayConfig = {
+  display_name: "CAREQ",
+  location: "",
+  theme_color: CAREQ_DEFAULT_THEME_COLOR,
+  show_wait_time: true,
+  show_priority: true,
 };
+
+const PANEL_GRADIENT = "linear-gradient(180deg, #1D4ED8, #1E40AF)";
+const UPCOMING_LIMIT = 6;
+const COMPACT_TABLE_THRESHOLD = 9;
 
 function ordinal(n: number) {
   if (n === 1) return "1st";
@@ -49,21 +57,278 @@ function priorityLabel(priority: string | undefined) {
   return priority.charAt(0).toUpperCase() + priority.slice(1);
 }
 
-type RealtimeStatus = "connecting" | "connected" | "error";
+function roomStatus(room: RoomPanel): "empty" | "occupied" | "called" {
+  if (!room.current) return "empty";
+  if (room.current.status === "called") return "called";
+  return "occupied";
+}
 
-const DEFAULT_DISPLAY: DisplayConfig = {
-  display_name: "CAREQ",
-  location: "",
-  theme_color: CAREQ_DEFAULT_THEME_COLOR,
-  show_wait_time: true,
-  show_priority: true,
-};
+/** Isolated clock — 1s ticks must not re-render room cards. */
+const ClockDisplay = memo(function ClockDisplay({
+  className,
+  large,
+}: {
+  className?: string;
+  large?: boolean;
+}) {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const clock = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(clock);
+  }, []);
+
+  const timeStr = now
+    ? now.toLocaleTimeString("en-PH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    : "--:--:--";
+
+  return (
+    <div
+      data-testid="queue-clock"
+      className={cn(
+        "font-mono shrink-0 tabular-nums text-white",
+        large ? "text-[28px] tracking-[0.05em]" : "text-xl",
+        className
+      )}
+    >
+      {timeStr}
+    </div>
+  );
+});
+
+function LiveDot({
+  isReconnecting,
+  label,
+}: {
+  isReconnecting: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-2 shrink-0"
+      title={label}
+      aria-label={label}
+    >
+      <span
+        className={cn(
+          "inline-block h-2.5 w-2.5 rounded-full",
+          isReconnecting
+            ? "bg-amber-400"
+            : "bg-emerald-400 motion-safe:animate-pulse"
+        )}
+      />
+      <span className="text-[14px] font-semibold uppercase tracking-[0.08em] text-white/80">
+        {label}
+      </span>
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: "empty" | "occupied" | "called" }) {
+  if (status === "called") {
+    return (
+      <span
+        className={cn(
+          "status-badge-called inline-flex items-center rounded-[10px] px-2.5 py-1",
+          "text-[14px] font-extrabold uppercase tracking-wide text-white bg-[#DC2626]"
+        )}
+      >
+        Called
+      </span>
+    );
+  }
+  if (status === "occupied") {
+    return (
+      <span className="inline-flex items-center rounded-[10px] px-2.5 py-1 text-[14px] font-extrabold uppercase tracking-wide text-white bg-[#2563EB]">
+        Serving
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-[10px] px-2.5 py-1 text-[14px] font-extrabold uppercase tracking-wide text-[#6B7280] bg-[#E5E7EB]">
+      Empty
+    </span>
+  );
+}
+
+const RoomCard = memo(function RoomCard({
+  room,
+  themeColor,
+}: {
+  room: RoomPanel;
+  themeColor: string;
+}) {
+  const status = roomStatus(room);
+  const isEmpty = status === "empty";
+  const isCalled = status === "called";
+  const isOccupied = status === "occupied";
+  const contentKey = `${room.current?.queue_number ?? "empty"}:${status}`;
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-[250px] flex-col justify-center rounded-2xl px-6 py-8 text-center shadow-[0_4px_12px_rgba(0,0,0,0.10)]",
+        isEmpty && "bg-white opacity-70",
+        isOccupied && "bg-[#EFF4FE]",
+        isCalled && "bg-white called-card-border"
+      )}
+    >
+      <p className="mb-4 text-[15px] font-extrabold uppercase tracking-[0.07em] text-[#6B7280]">
+        {room.name}
+      </p>
+
+      <div
+        key={contentKey}
+        className="queue-board-card-content flex flex-col items-center"
+      >
+        {isEmpty ? (
+          <p className="text-center text-[16px] font-medium leading-relaxed text-[#6B7280]">
+            No patient in this room
+          </p>
+        ) : isCalled && room.current ? (
+          <>
+            <div className="font-mono-careq mb-3.5 text-[42px] font-extrabold leading-none text-[#2563EB]">
+              {room.current.queue_number}
+            </div>
+            {room.current.doctor_name && (
+              <p className="truncate max-w-full text-[15px] font-bold text-[#2563EB]">
+                {room.current.doctor_name}
+              </p>
+            )}
+            <p className="mt-3 text-[14px] font-extrabold uppercase tracking-[0.08em] text-[#DC2626]">
+              Please proceed
+            </p>
+            <p className="mt-1 text-[15px] font-extrabold text-[#2563EB]">
+              → {room.name}
+            </p>
+          </>
+        ) : room.current ? (
+          <>
+            <div
+              className="font-mono-careq mb-3.5 text-[38px] font-extrabold leading-none"
+              style={{ color: themeColor || "#2563EB" }}
+            >
+              {room.current.queue_number}
+            </div>
+            {room.current.doctor_name && (
+              <p className="truncate max-w-full text-[15px] font-bold text-[#2563EB]">
+                {room.current.doctor_name}
+              </p>
+            )}
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
+function CompactTableView({ rooms }: { rooms: RoomPanel[] }) {
+  return (
+    <div className="overflow-auto rounded-2xl bg-white shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
+      <table className="w-full border-collapse text-left">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-[#F8F9FB]">
+            {["Room", "Ticket", "Doctor", "Status"].map((label) => (
+              <th
+                key={label}
+                className="px-4 py-3 text-[14px] font-extrabold uppercase tracking-[0.07em] text-[#6B7280]"
+              >
+                {label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rooms.map((room, index) => {
+            const status = roomStatus(room);
+            return (
+              <tr
+                key={room.id}
+                className={cn(
+                  index % 2 === 0 ? "bg-white" : "bg-[#F8F9FB]",
+                  status === "called" && "border-l-[3px] border-l-[#DC2626]"
+                )}
+              >
+                <td className="h-14 px-4 py-3 text-[17px] font-bold text-[#111827]">
+                  {room.name}
+                </td>
+                <td className="h-14 px-4 py-3 font-mono-careq text-[19px] font-extrabold text-[#2563EB]">
+                  {room.current?.queue_number ?? "—"}
+                </td>
+                <td className="h-14 max-w-[10rem] truncate px-4 py-3 text-[17px] font-semibold text-[#2563EB]">
+                  {room.current?.doctor_name ?? "—"}
+                </td>
+                <td className="h-14 px-4 py-3">
+                  <StatusBadge status={status} />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function CardGridView({
+  rooms,
+  themeColor,
+}: {
+  rooms: RoomPanel[];
+  themeColor: string;
+}) {
+  return (
+    <div className="grid flex-1 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 md:gap-6">
+      {rooms.map((room) => (
+        <RoomCard key={room.id} room={room} themeColor={themeColor} />
+      ))}
+      {rooms.length === 0 && (
+        <p className="col-span-full py-8 text-center text-[16px] text-white/80">
+          No active rooms configured
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** NEW ADDITION: called notification banner below topbar (keeps clock visible). */
+function CalledNotificationBanner({
+  banner,
+  exiting,
+}: {
+  banner: CalledBanner;
+  exiting: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mb-4 overflow-hidden rounded-[10px] px-4 py-3 text-center",
+        exiting ? "called-banner-slide-out" : "called-banner-slide-in"
+      )}
+      style={{ backgroundColor: "#DC2626" }}
+      role="alert"
+      aria-live="assertive"
+    >
+      <p className="text-[20px] font-extrabold leading-snug tracking-[0.04em] text-white md:text-[24px]">
+        <span className="whitespace-nowrap">NOW CALLING — {banner.ticket}</span>
+        <span className="mx-2 hidden sm:inline">—</span>
+        <span className="mt-1 block sm:mt-0 sm:inline">
+          PLEASE PROCEED TO {banner.room.toUpperCase()}
+        </span>
+      </p>
+    </div>
+  );
+}
 
 export function QueueBoard({ screenId }: { screenId?: string }) {
   const searchParams = useSearchParams();
   const tvMode = searchParams.get("theme") === "tv";
   const queryClient = useQueryClient();
-  const [now, setNow] = useState<Date | null>(null);
 
   const { data, isPending, isError, isFetching } = useQuery({
     queryKey: queryKeys.queue.public(screenId),
@@ -98,165 +363,188 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
       ? "error"
       : "connecting";
 
-  useEffect(() => {
-    const clock = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(clock);
-  }, []);
-
-  if (isPending && !data) {
-    return <QueueBoardSkeleton />;
-  }
-
   const display = data?.display ?? DEFAULT_DISPLAY;
   const rooms = (data?.rooms ?? []) as RoomPanel[];
-  const waiting = ((data?.waiting ?? []) as WaitingItem[]).slice(0, 5);
+  const waiting = ((data?.waiting ?? []) as WaitingItem[]).slice(0, UPCOMING_LIMIT);
   const avgServiceTime = data?.avg_service_time ?? 10;
-
-  const timeStr = now
-    ? now.toLocaleTimeString("en-PH", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    : "--:--:--";
-
   const themeColor = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
+  const useCompactTable = rooms.length >= COMPACT_TABLE_THRESHOLD;
+
+  // NEW ADDITION: called notification banner state
+  const [calledBanner, setCalledBanner] = useState<CalledBanner | null>(null);
+  const [bannerExiting, setBannerExiting] = useState(false);
+  const seenCalledKeysRef = useRef<Set<string>>(new Set());
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bannerExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hydratedRef = useRef(false);
+
+  useEffect(() => {
+    if (!data?.rooms) return;
+
+    const boardRooms = data.rooms as RoomPanel[];
+    const calledRooms = boardRooms.filter(
+      (r) => roomStatus(r) === "called" && r.current
+    );
+    const activeKeys = new Set(
+      calledRooms.map((r) => `${r.id}:${r.current!.queue_number}`)
+    );
+
+    // Seed seen keys on first data load so we don't flash banners for already-called patients
+    if (!hydratedRef.current) {
+      seenCalledKeysRef.current = activeKeys;
+      hydratedRef.current = true;
+      return;
+    }
+
+    for (const room of calledRooms) {
+      if (!room.current) continue;
+      const key = `${room.id}:${room.current.queue_number}`;
+      if (seenCalledKeysRef.current.has(key)) continue;
+
+      seenCalledKeysRef.current.add(key);
+
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      if (bannerExitTimerRef.current) clearTimeout(bannerExitTimerRef.current);
+
+      setBannerExiting(false);
+      setCalledBanner({
+        ticket: room.current.queue_number,
+        room: room.name,
+        key,
+      });
+
+      // Hold ~6s visible, then 300ms slide-out
+      bannerTimerRef.current = setTimeout(() => {
+        setBannerExiting(true);
+        bannerExitTimerRef.current = setTimeout(() => {
+          setCalledBanner(null);
+          setBannerExiting(false);
+        }, 300);
+      }, 6000);
+
+      break;
+    }
+
+    Array.from(seenCalledKeysRef.current).forEach((key) => {
+      if (!activeKeys.has(key)) seenCalledKeysRef.current.delete(key);
+    });
+  }, [data]);
+
+  useEffect(() => {
+    return () => {
+      if (bannerTimerRef.current) clearTimeout(bannerTimerRef.current);
+      if (bannerExitTimerRef.current) clearTimeout(bannerExitTimerRef.current);
+    };
+  }, []);
+
   const isReconnecting = loadError || realtimeStatus !== "connected";
   const dotLabel = isReconnecting ? "Reconnecting" : "Live";
+  const showInitialSkeleton = isPending && !data;
 
   return (
     <div
       className={cn(
-        "relative flex flex-col lg:flex-row h-screen overflow-hidden",
-        tvMode ? "bg-zinc-950" : "bg-surface"
+        "queue-board relative flex h-screen flex-col overflow-hidden lg:flex-row",
+        tvMode ? "bg-[#F8F9FB]" : "bg-surface"
       )}
-      aria-busy={isFetching}
+      aria-busy={isFetching || showInitialSkeleton}
     >
-      {tvMode ? (
-        <div
-          className="absolute top-4 right-4 z-20"
-          title={dotLabel}
-          aria-label={dotLabel}
-        >
-          <span
-            className={cn(
-              "inline-block h-3 w-3 rounded-full",
-              isReconnecting ? "bg-amber-500" : "bg-emerald-500 motion-safe:animate-pulse"
-            )}
-          />
-        </div>
-      ) : loadError ? (
-        <div className="absolute top-0 left-0 right-0 z-10 bg-destructive text-destructive-foreground text-center text-body-sm py-2">
+      {!tvMode && loadError ? (
+        <div className="absolute left-0 right-0 top-0 z-10 bg-destructive py-2 text-center text-body-sm text-destructive-foreground">
           Unable to load queue data. Retrying...
         </div>
       ) : null}
 
+      {/* Left panel — Now Serving (70%) — chrome always mounts so clock/headings stay testable */}
       <div
-        className={cn(
-          "w-full lg:w-2/3 flex flex-col p-6 md:p-8 overflow-y-auto text-primary-foreground min-h-[50vh] lg:min-h-0",
-          tvMode && "lg:w-3/4"
-        )}
-        style={{ backgroundColor: tvMode ? "#0f172a" : themeColor }}
+        className="relative flex min-h-[50vh] w-full flex-col overflow-y-auto p-4 text-primary-foreground sm:p-6 md:p-8 lg:min-h-0 lg:w-[70%]"
+        style={
+          tvMode
+            ? { background: PANEL_GRADIENT }
+            : { backgroundColor: themeColor }
+        }
       >
-        <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="mb-6 flex items-center justify-between gap-4 border-b border-white/15 pb-4">
           <div className="min-w-0">
             <h1
               className={cn(
-                "font-bold truncate",
-                tvMode ? "text-2xl md:text-3xl" : "text-headline-sm"
+                "truncate font-extrabold tracking-[0.02em] text-white",
+                tvMode ? "text-[30px]" : "text-headline-sm"
               )}
             >
               {display.display_name}
             </h1>
             {display.location && (
-              <p className={cn("opacity-80 truncate", tvMode ? "text-lg" : "text-body-sm")}>
+              <p
+                className={cn(
+                  "truncate text-white/80",
+                  tvMode ? "text-lg" : "text-body-sm"
+                )}
+              >
                 {display.location}
               </p>
             )}
           </div>
-          <div
-            data-testid="queue-clock"
-            className={cn("font-mono shrink-0 tabular-nums", tvMode ? "text-3xl" : "text-xl")}
-          >
-            {timeStr}
+          <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-4">
+            {tvMode && (
+              <LiveDot isReconnecting={isReconnecting} label={dotLabel} />
+            )}
+            <ClockDisplay large={tvMode} />
           </div>
         </div>
 
-        <h2
-          className={cn(
-            "uppercase tracking-widest text-center mb-6 opacity-90",
-            tvMode ? "text-xl font-semibold" : "text-label-md"
-          )}
-        >
+        {calledBanner && (
+          <CalledNotificationBanner banner={calledBanner} exiting={bannerExiting} />
+        )}
+
+        <h2 className="mb-6 text-center text-[14px] font-extrabold uppercase tracking-[0.14em] text-[#DCE9FF]">
           Now serving
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6 flex-1">
-          {rooms.map((room) => (
-            <div
-              key={room.id}
-              className={cn(
-                "current-patient-card text-center flex flex-col justify-center animate-in fade-in duration-300",
-                tvMode ? "py-8 px-6 min-h-[200px]" : "py-6 px-4 min-h-[140px]"
-              )}
-            >
-              <p
-                className={cn(
-                  "font-bold uppercase mb-3",
-                  tvMode
-                    ? "text-xl text-on-surface"
-                    : "text-label-md text-on-surface-variant"
-                )}
-              >
-                {room.name}
-              </p>
-              {room.current ? (
-                <div
-                  className={cn(
-                    "font-mono-careq font-bold leading-none",
-                    tvMode ? "text-headline-lg" : "text-4xl"
-                  )}
-                  style={{ color: themeColor }}
-                >
-                  {room.current.queue_number}
-                </div>
-              ) : (
-                <p className="text-body-md text-on-surface-variant py-4">
-                  {tvMode ? "—" : "No patient in this room"}
-                </p>
-              )}
-            </div>
-          ))}
-          {rooms.length === 0 && (
-            <p className="col-span-full text-center text-body-md opacity-80 py-8">
-              No active rooms configured
-            </p>
-          )}
-        </div>
+        {showInitialSkeleton ? (
+          <div className="grid flex-1 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 md:gap-6" aria-hidden>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="min-h-[250px] animate-pulse rounded-2xl bg-white/20"
+              />
+            ))}
+          </div>
+        ) : useCompactTable ? (
+          <CompactTableView rooms={rooms} />
+        ) : (
+          <CardGridView rooms={rooms} themeColor={themeColor} />
+        )}
       </div>
 
+      {/* Right panel — Upcoming (30%) */}
       <div
         className={cn(
-          "upcoming-queue-section w-full flex flex-col p-6 md:p-8 overflow-y-auto min-h-[40vh] lg:min-h-0",
-          tvMode ? "lg:w-1/4 bg-zinc-900 text-zinc-100" : "lg:w-1/3 bg-surface-container-lowest"
+          "upcoming-queue-section flex min-h-[40vh] w-full flex-col overflow-y-auto border-t border-[#E2E5EA] p-4 sm:p-6 md:p-8 lg:min-h-0 lg:w-[30%] lg:border-l lg:border-t-0",
+          tvMode ? "bg-white text-[#111827]" : "bg-surface-container-lowest"
         )}
       >
-        <h4
+        <h3
           className={cn(
-            "font-bold text-center mb-6 tracking-wide",
-            tvMode ? "text-xl text-zinc-100" : "text-headline-sm text-on-surface"
+            "mb-6 font-extrabold tracking-wide",
+            tvMode
+              ? "text-left text-[21px] text-[#111827]"
+              : "text-center text-headline-sm text-on-surface"
           )}
         >
           Upcoming
           {waiting.length > 0 && (
-            <span className="ml-2 text-primary font-mono-careq">({waiting.length})</span>
+            <span className="ml-2 font-mono-careq text-[#2563EB]">
+              ({waiting.length})
+            </span>
           )}
-        </h4>
-        <ul className="upcoming-list">
+        </h3>
+
+        <ul className="upcoming-list flex-1">
           {waiting.length === 0 ? (
-            <li className="upcoming-item">
-              <div className="patient-details">
-                <div className="text-on-surface-variant text-body-md">No upcoming patients</div>
+            <li className="flex flex-1 items-center justify-center py-8">
+              <div className="text-center text-[16px] leading-relaxed text-[#6B7280]">
+                No upcoming patients
               </div>
             </li>
           ) : (
@@ -267,20 +555,30 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
               return (
                 <li
                   key={q.queueId ?? q.id}
-                  className="upcoming-item animate-in fade-in duration-300"
+                  className={cn(
+                    "flex items-center justify-between gap-3 border-b border-[#E2E5EA] py-4",
+                    !tvMode && "upcoming-item"
+                  )}
                 >
                   <div
                     className={cn(
-                      "font-mono-careq font-bold shrink-0",
-                      tvMode ? "text-body-md text-primary" : "queue-number-sm"
+                      "font-mono-careq shrink-0 rounded-md bg-[#F3F4F6] px-[11px] py-1 text-[15px] font-extrabold text-[#111827]",
+                      !tvMode && "queue-number-sm bg-transparent px-0 py-0"
                     )}
-                    style={tvMode ? undefined : { color: themeColor }}
+                    style={!tvMode ? { color: themeColor } : undefined}
                   >
                     {q.queue_number ?? q.id}
                   </div>
-                  {!tvMode && (
+
+                  {tvMode ? (
+                    display.show_wait_time ? (
+                      <span className="shrink-0 text-right text-[14px] font-medium tabular-nums text-[#6B7280]">
+                        ~{estWait} min
+                      </span>
+                    ) : null
+                  ) : (
                     <div className="patient-details min-w-0">
-                      <div className="appointment-time flex flex-wrap gap-1 items-center">
+                      <div className="appointment-time flex flex-wrap items-center gap-1">
                         <span className="position-badge">{ordinal(pos)} in line</span>
                         {display.show_wait_time && (
                           <span className="est-wait-badge">~{estWait} min</span>
@@ -288,7 +586,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                         {display.show_priority && pri && (
                           <span
                             className={cn(
-                              "text-label-sm font-semibold px-2 py-0.5 rounded-full uppercase",
+                              "rounded-full px-2 py-0.5 text-label-sm font-semibold uppercase",
                               q.priority === "emergency" && "bg-destructive text-white",
                               q.priority === "high" && "bg-amber-500 text-white",
                               q.priority === "low" &&

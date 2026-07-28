@@ -75,3 +75,62 @@ export const QueueCallBodySchema = z.object({
 });
 
 export const QueueRecallBodySchema = QueueCallBodySchema;
+
+const timeHm = z.string().regex(/^\d{2}:\d{2}$/, "Time must be HH:MM");
+
+const DoctorScheduleDaySchema = z.object({
+  day_of_week: z.number().int().min(0).max(6),
+  is_active: z.boolean(),
+  start_time: timeHm,
+  end_time: timeHm,
+});
+
+export const DoctorScheduleUpsertSchema = z.object({
+  type: z.literal("schedule"),
+  action: z.literal("upsert").optional(),
+  doctorId: z.string().uuid(),
+  schedules: z.array(DoctorScheduleDaySchema).min(1).max(7),
+});
+
+export const DoctorScheduleDeleteSchema = z.object({
+  type: z.literal("schedule"),
+  action: z.literal("delete"),
+  id: z.number().int().positive(),
+});
+
+export const DoctorScheduleAddSchema = z.object({
+  type: z.literal("schedule"),
+  action: z.literal("add").optional(),
+  doctorId: z.string().uuid(),
+  dayOfWeek: z.number().int().min(0).max(6),
+  startTime: timeHm,
+  endTime: timeHm,
+  schedules: z.undefined().optional(),
+});
+
+export const DoctorBlockDeleteSchema = z.object({
+  type: z.literal("block"),
+  action: z.literal("delete"),
+  id: z.number().int().positive(),
+});
+
+export const DoctorBlockAddSchema = z.object({
+  type: z.literal("block"),
+  action: z.literal("add").optional(),
+  doctorId: z.string().uuid(),
+  startTime: timeHm,
+  endTime: timeHm,
+  blockDate: z.string().optional().nullable(),
+  dayOfWeek: z.number().int().min(0).max(6).optional().nullable(),
+  reason: z.string().optional(),
+  isRecurring: z.boolean().optional(),
+});
+
+/** Prefer delete/upsert before add so bulk payloads are not misclassified. */
+export const DoctorAdminActionSchema = z.union([
+  DoctorScheduleDeleteSchema,
+  DoctorScheduleUpsertSchema,
+  DoctorScheduleAddSchema,
+  DoctorBlockDeleteSchema,
+  DoctorBlockAddSchema,
+]);

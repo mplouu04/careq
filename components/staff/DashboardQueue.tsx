@@ -67,6 +67,7 @@ type QueueInProgress = {
   time: string;
   doctor: string;
   room: string;
+  skip_count?: number;
 };
 
 type QueueCompleted = {
@@ -176,6 +177,7 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
         time: item.time,
         doctor: action.doctorLabel,
         room: action.roomLabel,
+        skip_count: item.skip_count ?? 0,
       },
       ...next.inProgress,
     ];
@@ -196,7 +198,7 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
         reason: "",
         position: next.waiting.length + 1,
         est_wait_minutes: next.avg,
-        skip_count: 1,
+        skip_count: (item.skip_count ?? 0) + 1,
       },
       ...next.waiting,
     ];

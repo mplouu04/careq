@@ -51,8 +51,29 @@ test.describe("Public pages smoke", () => {
   });
 
   test("queue display board loads", async ({ page }) => {
+    await page.route(/\/api\/queue\/public/, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          display: {
+            display_name: "CAREQ",
+            location: "",
+            theme_color: "#2563EB",
+            show_wait_time: true,
+            show_priority: true,
+          },
+          rooms: [],
+          waiting: [],
+          avg_service_time: 10,
+        }),
+      });
+    });
     await page.goto("/queue");
-    await expect(page.getByRole("heading", { name: /now serving/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /now serving/i })).toBeVisible({
+      timeout: 15000,
+    });
   });
 
   test("login page loads staff sign-in form", async ({ page }) => {
