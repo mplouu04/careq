@@ -47,6 +47,11 @@ import {
   roomLabel,
   roomSelectItems,
 } from "@/lib/staff-select-labels";
+import {
+  DOCTORS_BROADCAST_EVENT,
+  DOCTORS_BROADCAST_TOPIC,
+} from "@/lib/supabase/broadcast-shared";
+import { logRealtimeStatus } from "@/lib/observability-client";
 
 type QueueWaiting = {
   id: number;
@@ -283,7 +288,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       const d = await catalogApi.doctors();
       return (d.doctors ?? []) as Doctor[];
     },
+    // Polling fallback in case Realtime silently drops. See plan H3.
     staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const roomsQuery = useQuery({
@@ -360,15 +370,39 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
 
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
+    const invalidateDoctors = () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+
+    // Primary path: server-emitted Broadcast on toggle (not RLS-filtered).
+    const broadcastChannel = supabase
+      .channel(DOCTORS_BROADCAST_TOPIC)
+      .on(
+        "broadcast",
+        { event: DOCTORS_BROADCAST_EVENT },
+        () => {
+          void invalidateDoctors();
+        }
+      )
+      .subscribe((status) => {
+        logRealtimeStatus(DOCTORS_BROADCAST_TOPIC, status);
+        if (status === "SUBSCRIBED") {
+          void invalidateDoctors();
+        }
+      });
+
+    // Secondary path: postgres_changes on staff for authenticated staff users.
+    const postgresChannel = supabase
       .channel("dashboard-doctors-catalog")
       .on("postgres_changes", { event: "*", schema: "public", table: "staff" }, () => {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+        void invalidateDoctors();
       })
-      .subscribe();
+      .subscribe((status) => {
+        logRealtimeStatus("dashboard-doctors-catalog", status);
+      });
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(broadcastChannel);
+      void supabase.removeChannel(postgresChannel);
     };
   }, [queryClient]);
 

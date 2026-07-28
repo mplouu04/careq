@@ -320,6 +320,10 @@ export function AdminPanel() {
     },
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.admin.staff() });
+      // Also invalidate the public doctor list so the admin's own booking /
+      // dashboard tabs update immediately without depending on the Realtime
+      // Broadcast round-trip. See plan H4.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
     },
   });
 

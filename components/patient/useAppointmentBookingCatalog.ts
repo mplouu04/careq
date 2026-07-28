@@ -9,6 +9,11 @@ import { queryKeys } from "@/lib/query-keys";
 import { getClinicTodayYmd } from "@/lib/datetime";
 import { maxDobForMinAge } from "@/lib/schemas/patient";
 import {
+  DOCTORS_BROADCAST_EVENT,
+  DOCTORS_BROADCAST_TOPIC,
+} from "@/lib/supabase/broadcast-shared";
+import { logRealtimeStatus } from "@/lib/observability-client";
+import {
   addDays,
   format,
   startOfMonth,
@@ -88,7 +93,14 @@ export function useAppointmentBookingCatalog(state: BookingState) {
         is_active: d.is_active === true,
       })) as BookingDoctor[];
     },
+    // Fallback path: if the Broadcast/postgres_changes signals never arrive
+    // (silent WS drop, RLS filter, missed migration) the booking page still
+    // catches up within one poll interval. See plan H3.
     staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const typesQuery = useQuery({
@@ -174,15 +186,45 @@ export function useAppointmentBookingCatalog(state: BookingState) {
 
   useEffect(() => {
     const supabase = createClient();
-    const channel = supabase
+    const invalidateDoctors = () =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+
+    // Primary path: server-emitted Broadcast on toggle. Broadcast is not
+    // RLS-filtered so it delivers both activate and deactivate transitions to
+    // anon subscribers. See plan H1.
+    const broadcastChannel = supabase
+      .channel(DOCTORS_BROADCAST_TOPIC)
+      .on(
+        "broadcast",
+        { event: DOCTORS_BROADCAST_EVENT },
+        () => {
+          void invalidateDoctors();
+        }
+      )
+      .subscribe((status) => {
+        logRealtimeStatus(DOCTORS_BROADCAST_TOPIC, status);
+        // On a fresh (re)subscribe, force a one-shot refetch so a socket that
+        // dropped and came back cannot leave us with a stale cached list.
+        if (status === "SUBSCRIBED") {
+          void invalidateDoctors();
+        }
+      });
+
+    // Secondary path: postgres_changes on staff. Kept as a belt-and-suspenders
+    // signal for authenticated staff users whose RLS allows them to observe
+    // the transition anyway.
+    const postgresChannel = supabase
       .channel("booking-doctors-catalog")
       .on("postgres_changes", { event: "*", schema: "public", table: "staff" }, () => {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
+        void invalidateDoctors();
       })
-      .subscribe();
+      .subscribe((status) => {
+        logRealtimeStatus("booking-doctors-catalog", status);
+      });
 
     return () => {
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(broadcastChannel);
+      void supabase.removeChannel(postgresChannel);
     };
   }, [queryClient]);
 

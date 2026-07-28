@@ -3,6 +3,7 @@ import { logAudit } from "@/lib/audit";
 import { STAFF_ROLES, type StaffRole } from "@/lib/constants";
 import { sanitize, isValidEmail } from "@/lib/utils";
 import { syncStaffMetadata } from "@/lib/staff-metadata";
+import { broadcastDoctorsChanged } from "@/lib/supabase/broadcast";
 
 export async function listStaff() {
   const supabase = createAdminClient();
@@ -229,6 +230,21 @@ export async function toggleStaffActive(params: {
     recordId: params.id,
     ipAddress: params.ip,
   });
+
+  // Fan out a Realtime Broadcast (not RLS-filtered) so anon booking pages and
+  // staff dashboards invalidate the doctors list immediately. postgres_changes
+  // on staff can be filtered out by the doctors_public_read RLS policy for
+  // the transition boundary — see plan doctor_activation_delay_rca (H1).
+  // Only doctors matter for the public booking page; skip for other roles to
+  // keep noise down but still emit for admins if the toggled row is a doctor.
+  if (current.role === "doctor") {
+    void broadcastDoctorsChanged({
+      id: params.id,
+      is_active: confirmedActive,
+      action: confirmedActive ? "activate" : "deactivate",
+      at: new Date().toISOString(),
+    });
+  }
 
   return { success: true as const, is_active: confirmedActive };
 }

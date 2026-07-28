@@ -25,6 +25,14 @@ vi.mock("@/lib/staff-metadata", () => ({
   syncStaffMetadata: vi.fn().mockResolvedValue(undefined),
 }));
 
+const mockBroadcastDoctorsChanged = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/lib/supabase/broadcast", () => ({
+  broadcastDoctorsChanged: mockBroadcastDoctorsChanged,
+  broadcastRealtime: vi.fn().mockResolvedValue({ ok: true }),
+  DOCTORS_BROADCAST_TOPIC: "doctors:changes",
+  DOCTORS_BROADCAST_EVENT: "changed",
+}));
+
 vi.mock("@/lib/datetime", () => ({
   getClinicTodayYmd: () => "2026-06-06",
   getClinicDayStartIso: (ymd: string) => `${ymd}T16:00:00.000Z`,
@@ -900,6 +908,7 @@ describe("admin.service toggleStaffActive", () => {
     vi.clearAllMocks();
     mockFrom.mockReset();
     mockRpc.mockReset();
+    mockBroadcastDoctorsChanged.mockClear();
   });
 
   it("prevents self-deactivation", async () => {
@@ -914,6 +923,79 @@ describe("admin.service toggleStaffActive", () => {
       error: "You cannot deactivate your own account",
       status: 400,
     });
+  });
+
+  it("broadcasts doctors-changed when a doctor is deactivated", async () => {
+    // Sequenced from(...) calls inside toggleStaffActive:
+    //   1) SELECT current row  -> role=doctor, is_active=true
+    //   2) UPDATE staff        -> no error
+    //   3) SELECT confirmed    -> is_active=false
+    let call = 0;
+    mockFrom.mockImplementation(() => {
+      call += 1;
+      if (call === 1) {
+        return chain({
+          data: {
+            is_active: true,
+            first_name: "Ana",
+            last_name: "Cruz",
+            role: "doctor",
+          },
+        });
+      }
+      if (call === 2) {
+        return chain({ data: null, error: null });
+      }
+      return chain({ data: { is_active: false } });
+    });
+
+    const { toggleStaffActive } = await import("../lib/services/admin.service");
+    const result = await toggleStaffActive({
+      id: "doc-1",
+      requestingUserId: "admin-1",
+      ip: "127.0.0.1",
+    });
+
+    expect(result).toEqual({ success: true, is_active: false });
+    expect(mockBroadcastDoctorsChanged).toHaveBeenCalledTimes(1);
+    expect(mockBroadcastDoctorsChanged).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "doc-1",
+        is_active: false,
+        action: "deactivate",
+      })
+    );
+  });
+
+  it("does not broadcast when a non-doctor staff role is toggled", async () => {
+    let call = 0;
+    mockFrom.mockImplementation(() => {
+      call += 1;
+      if (call === 1) {
+        return chain({
+          data: {
+            is_active: true,
+            first_name: "Ben",
+            last_name: "Reyes",
+            role: "receptionist",
+          },
+        });
+      }
+      if (call === 2) {
+        return chain({ data: null, error: null });
+      }
+      return chain({ data: { is_active: false } });
+    });
+
+    const { toggleStaffActive } = await import("../lib/services/admin.service");
+    const result = await toggleStaffActive({
+      id: "recep-1",
+      requestingUserId: "admin-1",
+      ip: "127.0.0.1",
+    });
+
+    expect(result).toEqual({ success: true, is_active: false });
+    expect(mockBroadcastDoctorsChanged).not.toHaveBeenCalled();
   });
 });
 
