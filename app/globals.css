@@ -167,15 +167,15 @@
 @keyframes pulse-card-border {
   0%,
   100% {
-    border-color: rgba(37, 99, 235, 1);
+    border-color: hsl(var(--primary));
   }
   50% {
-    border-color: rgba(37, 99, 235, 0.4);
+    border-color: hsl(var(--primary) / 0.4);
   }
 }
 
 .called-card-border {
-  border: 2px solid #2563eb;
+  border: 2px solid hsl(var(--primary));
   animation: pulse-card-border 1.5s ease-in-out infinite;
 }
 

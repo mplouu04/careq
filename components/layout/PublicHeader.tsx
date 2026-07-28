@@ -58,14 +58,22 @@ export function PublicHeader() {
             CAREQ
           </Link>
           <nav
-            className="hidden lg:flex items-center gap-md xl:gap-lg"
+            className="hidden md:flex items-center gap-md xl:gap-lg"
             aria-label="Main"
           >
-            {NAV_LINKS.map(({ href, label }) => (
-              <Link key={href} href={href} className={navLinkClass(href)}>
-                {label}
-              </Link>
-            ))}
+            {NAV_LINKS.map(({ href, label }) => {
+              const active = isNavActive(href, pathname);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={navLinkClass(href)}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {label}
+                </Link>
+              );
+            })}
           </nav>
         </div>
 
@@ -80,7 +88,7 @@ export function PublicHeader() {
 
         <button
           type="button"
-          className="lg:hidden text-primary p-2 rounded-lg hover:bg-muted transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
+          className="md:hidden text-primary p-2 rounded-lg hover:bg-muted transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
           onClick={() => setMenuOpen((o) => !o)}
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           aria-expanded={menuOpen}
@@ -91,27 +99,25 @@ export function PublicHeader() {
 
       {menuOpen && (
         <nav
-          className="lg:hidden border-t border-border bg-card flex flex-col"
+          className="md:hidden border-t border-border bg-card flex flex-col"
           aria-label="Mobile"
         >
-          {NAV_LINKS.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn("px-4 border-b border-border", navLinkClass(href))}
-            >
-              {label}
-            </Link>
-          ))}
-          <Link
-            href="/queue"
-            className="px-4 py-3 text-body-md text-on-surface-variant hover:text-primary border-b border-border min-h-[44px] flex items-center"
-          >
-            Queue board (display)
-          </Link>
+          {NAV_LINKS.map(({ href, label }) => {
+            const active = isNavActive(href, pathname);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn("px-4 border-b border-border", navLinkClass(href))}
+                aria-current={active ? "page" : undefined}
+              >
+                {label}
+              </Link>
+            );
+          })}
           <Link
             href="/login"
-            className="px-4 py-3 text-body-md text-on-surface-variant hover:text-primary min-h-[44px] flex items-center"
+            className="px-4 py-3 text-body-md text-on-surface-variant hover:text-primary min-h-[44px] flex items-center sm:hidden"
           >
             Staff login
           </Link>

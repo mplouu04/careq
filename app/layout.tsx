@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, DM_Serif_Display, JetBrains_Mono } from "next/font/google";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { CAREQ_PRIMARY } from "@/lib/design-tokens";
 import "./globals.css";
 
 const dmSans = DM_Sans({
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
   title: "CAREQ — Patient Queue Management",
   description: "Digital queue management for clinics",
   manifest: "/manifest.json",
-  themeColor: "#0f766e",
+  themeColor: CAREQ_PRIMARY,
   icons: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }],
 };
 

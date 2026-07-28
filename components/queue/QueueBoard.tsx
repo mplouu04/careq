@@ -1,12 +1,14 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
-import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
+import { useQuery } from "@tanstack/react-query";
+import {
+  CAREQ_DEFAULT_THEME_COLOR,
+  CAREQ_PRIMARY,
+} from "@/lib/design-tokens";
 import { cn } from "@/lib/utils";
-import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
+import { useQueueSubscription } from "@/lib/hooks/useQueueSubscription";
 import {
   queueDataApi,
   type PublicRoomPanel,
@@ -41,7 +43,7 @@ const DEFAULT_DISPLAY: DisplayConfig = {
   show_priority: true,
 };
 
-const PANEL_GRADIENT = "linear-gradient(180deg, #1D4ED8, #1E40AF)";
+const PANEL_GRADIENT = `linear-gradient(180deg, ${CAREQ_PRIMARY}, #003a9e)`;
 const UPCOMING_LIMIT = 6;
 const COMPACT_TABLE_THRESHOLD = 9;
 
@@ -135,7 +137,7 @@ function StatusBadge({ status }: { status: "empty" | "occupied" | "called" }) {
       <span
         className={cn(
           "status-badge-called inline-flex items-center rounded-[10px] px-2.5 py-1",
-          "text-[14px] font-extrabold uppercase tracking-wide text-white bg-[#DC2626]"
+          "text-[14px] font-extrabold uppercase tracking-wide text-white bg-destructive"
         )}
       >
         Called
@@ -144,13 +146,13 @@ function StatusBadge({ status }: { status: "empty" | "occupied" | "called" }) {
   }
   if (status === "occupied") {
     return (
-      <span className="inline-flex items-center rounded-[10px] px-2.5 py-1 text-[14px] font-extrabold uppercase tracking-wide text-white bg-[#2563EB]">
+      <span className="inline-flex items-center rounded-[10px] px-2.5 py-1 text-[14px] font-extrabold uppercase tracking-wide text-white bg-primary">
         Serving
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-[10px] px-2.5 py-1 text-[14px] font-extrabold uppercase tracking-wide text-[#6B7280] bg-[#E5E7EB]">
+    <span className="inline-flex items-center rounded-[10px] px-2.5 py-1 text-[14px] font-extrabold uppercase tracking-wide text-on-surface-variant bg-surface-container">
       Empty
     </span>
   );
@@ -173,12 +175,12 @@ const RoomCard = memo(function RoomCard({
     <div
       className={cn(
         "flex min-h-[250px] flex-col justify-center rounded-2xl px-6 py-8 text-center shadow-[0_4px_12px_rgba(0,0,0,0.10)]",
-        isEmpty && "bg-white opacity-70",
-        isOccupied && "bg-[#EFF4FE]",
-        isCalled && "bg-white called-card-border"
+        isEmpty && "bg-surface-container-lowest opacity-70",
+        isOccupied && "bg-primary/10",
+        isCalled && "bg-surface-container-lowest called-card-border"
       )}
     >
-      <p className="mb-4 text-[15px] font-extrabold uppercase tracking-[0.07em] text-[#6B7280]">
+      <p className="mb-4 text-[15px] font-extrabold uppercase tracking-[0.07em] text-on-surface-variant">
         {room.name}
       </p>
 
@@ -187,23 +189,23 @@ const RoomCard = memo(function RoomCard({
         className="queue-board-card-content flex flex-col items-center"
       >
         {isEmpty ? (
-          <p className="text-center text-[16px] font-medium leading-relaxed text-[#6B7280]">
+          <p className="text-center text-[16px] font-medium leading-relaxed text-on-surface-variant">
             No patient in this room
           </p>
         ) : isCalled && room.current ? (
           <>
-            <div className="font-mono-careq mb-3.5 text-[42px] font-extrabold leading-none text-[#2563EB]">
+            <div className="font-mono-careq mb-3.5 text-[42px] font-extrabold leading-none text-primary">
               {room.current.queue_number}
             </div>
             {room.current.doctor_name && (
-              <p className="truncate max-w-full text-[15px] font-bold text-[#2563EB]">
+              <p className="truncate max-w-full text-[15px] font-bold text-primary">
                 {room.current.doctor_name}
               </p>
             )}
-            <p className="mt-3 text-[14px] font-extrabold uppercase tracking-[0.08em] text-[#DC2626]">
+            <p className="mt-3 text-[14px] font-extrabold uppercase tracking-[0.08em] text-destructive">
               Please proceed
             </p>
-            <p className="mt-1 text-[15px] font-extrabold text-[#2563EB]">
+            <p className="mt-1 text-[15px] font-extrabold text-primary">
               → {room.name}
             </p>
           </>
@@ -211,12 +213,12 @@ const RoomCard = memo(function RoomCard({
           <>
             <div
               className="font-mono-careq mb-3.5 text-[38px] font-extrabold leading-none"
-              style={{ color: themeColor || "#2563EB" }}
+              style={{ color: themeColor || CAREQ_PRIMARY }}
             >
               {room.current.queue_number}
             </div>
             {room.current.doctor_name && (
-              <p className="truncate max-w-full text-[15px] font-bold text-[#2563EB]">
+              <p className="truncate max-w-full text-[15px] font-bold text-primary">
                 {room.current.doctor_name}
               </p>
             )}
@@ -229,14 +231,14 @@ const RoomCard = memo(function RoomCard({
 
 function CompactTableView({ rooms }: { rooms: RoomPanel[] }) {
   return (
-    <div className="overflow-auto rounded-2xl bg-white shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
+    <div className="overflow-auto rounded-2xl bg-surface-container-lowest shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
       <table className="w-full border-collapse text-left">
         <thead className="sticky top-0 z-10">
-          <tr className="bg-[#F8F9FB]">
+          <tr className="bg-surface-container-low">
             {["Room", "Ticket", "Doctor", "Status"].map((label) => (
               <th
                 key={label}
-                className="px-4 py-3 text-[14px] font-extrabold uppercase tracking-[0.07em] text-[#6B7280]"
+                className="px-4 py-3 text-[14px] font-extrabold uppercase tracking-[0.07em] text-on-surface-variant"
               >
                 {label}
               </th>
@@ -250,17 +252,17 @@ function CompactTableView({ rooms }: { rooms: RoomPanel[] }) {
               <tr
                 key={room.id}
                 className={cn(
-                  index % 2 === 0 ? "bg-white" : "bg-[#F8F9FB]",
-                  status === "called" && "border-l-[3px] border-l-[#DC2626]"
+                  index % 2 === 0 ? "bg-surface-container-lowest" : "bg-surface-container-low",
+                  status === "called" && "border-l-[3px] border-l-destructive"
                 )}
               >
-                <td className="h-14 px-4 py-3 text-[17px] font-bold text-[#111827]">
+                <td className="h-14 px-4 py-3 text-[17px] font-bold text-on-surface">
                   {room.name}
                 </td>
-                <td className="h-14 px-4 py-3 font-mono-careq text-[19px] font-extrabold text-[#2563EB]">
+                <td className="h-14 px-4 py-3 font-mono-careq text-[19px] font-extrabold text-primary">
                   {room.current?.queue_number ?? "—"}
                 </td>
-                <td className="h-14 max-w-[10rem] truncate px-4 py-3 text-[17px] font-semibold text-[#2563EB]">
+                <td className="h-14 max-w-[10rem] truncate px-4 py-3 text-[17px] font-semibold text-primary">
                   {room.current?.doctor_name ?? "—"}
                 </td>
                 <td className="h-14 px-4 py-3">
@@ -310,7 +312,7 @@ function CalledNotificationBanner({
         "mb-4 overflow-hidden rounded-[10px] px-4 py-3 text-center",
         exiting ? "called-banner-slide-out" : "called-banner-slide-in"
       )}
-      style={{ backgroundColor: "#DC2626" }}
+      style={{ backgroundColor: "hsl(var(--destructive))" }}
       role="alert"
       aria-live="assertive"
     >
@@ -328,7 +330,6 @@ function CalledNotificationBanner({
 export function QueueBoard({ screenId }: { screenId?: string }) {
   const searchParams = useSearchParams();
   const tvMode = searchParams.get("theme") === "tv";
-  const queryClient = useQueryClient();
 
   const { data, isPending, isError, isFetching } = useQuery({
     queryKey: queryKeys.queue.public(screenId),
@@ -336,24 +337,10 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
     staleTime: 3_000,
   });
 
-  const subscribeQueue = useMemo(
-    () => (onChange: () => void) => {
-      const supabase = createClient();
-      return supabase
-        .channel(`queue-board-${screenId ?? "default"}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
-    },
-    [screenId]
-  );
-
-  const { isLive } = useRealtimePoll({
-    fetchFn: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.queue.public(screenId),
-      });
-    },
-    subscribe: subscribeQueue,
-    fallbackIntervalMs: 15000,
+  const { isLive } = useQueueSubscription({
+    channelName: `queue-board-${screenId ?? "default"}`,
+    queryKey: queryKeys.queue.public(screenId),
+    fallbackIntervalMs: 15_000,
   });
 
   const loadError = isError;
@@ -445,7 +432,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
     <div
       className={cn(
         "queue-board relative flex h-screen flex-col overflow-hidden lg:flex-row",
-        tvMode ? "bg-[#F8F9FB]" : "bg-surface"
+        tvMode ? "bg-surface-container-low" : "bg-surface"
       )}
       aria-busy={isFetching || showInitialSkeleton}
     >
@@ -497,7 +484,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
           <CalledNotificationBanner banner={calledBanner} exiting={bannerExiting} />
         )}
 
-        <h2 className="mb-6 text-center text-[14px] font-extrabold uppercase tracking-[0.14em] text-[#DCE9FF]">
+        <h2 className="mb-6 text-center text-[14px] font-extrabold uppercase tracking-[0.14em] text-primary-foreground/80">
           Now serving
         </h2>
 
@@ -520,21 +507,21 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
       {/* Right panel — Upcoming (30%) */}
       <div
         className={cn(
-          "upcoming-queue-section flex min-h-[40vh] w-full flex-col overflow-y-auto border-t border-[#E2E5EA] p-4 sm:p-6 md:p-8 lg:min-h-0 lg:w-[30%] lg:border-l lg:border-t-0",
-          tvMode ? "bg-white text-[#111827]" : "bg-surface-container-lowest"
+          "upcoming-queue-section flex min-h-[40vh] w-full flex-col overflow-y-auto border-t border-outline-variant p-4 sm:p-6 md:p-8 lg:min-h-0 lg:w-[30%] lg:border-l lg:border-t-0",
+          tvMode ? "bg-surface-container-lowest text-on-surface" : "bg-surface-container-lowest"
         )}
       >
         <h3
           className={cn(
             "mb-6 font-extrabold tracking-wide",
             tvMode
-              ? "text-left text-[21px] text-[#111827]"
+              ? "text-left text-[21px] text-on-surface"
               : "text-center text-headline-sm text-on-surface"
           )}
         >
           Upcoming
           {waiting.length > 0 && (
-            <span className="ml-2 font-mono-careq text-[#2563EB]">
+            <span className="ml-2 font-mono-careq text-primary">
               ({waiting.length})
             </span>
           )}
@@ -543,7 +530,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
         <ul className="upcoming-list flex-1">
           {waiting.length === 0 ? (
             <li className="flex flex-1 items-center justify-center py-8">
-              <div className="text-center text-[16px] leading-relaxed text-[#6B7280]">
+              <div className="text-center text-[16px] leading-relaxed text-on-surface-variant">
                 No upcoming patients
               </div>
             </li>
@@ -556,13 +543,13 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                 <li
                   key={q.queueId ?? q.id}
                   className={cn(
-                    "flex items-center justify-between gap-3 border-b border-[#E2E5EA] py-4",
+                    "flex items-center justify-between gap-3 border-b border-outline-variant py-4",
                     !tvMode && "upcoming-item"
                   )}
                 >
                   <div
                     className={cn(
-                      "font-mono-careq shrink-0 rounded-md bg-[#F3F4F6] px-[11px] py-1 text-[15px] font-extrabold text-[#111827]",
+                      "font-mono-careq shrink-0 rounded-md bg-surface-container px-[11px] py-1 text-[15px] font-extrabold text-on-surface",
                       !tvMode && "queue-number-sm bg-transparent px-0 py-0"
                     )}
                     style={!tvMode ? { color: themeColor } : undefined}
@@ -572,7 +559,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
 
                   {tvMode ? (
                     display.show_wait_time ? (
-                      <span className="shrink-0 text-right text-[14px] font-medium tabular-nums text-[#6B7280]">
+                      <span className="shrink-0 text-right text-[14px] font-medium tabular-nums text-on-surface-variant">
                         ~{estWait} min
                       </span>
                     ) : null

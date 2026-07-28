@@ -145,48 +145,61 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     const payload = guestPayload();
     const phoneDigits = payload.phone.replace(/\D/g, "");
 
-    const res = await fetch("/api/patients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        dob: payload.dob,
-        gender: payload.gender,
-        phone: phoneDigits,
-        email: payload.email || undefined,
-        address: payload.address,
-        consent: true,
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
+    try {
+      const res = await fetch("/api/patients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          dob: payload.dob,
+          gender: payload.gender,
+          phone: phoneDigits,
+          email: payload.email || undefined,
+          address: payload.address,
+          consent: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
 
-    if (!res.ok) {
-      if (data.code === "duplicate_phone") {
-        setStep("contact");
+      if (!res.ok) {
+        if ((data as { code?: string }).code === "duplicate_phone") {
+          setStep("contact");
+        }
+        setError(
+          (data as { error?: string }).error ?? "Registration failed. Please try again."
+        );
+        return;
       }
-      setError(data.error ?? "Registration failed. Please try again.");
-      return;
-    }
 
+      await handleRegistrationSuccess(data as Record<string, unknown>);
+    } catch {
+      setError("Registration failed. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegistrationSuccess(data: Record<string, unknown>) {
     if (data.reused_existing) {
       setMatchedModal({
         publicId: String(data.patient),
-        verifyToken: data.verifyToken,
-        matchedBy: data.matched_by ?? "existing record",
+        verifyToken: data.verifyToken as string | undefined,
+        matchedBy: (data.matched_by as string) ?? "existing record",
         message:
-          data.message ??
+          (data.message as string) ??
           "We matched your details to an existing patient profile. No new record was created.",
       });
       return;
     }
 
     if (data.verifyToken) {
-      storeVerifyToken(data.verifyToken);
+      storeVerifyToken(String(data.verifyToken));
     }
     setSuccessPublicId(String(data.patient));
-    setSuccessVerifyToken(data.verifyToken ?? null);
+    setSuccessVerifyToken(
+      data.verifyToken != null ? String(data.verifyToken) : null
+    );
   }
 
   if (successPublicId) {

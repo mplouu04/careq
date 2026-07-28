@@ -20,8 +20,8 @@ export default function GlobalError({
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center max-w-md mx-auto px-4">
         <div className="careq-card p-8">
-          <h2 className="text-headline-sm text-foreground mb-2">Something went wrong</h2>
-          <p className="text-body-sm text-muted-foreground mb-6">
+          <h2 className="text-headline-sm text-on-surface mb-2">Something went wrong</h2>
+          <p className="text-body-sm text-on-surface-variant mb-6">
             An unexpected error occurred. Please try again or return to the home page.
           </p>
           <div className="flex gap-3 justify-center">

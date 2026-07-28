@@ -82,8 +82,8 @@ export function FormInfo({ message, children }: { message?: string; children?: R
 
 export function FormWarning({ children }: { children: React.ReactNode }) {
   return (
-    <Alert className="mb-4 border-amber-200 bg-amber-50 text-amber-900">
-      <AlertCircle className="h-4 w-4 text-amber-600" />
+    <Alert className="mb-4 border-status-no-show/30 bg-status-no-show/10 text-on-surface">
+      <AlertCircle className="h-4 w-4 text-status-no-show" />
       <AlertDescription className="text-body-sm">{children}</AlertDescription>
     </Alert>
   );

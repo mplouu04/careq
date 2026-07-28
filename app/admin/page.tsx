@@ -1,12 +1,12 @@
-import { AdminPanel } from "@/components/staff/AdminPanel";
+import { AdminPanel } from "@/components/admin/AdminPanel";
 
 export default function AdminPage() {
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <p className="text-[13px] text-[#6B7280]">Clinic management</p>
-        <h1 className="text-xl font-bold text-[#111827]">Admin Panel</h1>
-        <p className="mt-1 text-sm text-[#6B7280]">
+        <p className="text-body-sm text-on-surface-variant">Clinic management</p>
+        <h1 className="text-headline-sm text-on-surface">Admin Panel</h1>
+        <p className="mt-1 text-body-sm text-on-surface-variant">
           Manage staff, appointment types, display screens, and clinic data.
         </p>
       </header>

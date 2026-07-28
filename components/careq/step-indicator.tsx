@@ -14,9 +14,15 @@ type StepIndicatorProps = {
 
 export function StepIndicator({ steps, currentStep, className }: StepIndicatorProps) {
   const currentIndex = steps.findIndex((s) => s.id === currentStep);
+  const current = steps[currentIndex];
 
   return (
     <nav aria-label="Progress" className={cn("w-full", className)}>
+      {current && (
+        <p className="sm:hidden text-label-sm text-on-surface font-semibold mb-3">
+          Step {currentIndex + 1} of {steps.length}: {current.label}
+        </p>
+      )}
       <ol className="flex items-center gap-2 sm:gap-4">
         {steps.map((step, index) => {
           const done = index < currentIndex;
@@ -31,6 +37,9 @@ export function StepIndicator({ steps, currentStep, className }: StepIndicatorPr
                   !done && !active && "border-outline-variant text-on-surface-variant"
                 )}
                 aria-current={active ? "step" : undefined}
+                aria-label={`Step ${index + 1} of ${steps.length}: ${step.label}${
+                  done ? ", completed" : active ? ", current" : ""
+                }`}
               >
                 {done ? <Check className="h-4 w-4" aria-hidden /> : index + 1}
               </span>

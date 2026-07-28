@@ -1,24 +1,10 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { ArrowRight, BadgeCheck } from "lucide-react";
 import { CareqButton } from "@/components/careq";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { HeroQueueTrackForm } from "@/components/marketing/HeroQueueTrackForm";
 
 export function LandingHero() {
-  const router = useRouter();
-  const [queueRef, setQueueRef] = useState("");
-
-  function trackQueue(e: React.FormEvent) {
-    e.preventDefault();
-    const ref = queueRef.trim();
-    if (ref) router.push(`/status/${encodeURIComponent(ref)}`);
-  }
-
   return (
     <section className="relative overflow-hidden pt-xxl pb-xl px-margin-mobile md:px-margin-desktop">
       <div className="max-w-careq mx-auto grid grid-cols-1 lg:grid-cols-12 gap-gutter items-center">
@@ -56,24 +42,7 @@ export function LandingHero() {
             <p className="text-body-sm text-on-surface-variant">
               Already have a reference? Track your place in line.
             </p>
-          <form
-            onSubmit={trackQueue}
-            className="flex flex-col sm:flex-row gap-2"
-          >
-            <label htmlFor="hero-queue-ref" className="sr-only">
-              Queue reference number
-            </label>
-            <Input
-              id="hero-queue-ref"
-              placeholder="Track queue (e.g. WALK-5)"
-              value={queueRef}
-              onChange={(e) => setQueueRef(e.target.value)}
-              className="font-mono h-11 bg-surface-container-lowest"
-            />
-            <Button type="submit" variant="secondary" className="h-11 shrink-0">
-              View status
-            </Button>
-          </form>
+            <HeroQueueTrackForm />
           </div>
         </div>
 

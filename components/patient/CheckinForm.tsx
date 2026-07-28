@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -20,6 +20,10 @@ import {
 import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
 import { catalogApi } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
+import { useRovingTabs } from "@/lib/hooks/useRovingTabs";
+
+const CHECKIN_TABS = ["appointment", "walk-in"] as const;
+type CheckinTab = (typeof CHECKIN_TABS)[number];
 
 type ApptType = { id: string; name: string };
 
@@ -57,7 +61,19 @@ export function CheckinForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successRef, setSuccessRef] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"appointment" | "walk-in">("appointment");
+  const [activeTab, setActiveTab] = useState<CheckinTab>("appointment");
+
+  const setCheckinTab = useCallback((tab: CheckinTab) => {
+    if (tab === "walk-in" && !verifyToken) return;
+    setActiveTab(tab);
+  }, [verifyToken]);
+
+  const { getTabProps } = useRovingTabs({
+    values: CHECKIN_TABS,
+    value: activeTab,
+    onChange: setCheckinTab,
+    disabled: { "walk-in": !verifyToken },
+  });
 
   const typesQuery = useQuery({
     queryKey: queryKeys.appointmentTypes.list(),
@@ -141,30 +157,39 @@ export function CheckinForm() {
     }
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/checkin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "walk-in",
-        verifyToken,
-        appointmentType: apptType,
-        additionalinfo: reason,
-        termsAgreement: "on",
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      if (res.status === 403) {
-        clearVerifyToken();
-        setError("Your verification session expired. Please verify your identity again.");
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "walk-in",
+          verifyToken,
+          appointmentType: apptType,
+          additionalinfo: reason,
+          termsAgreement: "on",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 403) {
+          clearVerifyToken();
+          setError("Your verification session expired. Please verify your identity again.");
+          return;
+        }
+        setError((data as { error?: string }).error ?? "Check-in failed");
         return;
       }
-      setError(data.error ?? "Check-in failed");
-      return;
+      clearVerifyToken();
+      setSuccessRef(
+        (data as { queueNumber?: string; quenumber?: string }).queueNumber ??
+          (data as { quenumber?: string }).quenumber ??
+          null
+      );
+    } catch {
+      setError("Check-in failed. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    clearVerifyToken();
-    setSuccessRef(data.queueNumber ?? data.quenumber);
   }
 
   async function appointmentCheckin() {
@@ -174,24 +199,33 @@ export function CheckinForm() {
     }
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/checkin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        appointmentId: refLookup.appnumber,
-        phone: phone.trim(),
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(data.error ?? "Check-in failed");
-      return;
+    try {
+      const res = await fetch("/api/checkin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          appointmentId: refLookup.appnumber,
+          phone: phone.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError((data as { error?: string }).error ?? "Check-in failed");
+        return;
+      }
+      setSuccessRef(
+        (data as { queueNumber?: string; quenumber?: string }).queueNumber ??
+          (data as { quenumber?: string }).quenumber ??
+          null
+      );
+    } catch {
+      setError("Check-in failed. Please check your connection and try again.");
+    } finally {
+      setLoading(false);
     }
-    setSuccessRef(data.queueNumber ?? data.quenumber);
   }
 
-  const tabClass = (tab: "appointment" | "walk-in") =>
+  const tabClass = (tab: CheckinTab) =>
     cn(
       "flex-1 min-h-[48px] py-3 px-2 text-body-sm font-medium transition-colors duration-200 border-b-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
       activeTab === tab
@@ -222,25 +256,26 @@ export function CheckinForm() {
         </p>
       </div>
 
-      <div className="flex border-b border-border" role="tablist" aria-label="Check-in type">
+      <div
+        className="flex border-b border-border"
+        role="tablist"
+        aria-label="Check-in type"
+      >
         <button
           type="button"
-          role="tab"
-          aria-selected={activeTab === "appointment"}
-          aria-controls="checkin-panel-appointment"
-          onClick={() => setActiveTab("appointment")}
+          {...getTabProps("appointment")}
+          aria-controls="panel-appointment"
+          onClick={() => setCheckinTab("appointment")}
           className={tabClass("appointment")}
         >
           Appointment
         </button>
         <button
           type="button"
-          role="tab"
-          aria-selected={activeTab === "walk-in"}
-          aria-controls="checkin-panel-walk-in"
-          disabled={!verifyToken}
+          {...getTabProps("walk-in")}
+          aria-controls="panel-walk-in"
           aria-describedby={!verifyToken ? "walkin-tab-hint" : undefined}
-          onClick={() => verifyToken && setActiveTab("walk-in")}
+          onClick={() => setCheckinTab("walk-in")}
           className={cn(
             tabClass("walk-in"),
             !verifyToken && "text-on-surface-variant/50 cursor-not-allowed"
@@ -259,7 +294,12 @@ export function CheckinForm() {
         {error && <FormError message={error} />}
 
         {activeTab === "appointment" && (
-          <div className="space-y-4" role="tabpanel" id="checkin-panel-appointment">
+          <div
+            className="space-y-4"
+            role="tabpanel"
+            id="panel-appointment"
+            aria-labelledby="tab-appointment"
+          >
             <div>
               <FormLabel required>Reference</FormLabel>
               <FormInput
@@ -268,13 +308,18 @@ export function CheckinForm() {
                 onChange={(e) => setRef(e.target.value.toUpperCase())}
                 placeholder="APT..."
                 className="uppercase font-mono-careq"
+                aria-describedby="ref-lookup-status"
               />
-              {lookingUp && (
-                <p className="text-body-sm text-on-surface-variant mt-1">Looking up…</p>
-              )}
-              {refLookupError && !lookingUp && (
-                <p className="text-body-sm text-destructive mt-1">{refLookupError}</p>
-              )}
+              <div id="ref-lookup-status" aria-live="polite" className="min-h-[1.25rem]">
+                {lookingUp && (
+                  <p className="text-body-sm text-on-surface-variant mt-1">Looking up…</p>
+                )}
+                {refLookupError && !lookingUp && (
+                  <p className="text-body-sm text-destructive mt-1" role="alert">
+                    {refLookupError}
+                  </p>
+                )}
+              </div>
             </div>
 
             <div>
@@ -310,7 +355,12 @@ export function CheckinForm() {
         )}
 
         {activeTab === "walk-in" && (
-          <div className="space-y-4" role="tabpanel" id="checkin-panel-walk-in">
+          <div
+            className="space-y-4"
+            role="tabpanel"
+            id="panel-walk-in"
+            aria-labelledby="tab-walk-in"
+          >
             {!verifyToken && (
               <FormWarning>
                 <Link href="/patient-search" className="text-primary hover:underline">

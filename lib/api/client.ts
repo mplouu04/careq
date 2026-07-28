@@ -108,12 +108,11 @@ export type AvailabilityPayload = {
 
 export const catalogApi = {
   doctors: () =>
-    api.get<{ doctors: DoctorRow[] }>("/api/doctors", { cache: "no-store" }),
+    api.get<{ doctors: DoctorRow[] }>("/api/doctors"),
 
   appointmentTypes: (all = false) =>
     api.get<{ types: AppointmentTypeRow[] }>(
-      all ? "/api/appointment-types?all=1" : "/api/appointment-types",
-      { cache: "no-store" }
+      all ? "/api/appointment-types?all=1" : "/api/appointment-types"
     ),
 
   rooms: (all = false) =>
@@ -277,6 +276,20 @@ export const queueApi = {
 };
 
 export const appointmentApi = {
+  book: async (body: Record<string, unknown>) => {
+    const res = await fetch("/api/appointments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      appointmentID?: string;
+      error?: string;
+      code?: string;
+    };
+    return { ok: res.ok, status: res.status, data };
+  },
+
   cancel: (reference: string, phone: string) =>
     api.delete<{ success: boolean }>(
       `/api/appointments/${encodeURIComponent(reference)}`,

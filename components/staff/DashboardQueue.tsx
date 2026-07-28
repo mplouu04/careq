@@ -3,7 +3,7 @@
 import { catalogApi, queueApi, queueDataApi, type StaffQueuePayload } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -39,7 +39,8 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { QueueCommandBar } from "@/components/staff/QueueCommandBar";
-import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
+import { useQueueSubscription } from "@/lib/hooks/useQueueSubscription";
+import { useRovingTabs } from "@/lib/hooks/useRovingTabs";
 import {
   doctorLabel,
   doctorSelectItems,
@@ -251,6 +252,15 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [recallRoomId, setRecallRoomId] = useState("");
   const [today, setToday] = useState("");
   const [queueTab, setQueueTab] = useState<ColumnId>("waiting");
+  const columnIds = useMemo(
+    () => QUEUE_COLUMNS.map((c) => c.id) as ColumnId[],
+    []
+  );
+  const { getTabProps: getQueueTabProps } = useRovingTabs({
+    values: columnIds,
+    value: queueTab,
+    onChange: setQueueTab,
+  });
   const lastAutoCompleteRef = useRef(0);
   const AUTO_COMPLETE_MIN_INTERVAL_MS = 120_000;
 
@@ -302,30 +312,18 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const doctorItems = useMemo(() => doctorSelectItems(doctors), [doctors]);
   const roomItems = useMemo(() => roomSelectItems(rooms), [rooms]);
 
-  const maybeAutoComplete = () => {
+  const maybeAutoComplete = useCallback(() => {
     const now = Date.now();
     if (now - lastAutoCompleteRef.current < AUTO_COMPLETE_MIN_INTERVAL_MS) return;
     lastAutoCompleteRef.current = now;
     void queueDataApi.autoComplete();
-  };
+  }, []);
 
-  const subscribeQueue = useMemo(
-    () => (onChange: () => void) => {
-      const supabase = createClient();
-      return supabase
-        .channel("dashboard-queue")
-        .on("postgres_changes", { event: "*", schema: "public", table: "queue" }, onChange);
-    },
-    []
-  );
-
-  const { isLive } = useRealtimePoll({
-    fetchFn: async () => {
-      maybeAutoComplete();
-      await queryClient.invalidateQueries({ queryKey: queryKeys.queue.staff() });
-    },
-    subscribe: subscribeQueue,
+  const { isLive } = useQueueSubscription({
+    channelName: "dashboard-queue",
+    queryKey: queryKeys.queue.staff(),
     fallbackIntervalMs: 5000,
+    beforeInvalidate: maybeAutoComplete,
   });
 
   useEffect(() => {
@@ -725,11 +723,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           <button
             key={col.id}
             type="button"
-            role="tab"
-            aria-selected={queueTab === col.id}
+            {...getQueueTabProps(col.id)}
+            aria-controls={`queue-panel-${col.id}`}
             onClick={() => setQueueTab(col.id)}
             className={cn(
-              "shrink-0 min-h-[44px] px-4 rounded-lg text-label-sm font-semibold transition-colors cursor-pointer",
+              "shrink-0 min-h-[44px] px-4 rounded-lg text-label-sm font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               queueTab === col.id
                 ? "bg-primary text-primary-foreground"
                 : "bg-surface-container-low text-on-surface-variant hover:bg-surface-container"
@@ -744,7 +742,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         {QUEUE_COLUMNS.map((col) => renderQueueColumn(col))}
       </div>
 
-      <div className="xl:hidden mb-5">
+      <div
+        className="xl:hidden mb-5"
+        role="tabpanel"
+        id={`queue-panel-${queueTab}`}
+        aria-labelledby={`tab-${queueTab}`}
+      >
         {QUEUE_COLUMNS.filter((col) => col.id === queueTab).map((col) =>
           renderQueueColumn(col)
         )}

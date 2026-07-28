@@ -3,7 +3,7 @@
 import { appointmentApi, appointmentsDataApi } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,7 @@ import {
 } from "@/components/careq";
 import { Button } from "@/components/ui/button";
 import { cn, isValidRef } from "@/lib/utils";
+import { useRovingTabs } from "@/lib/hooks/useRovingTabs";
 
 type LookupMethod = "phone" | "reference";
 
@@ -190,14 +191,16 @@ export function MyAppointments() {
     };
   }, [checkinIds, activeLookup, queryClient, queryKey]);
 
-  function resetResults() {
-    setActiveLookup(null);
-  }
-
-  function handleLookupMethodChange(method: LookupMethod) {
+  const handleLookupMethodChange = useCallback((method: LookupMethod) => {
     setLookupMethod(method);
-    resetResults();
-  }
+    setActiveLookup(null);
+  }, []);
+
+  const { getTabProps } = useRovingTabs({
+    values: ["phone", "reference"] as const,
+    value: lookupMethod,
+    onChange: handleLookupMethodChange,
+  });
 
   function lookup() {
     if (lookupMethod === "phone") {
@@ -292,7 +295,7 @@ export function MyAppointments() {
           </div>
 
           <div
-            className="flex w-full rounded-xl bg-[#F3F4F6] p-1"
+            className="flex w-full rounded-xl bg-surface-container p-1"
             role="tablist"
             aria-label="Lookup method"
           >
@@ -302,14 +305,14 @@ export function MyAppointments() {
                 <button
                   key={tab.value}
                   type="button"
-                  role="tab"
-                  aria-selected={isActive}
+                  {...getTabProps(tab.value)}
+                  aria-controls={`panel-${tab.value}`}
                   onClick={() => handleLookupMethodChange(tab.value)}
                   className={cn(
-                    "flex-1 rounded-lg px-3 py-2.5 text-body-sm font-medium transition-all",
+                    "flex-1 rounded-lg px-3 py-2.5 text-body-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     isActive
-                      ? "bg-white text-[#111827] font-semibold shadow-sm"
-                      : "text-[#6B7280] hover:text-[#111827]"
+                      ? "bg-surface-container-lowest text-on-surface font-semibold shadow-sm"
+                      : "text-on-surface-variant hover:text-on-surface"
                   )}
                 >
                   {tab.label}
@@ -322,7 +325,8 @@ export function MyAppointments() {
             <div
               className="flex flex-col gap-4 sm:flex-row sm:items-start"
               role="tabpanel"
-              aria-label="Phone and date of birth lookup"
+              id="panel-phone"
+              aria-labelledby="tab-phone"
             >
               <div className="min-w-0 flex-1">
                 <FormLabel htmlFor="lookup-phone">Phone Number</FormLabel>
@@ -359,7 +363,8 @@ export function MyAppointments() {
             <div
               className="flex flex-col gap-4"
               role="tabpanel"
-              aria-label="Reference number lookup"
+              id="panel-reference"
+              aria-labelledby="tab-reference"
             >
               <div className="min-w-0 w-full">
                 <FormLabel htmlFor="lookup-reference">Reference Number</FormLabel>

@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createClient } from "@/lib/supabase/client";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { catalogApi } from "@/lib/api/client";
+import { appointmentApi } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import {
-  addDays,
   addMonths,
   eachDayOfInterval,
   endOfMonth,
@@ -34,10 +31,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CAREQ_PRIMARY } from "@/lib/design-tokens";
-import { getClinicTodayYmd } from "@/lib/datetime";
 import {
   PATIENT_NAME_PATTERN_HTML,
-  maxDobForMinAge,
   parseGuestPatientFieldErrors,
 } from "@/lib/schemas/patient";
 import { CareqButton } from "@/components/careq/careq-button";
@@ -45,58 +40,21 @@ import { DoctorCardsSkeleton } from "@/components/careq/skeletons";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StepIndicator } from "@/components/careq/step-indicator";
+import {
+  FormHelperText,
+  FormInput,
+  FormLabel,
+  FormSelect,
+} from "@/components/careq/form-primitives";
 import { TimeSlotPicker } from "@/components/patient/TimeSlotPicker";
-
-const FIELD_INPUT_CLASS =
-  "mt-2 flex w-full rounded-xl border bg-background px-4 py-3 text-body-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[44px]";
-
-type Doctor = { id: string; first_name: string; last_name: string; is_active: boolean };
-type ApptType = { id: string; name: string; duration: number };
-
-type BookingState = {
-  step: number;
-  doctorId: string;
-  appTypeId: string;
-  date: string;
-  time: string;
-  reason: string;
-  fname: string;
-  lname: string;
-  phone: string;
-  email: string;
-  dob: string;
-  gender: string;
-  address: string;
-  consent: boolean;
-  termsAgreed: boolean;
-  reference: string;
-};
-
-const INITIAL_STATE: BookingState = {
-  step: 1,
-  doctorId: "",
-  appTypeId: "",
-  date: "",
-  time: "",
-  reason: "",
-  fname: "",
-  lname: "",
-  phone: "",
-  email: "",
-  dob: "",
-  gender: "",
-  address: "",
-  consent: false,
-  termsAgreed: false,
-  reference: "",
-};
-
-const STEPS = [
-  { id: "1", label: "Doctor" },
-  { id: "2", label: "Date & time" },
-  { id: "3", label: "Details" },
-  { id: "4", label: "Review" },
-];
+import {
+  BOOKING_INITIAL_STATE,
+  BOOKING_STEPS,
+  type BookingDoctor,
+  type BookingState,
+  useAppointmentBookingCatalog,
+  useBookingViewMonth,
+} from "@/components/patient/useAppointmentBookingCatalog";
 
 const AVATAR_COLORS = [CAREQ_PRIMARY, "#1a5fb4", "#003d99", "#2563c4"];
 
@@ -120,101 +78,40 @@ function isWeekend(day: Date): boolean {
   return dow === 0 || dow === 6;
 }
 
-function doctorName(d: Doctor): string {
+function doctorName(d: BookingDoctor): string {
   return `Dr. ${d.first_name} ${d.last_name}`;
 }
 
-function doctorInitials(d: Doctor): string {
+function doctorInitials(d: BookingDoctor): string {
   return `${d.first_name.charAt(0)}${d.last_name.charAt(0)}`.toUpperCase();
 }
 
 export function AppointmentBooking() {
   const params = useSearchParams();
   const publicId = params.get("publicId");
-  const queryClient = useQueryClient();
 
-  const [state, setState] = useState<BookingState>(INITIAL_STATE);
-  const [viewMonth, setViewMonth] = useState(() => startOfMonth(new Date()));
+  const [state, setState] = useState<BookingState>(BOOKING_INITIAL_STATE);
+  const { viewMonth, setViewMonth } = useBookingViewMonth();
   const [confirming, setConfirming] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const catalogErrorToasted = useRef(false);
 
-  const todayYmd = getClinicTodayYmd();
+  const {
+    queryClient,
+    todayYmd,
+    maxDobYmd,
+    maxDate,
+    doctors,
+    types,
+    doctorsLoading,
+    selectedDoctor,
+    selectedType,
+    duration,
+    slots,
+    slotsLoading,
+  } = useAppointmentBookingCatalog(state);
+
   const todayDate = parseYmd(todayYmd);
-  const maxDobYmd = useMemo(() => maxDobForMinAge(todayYmd), [todayYmd]);
-  const maxDate = useMemo(
-    () => format(addDays(parseYmd(todayYmd), 30), "yyyy-MM-dd"),
-    [todayYmd]
-  );
   const maxDateObj = parseYmd(maxDate);
-
-  const doctorsQuery = useQuery({
-    queryKey: queryKeys.doctors.list(),
-    queryFn: async () => {
-      const data = await catalogApi.doctors();
-      return (data.doctors ?? []).map((d) => ({
-        ...d,
-        is_active: d.is_active === true,
-      })) as Doctor[];
-    },
-    staleTime: 5_000,
-    refetchInterval: 5_000,
-  });
-
-  const typesQuery = useQuery({
-    queryKey: queryKeys.appointmentTypes.list(),
-    queryFn: async () => {
-      const data = await catalogApi.appointmentTypes();
-      return (data.types ?? []) as ApptType[];
-    },
-    staleTime: 30_000,
-  });
-
-  const doctors = doctorsQuery.data ?? [];
-  const types = typesQuery.data ?? [];
-  const doctorsLoading = doctorsQuery.isPending || typesQuery.isPending;
-
-  const selectedDoctor = doctors.find((d) => d.id === state.doctorId);
-  const selectedType = types.find((t) => String(t.id) === state.appTypeId);
-  const duration = selectedType?.duration ?? 30;
-
-  const slotsEnabled = Boolean(state.doctorId && state.date && state.appTypeId);
-
-  const slotsQuery = useQuery({
-    queryKey: queryKeys.doctors.availability(
-      state.doctorId,
-      state.date,
-      state.appTypeId,
-      duration
-    ),
-    queryFn: async () => {
-      const d = await catalogApi.availability({
-        doctorId: state.doctorId,
-        date: state.date,
-        durationMinutes: duration,
-        appointmentTypeId: state.appTypeId,
-      });
-      const available: string[] = d.available_slots ?? d.slots ?? [];
-      if (d.no_schedule && available.length === 0) {
-        toast.error(
-          "No availability — doctor schedule may not be configured for this day."
-        );
-      }
-      return available;
-    },
-    enabled: slotsEnabled,
-    staleTime: 5_000,
-  });
-
-  const slots = slotsQuery.data ?? [];
-  const slotsLoading = slotsEnabled && slotsQuery.isPending;
-
-  useEffect(() => {
-    if ((doctorsQuery.isError || typesQuery.isError) && !catalogErrorToasted.current) {
-      catalogErrorToasted.current = true;
-      toast.error("Unable to load booking options. Please refresh the page.");
-    }
-  }, [doctorsQuery.isError, typesQuery.isError]);
 
   useEffect(() => {
     if (!state.doctorId || doctorsLoading) return;
@@ -230,75 +127,6 @@ export function AppointmentBooking() {
       toast.message("The selected doctor is no longer available. Please choose another.");
     }
   }, [doctors, doctorsLoading, state.doctorId]);
-
-  useEffect(() => {
-    if (slotsQuery.isError) {
-      toast.error("Unable to load available time slots.");
-    }
-  }, [slotsQuery.isError]);
-
-  useEffect(() => {
-    const onTabFocus = () => {
-      if (document.visibilityState !== "visible") return;
-      void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.appointmentTypes.list() });
-      if (slotsEnabled) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
-      }
-    };
-    document.addEventListener("visibilitychange", onTabFocus);
-    window.addEventListener("focus", onTabFocus);
-    window.addEventListener("pageshow", onTabFocus);
-    return () => {
-      document.removeEventListener("visibilitychange", onTabFocus);
-      window.removeEventListener("focus", onTabFocus);
-      window.removeEventListener("pageshow", onTabFocus);
-    };
-  }, [queryClient, slotsEnabled]);
-
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel("booking-doctors-catalog")
-      .on("postgres_changes", { event: "*", schema: "public", table: "staff" }, () => {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.list() });
-      })
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [queryClient]);
-
-  useEffect(() => {
-    if (!state.doctorId || !state.date) return;
-
-    const invalidateSlots = () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.doctors.availability(
-          state.doctorId,
-          state.date,
-          state.appTypeId,
-          duration
-        ),
-      });
-    };
-
-    const supabase = createClient();
-    const channel = supabase
-      .channel(`booking-slots-${state.doctorId}-${state.date}`)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "checkins" }, invalidateSlots)
-      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_schedules" }, invalidateSlots)
-      .on("postgres_changes", { event: "*", schema: "public", table: "doctor_blocks" }, invalidateSlots)
-      .subscribe();
-
-    const heartbeat = setInterval(invalidateSlots, 15000);
-
-    return () => {
-      clearInterval(heartbeat);
-      void supabase.removeChannel(channel);
-    };
-  }, [state.doctorId, state.date, state.appTypeId, duration, queryClient]);
 
   const goStep = (step: number) => {
     setState((s) => ({ ...s, step }));
@@ -331,7 +159,7 @@ export function AppointmentBooking() {
   };
 
   const resetFlow = () => {
-    setState({ ...INITIAL_STATE, step: 1 });
+    setState({ ...BOOKING_INITIAL_STATE, step: 1 });
     setViewMonth(startOfMonth(new Date()));
     setFieldErrors({});
   };
@@ -409,14 +237,9 @@ export function AppointmentBooking() {
         if (guest.email) payload.email = guest.email;
       }
 
-      const res = await fetch("/api/appointments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
+      const { ok, data } = await appointmentApi.book(payload);
 
-      if (!res.ok) {
+      if (!ok) {
         if (data.code === "slot_unavailable") {
           toast.error(data.error ?? "That slot was just taken. Please choose another time.");
           await queryClient.invalidateQueries({
@@ -434,7 +257,7 @@ export function AppointmentBooking() {
         return;
       }
 
-      patch({ reference: data.appointmentID, step: 5 });
+      patch({ reference: data.appointmentID ?? "", step: 5 });
       void queryClient.invalidateQueries({ queryKey: queryKeys.doctors.all });
     } catch {
       toast.error("Booking failed. Please try again.");
@@ -527,7 +350,7 @@ export function AppointmentBooking() {
       </header>
 
       <StepIndicator
-        steps={STEPS}
+        steps={BOOKING_STEPS}
         currentStep={String(state.step)}
         className="mb-10"
       />
@@ -667,7 +490,8 @@ export function AppointmentBooking() {
           </h2>
 
           <p className="text-body-sm text-on-surface-variant mb-4">
-            Weekdays only · Up to 30 days in advance
+            Weekdays only · Available through{" "}
+            {format(maxDateObj, "MMM d, yyyy")}
           </p>
 
           <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-4 sm:p-6">
@@ -675,7 +499,8 @@ export function AppointmentBooking() {
               <button
                 type="button"
                 onClick={() => setViewMonth((m) => subMonths(m, 1))}
-                className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-primary/10 text-primary transition-colors"
+                disabled={isBefore(endOfMonth(subMonths(viewMonth, 1)), todayDate)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-primary/10 text-primary transition-colors disabled:opacity-40 disabled:pointer-events-none"
                 aria-label="Previous month"
               >
                 <ChevronLeft className="h-5 w-5" />
@@ -686,7 +511,8 @@ export function AppointmentBooking() {
               <button
                 type="button"
                 onClick={() => setViewMonth((m) => addMonths(m, 1))}
-                className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-primary/10 text-primary transition-colors"
+                disabled={isAfter(startOfMonth(addMonths(viewMonth, 1)), maxDateObj)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg hover:bg-primary/10 text-primary transition-colors disabled:opacity-40 disabled:pointer-events-none"
                 aria-label="Next month"
               >
                 <ChevronRight className="h-5 w-5" />
@@ -779,17 +605,17 @@ export function AppointmentBooking() {
 
           <div className="space-y-6">
             <div>
-              <label htmlFor="reason" className="text-body-sm font-medium text-on-surface">
+              <FormLabel htmlFor="reason">
                 Reason for visit{" "}
-                <span className="text-on-surface-variant">(optional)</span>
-              </label>
+                <span className="text-on-surface-variant font-normal">(optional)</span>
+              </FormLabel>
               <textarea
                 id="reason"
                 rows={3}
                 value={state.reason}
                 onChange={(e) => patch({ reason: e.target.value })}
                 placeholder="Brief reason for the visit"
-                className="mt-2 flex w-full rounded-xl border border-input bg-background px-4 py-3 text-body-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[88px]"
+                className="mt-0 flex w-full rounded-lg border border-input bg-background px-4 py-3 text-body-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[88px]"
               />
             </div>
 
@@ -797,10 +623,10 @@ export function AppointmentBooking() {
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="fname" className="text-body-sm font-medium text-on-surface">
-                      First name <span className="text-destructive">*</span>
-                    </label>
-                    <input
+                    <FormLabel htmlFor="fname" required>
+                      First name
+                    </FormLabel>
+                    <FormInput
                       id="fname"
                       type="text"
                       required
@@ -814,23 +640,20 @@ export function AppointmentBooking() {
                       }}
                       aria-invalid={!!fieldErrors.firstName}
                       aria-describedby={fieldErrors.firstName ? "fname-error" : undefined}
-                      className={cn(
-                        FIELD_INPUT_CLASS,
-                        fieldErrors.firstName ? "border-destructive" : "border-input"
-                      )}
+                      className={cn(fieldErrors.firstName && "border-destructive")}
                       autoComplete="given-name"
                     />
                     {fieldErrors.firstName && (
-                      <p id="fname-error" className="text-label-sm text-destructive mt-1">
+                      <FormHelperText id="fname-error" className="text-destructive">
                         {fieldErrors.firstName}
-                      </p>
+                      </FormHelperText>
                     )}
                   </div>
                   <div>
-                    <label htmlFor="lname" className="text-body-sm font-medium text-on-surface">
-                      Last name <span className="text-destructive">*</span>
-                    </label>
-                    <input
+                    <FormLabel htmlFor="lname" required>
+                      Last name
+                    </FormLabel>
+                    <FormInput
                       id="lname"
                       type="text"
                       required
@@ -844,26 +667,23 @@ export function AppointmentBooking() {
                       }}
                       aria-invalid={!!fieldErrors.lastName}
                       aria-describedby={fieldErrors.lastName ? "lname-error" : undefined}
-                      className={cn(
-                        FIELD_INPUT_CLASS,
-                        fieldErrors.lastName ? "border-destructive" : "border-input"
-                      )}
+                      className={cn(fieldErrors.lastName && "border-destructive")}
                       autoComplete="family-name"
                     />
                     {fieldErrors.lastName && (
-                      <p id="lname-error" className="text-label-sm text-destructive mt-1">
+                      <FormHelperText id="lname-error" className="text-destructive">
                         {fieldErrors.lastName}
-                      </p>
+                      </FormHelperText>
                     )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="dob" className="text-body-sm font-medium text-on-surface">
-                      Date of birth <span className="text-destructive">*</span>
-                    </label>
-                    <input
+                    <FormLabel htmlFor="dob" required>
+                      Date of birth
+                    </FormLabel>
+                    <FormInput
                       id="dob"
                       type="date"
                       required
@@ -876,22 +696,19 @@ export function AppointmentBooking() {
                       }}
                       aria-invalid={!!fieldErrors.dob}
                       aria-describedby={fieldErrors.dob ? "dob-error" : undefined}
-                      className={cn(
-                        FIELD_INPUT_CLASS,
-                        fieldErrors.dob ? "border-destructive" : "border-input"
-                      )}
+                      className={cn(fieldErrors.dob && "border-destructive")}
                     />
                     {fieldErrors.dob && (
-                      <p id="dob-error" className="text-label-sm text-destructive mt-1">
+                      <FormHelperText id="dob-error" className="text-destructive">
                         {fieldErrors.dob}
-                      </p>
+                      </FormHelperText>
                     )}
                   </div>
                   <div>
-                    <label htmlFor="gender" className="text-body-sm font-medium text-on-surface">
-                      Gender <span className="text-destructive">*</span>
-                    </label>
-                    <select
+                    <FormLabel htmlFor="gender" required>
+                      Gender
+                    </FormLabel>
+                    <FormSelect
                       id="gender"
                       required
                       value={state.gender}
@@ -901,30 +718,27 @@ export function AppointmentBooking() {
                       }}
                       aria-invalid={!!fieldErrors.gender}
                       aria-describedby={fieldErrors.gender ? "gender-error" : undefined}
-                      className={cn(
-                        FIELD_INPUT_CLASS,
-                        fieldErrors.gender ? "border-destructive" : "border-input"
-                      )}
+                      className={cn(fieldErrors.gender && "border-destructive")}
                     >
                       <option value="">Select gender</option>
                       <option value="male">Male</option>
                       <option value="female">Female</option>
                       <option value="other">Other</option>
                       <option value="prefer-not-to-say">Prefer not to say</option>
-                    </select>
+                    </FormSelect>
                     {fieldErrors.gender && (
-                      <p id="gender-error" className="text-label-sm text-destructive mt-1">
+                      <FormHelperText id="gender-error" className="text-destructive">
                         {fieldErrors.gender}
-                      </p>
+                      </FormHelperText>
                     )}
                   </div>
                 </div>
 
                 <div>
-                  <label htmlFor="address" className="text-body-sm font-medium text-on-surface">
-                    Address <span className="text-destructive">*</span>
-                  </label>
-                  <input
+                  <FormLabel htmlFor="address" required>
+                    Address
+                  </FormLabel>
+                  <FormInput
                     id="address"
                     type="text"
                     required
@@ -937,24 +751,21 @@ export function AppointmentBooking() {
                     }}
                     aria-invalid={!!fieldErrors.address}
                     aria-describedby={fieldErrors.address ? "address-error" : undefined}
-                    className={cn(
-                      FIELD_INPUT_CLASS,
-                      fieldErrors.address ? "border-destructive" : "border-input"
-                    )}
+                    className={cn(fieldErrors.address && "border-destructive")}
                     autoComplete="street-address"
                   />
                   {fieldErrors.address && (
-                    <p id="address-error" className="text-label-sm text-destructive mt-1">
+                    <FormHelperText id="address-error" className="text-destructive">
                       {fieldErrors.address}
-                    </p>
+                    </FormHelperText>
                   )}
                 </div>
 
                 <div>
-                  <label htmlFor="phone" className="text-body-sm font-medium text-on-surface">
-                    Phone <span className="text-destructive">*</span>
-                  </label>
-                  <input
+                  <FormLabel htmlFor="phone" required>
+                    Phone
+                  </FormLabel>
+                  <FormInput
                     id="phone"
                     type="tel"
                     inputMode="tel"
@@ -971,28 +782,26 @@ export function AppointmentBooking() {
                     aria-describedby={
                       fieldErrors.phone ? "phone-error" : "phone-hint"
                     }
-                    className={cn(
-                      FIELD_INPUT_CLASS,
-                      fieldErrors.phone ? "border-destructive" : "border-input"
-                    )}
+                    className={cn(fieldErrors.phone && "border-destructive")}
                     autoComplete="tel"
                   />
                   {fieldErrors.phone ? (
-                    <p id="phone-error" className="text-label-sm text-destructive mt-1">
+                    <FormHelperText id="phone-error" className="text-destructive">
                       {fieldErrors.phone}
-                    </p>
+                    </FormHelperText>
                   ) : (
-                    <p id="phone-hint" className="text-label-sm text-on-surface-variant mt-1">
+                    <FormHelperText id="phone-hint">
                       11-digit mobile number starting with 09
-                    </p>
+                    </FormHelperText>
                   )}
                 </div>
 
                 <div>
-                  <label htmlFor="email" className="text-body-sm font-medium text-on-surface">
-                    Email <span className="text-on-surface-variant">(optional)</span>
-                  </label>
-                  <input
+                  <FormLabel htmlFor="email">
+                    Email{" "}
+                    <span className="text-on-surface-variant font-normal">(optional)</span>
+                  </FormLabel>
+                  <FormInput
                     id="email"
                     type="email"
                     value={state.email}
@@ -1002,16 +811,13 @@ export function AppointmentBooking() {
                     }}
                     aria-invalid={!!fieldErrors.email}
                     aria-describedby={fieldErrors.email ? "email-error" : undefined}
-                    className={cn(
-                      FIELD_INPUT_CLASS,
-                      fieldErrors.email ? "border-destructive" : "border-input"
-                    )}
+                    className={cn(fieldErrors.email && "border-destructive")}
                     autoComplete="email"
                   />
                   {fieldErrors.email && (
-                    <p id="email-error" className="text-label-sm text-destructive mt-1">
+                    <FormHelperText id="email-error" className="text-destructive">
                       {fieldErrors.email}
-                    </p>
+                    </FormHelperText>
                   )}
                 </div>
 
@@ -1033,7 +839,9 @@ export function AppointmentBooking() {
                     </span>
                   </label>
                   {fieldErrors.consent && (
-                    <p className="text-label-sm text-destructive mt-1">{fieldErrors.consent}</p>
+                    <FormHelperText className="text-destructive">
+                      {fieldErrors.consent}
+                    </FormHelperText>
                   )}
                 </div>
               </>
