@@ -5,18 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Info } from "lucide-react";
 
 export const formInputClass =
-  "h-11 min-h-11 px-4 text-body-md rounded-lg bg-background border-input transition-all duration-150 group-focus-within/field:border-primary group-focus-within/field:ring-2 group-focus-within/field:ring-primary/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
-
-/** Field wrapper that enables focus-within halo micro-interaction on FormInput. */
-export function FormFieldGroup({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return <div className={cn("group/field", className)}>{children}</div>;
-}
+  "h-11 min-h-11 px-4 text-body-md rounded-lg bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function FormLabel({
   htmlFor,

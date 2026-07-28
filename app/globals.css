@@ -86,17 +86,6 @@
   }
 }
 
-/* ── Landing SaaS shell (scoped; does not override global Clinical Precision) ─ */
-.landing-saas {
-  scroll-behavior: smooth;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .landing-saas {
-    scroll-behavior: auto;
-  }
-}
-
 /* ── Legacy aliases (migrate screens off these gradually) ───────────────── */
 .careq-card {
   @apply rounded-xl border border-outline-variant bg-surface-container-lowest shadow-sm transition-shadow duration-200;
@@ -151,8 +140,67 @@
   animation: pulse-green 1.8s ease-in-out infinite;
 }
 
+@keyframes pulse-card-border {
+  0%,
+  100% {
+    border-color: rgba(37, 99, 235, 1);
+  }
+  50% {
+    border-color: rgba(37, 99, 235, 0.4);
+  }
+}
+
+.called-card-border {
+  border: 2px solid #2563eb;
+  animation: pulse-card-border 1.5s ease-in-out infinite;
+}
+
+@keyframes slide-banner-in {
+  from {
+    transform: translateY(-100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-banner-out {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-100%);
+  }
+}
+
+.called-banner-slide-in {
+  animation: slide-banner-in 300ms ease forwards;
+}
+
+.called-banner-slide-out {
+  animation: slide-banner-out 300ms ease forwards;
+}
+
+@keyframes status-badge-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.status-badge-called {
+  animation: status-badge-pulse 1.5s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .called-banner {
+  .called-banner,
+  .called-card-border,
+  .called-banner-slide-in,
+  .called-banner-slide-out,
+  .status-badge-called {
     animation: none;
   }
 }

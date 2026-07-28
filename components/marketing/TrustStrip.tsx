@@ -1,53 +1,40 @@
-import { Users, Clock, Radio, MapPin } from "lucide-react";
-import { Reveal } from "@/components/marketing/Reveal";
+import { Lock, Shield, HeartPulse } from "lucide-react";
+import { MarketingSection } from "@/components/layout/MarketingSection";
 
-const STATS = [
+const TRUST_ITEMS = [
   {
-    icon: Users,
-    value: "500+",
-    label: "patients managed",
+    icon: Shield,
+    title: "Built for clinics",
+    description: "Role-based staff access and audit-friendly queue actions.",
   },
   {
-    icon: Clock,
-    value: "Zero",
-    label: "wait time confusion",
+    icon: Lock,
+    title: "Privacy-first check-in",
+    description: "Patient data used only for visit management at your facility.",
   },
   {
-    icon: Radio,
-    value: "Real-time",
-    label: "updates",
-  },
-  {
-    icon: MapPin,
-    value: "Philippine",
-    label: "built",
+    icon: HeartPulse,
+    title: "Real-time transparency",
+    description: "Reduce front-desk questions with live queue status for patients.",
   },
 ] as const;
 
 export function TrustStrip() {
   return (
-    <section className="px-6 pb-8 md:pb-12 -mt-4 md:-mt-8 relative z-10 bg-transparent">
-      <div className="max-w-[1140px] mx-auto">
-        <Reveal>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {STATS.map(({ icon: Icon, value, label }, i) => (
-              <div
-                key={label}
-                className="rounded-xl border border-[#E2E5EA] bg-white p-5 shadow-sm flex flex-col gap-3"
-                style={{ animationDelay: `${i * 50}ms` }}
-              >
-                <div className="w-10 h-10 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-600">
-                  <Icon className="h-5 w-5" aria-hidden />
-                </div>
-                <div>
-                  <p className="text-xl font-extrabold text-[#111827] leading-tight">{value}</p>
-                  <p className="text-sm text-[#6B7280] mt-0.5 capitalize">{label}</p>
-                </div>
-              </div>
-            ))}
+    <MarketingSection>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-md border border-outline-variant rounded-2xl p-lg md:p-xl bg-surface-container-lowest">
+        {TRUST_ITEMS.map(({ icon: Icon, title, description }) => (
+          <div key={title} className="flex gap-md">
+            <div className="shrink-0 w-10 h-10 rounded-lg bg-secondary-container flex items-center justify-center text-primary">
+              <Icon className="h-5 w-5" aria-hidden />
+            </div>
+            <div>
+              <h3 className="text-label-md font-semibold text-on-surface">{title}</h3>
+              <p className="text-body-sm text-on-surface-variant mt-1">{description}</p>
+            </div>
           </div>
-        </Reveal>
+        ))}
       </div>
-    </section>
+    </MarketingSection>
   );
 }
