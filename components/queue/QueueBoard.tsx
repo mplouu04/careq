@@ -15,6 +15,7 @@ import {
   type PublicWaitingItem,
 } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
+import { isCalledLikeStatus } from "@/lib/queue-status";
 
 type DisplayConfig = {
   display_name: string;
@@ -61,7 +62,8 @@ function priorityLabel(priority: string | undefined) {
 
 function roomStatus(room: RoomPanel): "empty" | "occupied" | "called" {
   if (!room.current) return "empty";
-  if (room.current.status === "called") return "called";
+  // Call/recall sets in_progress; treat both as the high-contrast serving UI
+  if (isCalledLikeStatus(room.current.status)) return "called";
   return "occupied";
 }
 
@@ -158,17 +160,10 @@ function StatusBadge({ status }: { status: "empty" | "occupied" | "called" }) {
   );
 }
 
-const RoomCard = memo(function RoomCard({
-  room,
-  themeColor,
-}: {
-  room: RoomPanel;
-  themeColor: string;
-}) {
+const RoomCard = memo(function RoomCard({ room }: { room: RoomPanel }) {
   const status = roomStatus(room);
   const isEmpty = status === "empty";
-  const isCalled = status === "called";
-  const isOccupied = status === "occupied";
+  const isServing = status === "called" || status === "occupied";
   const contentKey = `${room.current?.queue_number ?? "empty"}:${status}`;
 
   return (
@@ -176,8 +171,7 @@ const RoomCard = memo(function RoomCard({
       className={cn(
         "flex min-h-[250px] flex-col justify-center rounded-2xl px-6 py-8 text-center shadow-[0_4px_12px_rgba(0,0,0,0.10)]",
         isEmpty && "bg-surface-container-lowest opacity-70",
-        isOccupied && "bg-primary/10",
-        isCalled && "bg-surface-container-lowest called-card-border"
+        isServing && "bg-surface-container-lowest called-card-border"
       )}
     >
       <p className="mb-4 text-[15px] font-extrabold uppercase tracking-[0.07em] text-on-surface-variant">
@@ -188,11 +182,11 @@ const RoomCard = memo(function RoomCard({
         key={contentKey}
         className="queue-board-card-content flex flex-col items-center"
       >
-        {isEmpty ? (
+        {isEmpty || !room.current ? (
           <p className="text-center text-[16px] font-medium leading-relaxed text-on-surface-variant">
             No patient in this room
           </p>
-        ) : isCalled && room.current ? (
+        ) : (
           <>
             <div className="font-mono-careq mb-3.5 text-[42px] font-extrabold leading-none text-primary">
               {room.current.queue_number}
@@ -209,21 +203,7 @@ const RoomCard = memo(function RoomCard({
               → {room.name}
             </p>
           </>
-        ) : room.current ? (
-          <>
-            <div
-              className="font-mono-careq mb-3.5 text-[38px] font-extrabold leading-none"
-              style={{ color: themeColor || CAREQ_PRIMARY }}
-            >
-              {room.current.queue_number}
-            </div>
-            {room.current.doctor_name && (
-              <p className="truncate max-w-full text-[15px] font-bold text-primary">
-                {room.current.doctor_name}
-              </p>
-            )}
-          </>
-        ) : null}
+        )}
       </div>
     </div>
   );
@@ -277,17 +257,11 @@ function CompactTableView({ rooms }: { rooms: RoomPanel[] }) {
   );
 }
 
-function CardGridView({
-  rooms,
-  themeColor,
-}: {
-  rooms: RoomPanel[];
-  themeColor: string;
-}) {
+function CardGridView({ rooms }: { rooms: RoomPanel[] }) {
   return (
     <div className="grid flex-1 grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4 md:gap-6">
       {rooms.map((room) => (
-        <RoomCard key={room.id} room={room} themeColor={themeColor} />
+        <RoomCard key={room.id} room={room} />
       ))}
       {rooms.length === 0 && (
         <p className="col-span-full py-8 text-center text-[16px] text-white/80">
@@ -500,7 +474,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
         ) : useCompactTable ? (
           <CompactTableView rooms={rooms} />
         ) : (
-          <CardGridView rooms={rooms} themeColor={themeColor} />
+          <CardGridView rooms={rooms} />
         )}
       </div>
 

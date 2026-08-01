@@ -374,6 +374,31 @@ export function AdminPanel() {
     },
   });
 
+  const deleteDisplayMutation = useMutation({
+    mutationFn: (id: string) => adminApi.deleteDisplay(id),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.admin.settings() });
+      const previous = queryClient.getQueryData<DisplayScreen[]>(queryKeys.admin.settings());
+      queryClient.setQueryData(
+        queryKeys.admin.settings(),
+        (previous ?? []).filter((s) => String(s.id) !== String(id))
+      );
+      return { previous };
+    },
+    onError: (err, _id, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.admin.settings(), context.previous);
+      }
+      toast.error(err instanceof Error ? err.message : "Failed");
+    },
+    onSuccess: () => {
+      toast.success("Display screen deleted");
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.settings() });
+    },
+  });
+
   const toggleRoomMutation = useMutation({
     mutationFn: (room: RoomRow) => adminApi.toggleRoom(room),
     onMutate: async (room) => {
@@ -524,6 +549,17 @@ export function AdminPanel() {
 
   function toggleDisplay(id: string) {
     toggleDisplayMutation.mutate(id);
+  }
+
+  function deleteDisplay(id: string, name: string) {
+    if (
+      !confirm(
+        `Delete display screen "${name}"? This cannot be undone. Prefer Deactivate if you may reuse it.`
+      )
+    ) {
+      return;
+    }
+    deleteDisplayMutation.mutate(id);
   }
 
   async function updateAppt(checkinId: string, action: string) {
@@ -876,6 +912,13 @@ export function AdminPanel() {
                           Activate
                         </AdminButton>
                       )}
+                      <AdminButton
+                        variant="danger"
+                        size="sm"
+                        onClick={() => deleteDisplay(s.id, s.display_name)}
+                      >
+                        Delete
+                      </AdminButton>
                     </div>
                   </AdminCard>
                 ))}

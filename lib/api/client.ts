@@ -199,6 +199,12 @@ export const adminApi = {
       id,
     }),
 
+  deleteDisplay: (id: string) =>
+    api.post<{ success?: boolean }>("/api/admin/settings", {
+      action: "delete",
+      id: Number(id),
+    }),
+
   toggleRoom: (room: {
     id: string;
     name: string;
