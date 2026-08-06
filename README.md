@@ -11,12 +11,10 @@ Modern rebuild of the Patient Queue Management System using **Next.js 14**, **Su
 - Staff dashboard (call next, skip, done, analytics)
 - Admin panel (staff, types, displays, appointments)
 
-## Setup
 
 ### 1. Supabase
 
-1. Create a project at [supabase.com](https://supabase.com)
-2. Run SQL migrations in order (see [`supabase/MIGRATIONS.md`](supabase/MIGRATIONS.md)):
+SQL migrations in order (see [`supabase/MIGRATIONS.md`](supabase/MIGRATIONS.md)):
    - `supabase/migrations/001_schema.sql`
    - `supabase/migrations/002_seed.sql`
    - `supabase/migrations/003_booking_and_queue.sql`
