@@ -344,18 +344,30 @@ export type RegisterPatientInput = {
   address: string;
   consent: boolean | string;
   email: string;
+  emailProofToken: string;
 };
 
 export async function registerPatient(body: RegisterPatientInput) {
   const supabase = createAdminClient();
   const { normalizePhone } = await import("@/lib/phone");
   const { sanitize, isValidEmail } = await import("@/lib/utils");
+  const { consumeEmailProof } = await import("@/lib/services/email-verify.service");
 
   const emailRaw = (body.email ?? "").toString().trim();
   if (!emailRaw || !isValidEmail(emailRaw)) {
     return { error: "Enter a valid email address.", status: 400 as const };
   }
   const emailNorm = emailRaw.toLowerCase();
+
+  try {
+    await consumeEmailProof(body.emailProofToken, emailNorm);
+  } catch (err) {
+    if (err instanceof CheckinError) {
+      return { error: err.message, status: err.status as 403 | 500 };
+    }
+    return { error: "Email verification required. Please verify your email.", status: 403 as const };
+  }
+
   const phoneDigits = normalizePhone(body.phone);
 
   if (phoneDigits.length !== 11 || !/^09\d{9}$/.test(phoneDigits)) {

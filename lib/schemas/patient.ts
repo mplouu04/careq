@@ -146,6 +146,7 @@ export const RegisterPatientSchema = z.object({
   address: PatientAddressSchema,
   consent: PatientConsentSchema,
   email: PatientEmailSchema,
+  emailProofToken: z.string().uuid("Email verification required"),
 });
 
 export const PatientSearchSchema = z.object({

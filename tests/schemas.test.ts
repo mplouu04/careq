@@ -25,6 +25,7 @@ const validGuest = {
   address: "123 Manila Street",
   phone: "09171234567",
   email: "juan@example.com",
+  emailProofToken: "550e8400-e29b-41d4-a716-446655440000",
   consent: true,
 };
 
@@ -76,6 +77,15 @@ describe("BookAppointmentSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects guest booking without emailProofToken", () => {
+    const { emailProofToken: _t, ...guestWithoutProof } = validGuest;
+    const result = BookAppointmentSchema.safeParse({
+      ...base,
+      ...guestWithoutProof,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("CancelAppointmentSchema", () => {
@@ -111,6 +121,7 @@ describe("RegisterPatientSchema", () => {
     phone: "09171234567",
     address: "Quezon City",
     email: "maria@example.com",
+    emailProofToken: "550e8400-e29b-41d4-a716-446655440000",
     consent: true,
   };
 
@@ -232,7 +243,7 @@ describe("GuestPatientDetailsSchema / parseGuestPatientFieldErrors", () => {
   });
 
   it("rejects missing email on guest details", () => {
-    const { email: _email, ...withoutEmail } = validGuest;
+    const { email: _email, emailProofToken: _t, ...withoutEmail } = validGuest;
     expect(GuestPatientDetailsSchema.safeParse(withoutEmail).success).toBe(false);
     expect(
       parseGuestPatientFieldErrors({ ...validGuest, email: "" }).email

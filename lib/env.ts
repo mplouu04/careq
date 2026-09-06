@@ -15,6 +15,8 @@ const envSchema = z
     NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
     RESEND_API_KEY: z.string().min(1).optional(),
     RESEND_FROM_EMAIL: z.string().email().optional(),
+    /** Pepper for hashing email verification codes. Falls back to CRON_SECRET / service role. */
+    EMAIL_CODE_PEPPER: z.string().min(8).optional(),
     CLINIC_NAME: z.string().min(1).optional(),
     CLINIC_ADDRESS: z.string().min(1).optional(),
     /** Days to retain rate_limits and audit_log rows (cron purge). Default 6 years for HIPAA. */

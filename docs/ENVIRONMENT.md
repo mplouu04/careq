@@ -37,8 +37,9 @@ Validated at server startup via [`lib/env.ts`](../lib/env.ts) (Zod). Invalid con
 | Variable | Purpose |
 |----------|---------|
 | `NEXT_PUBLIC_SENTRY_DSN` | Error tracking (Sentry) |
-| `RESEND_API_KEY` | Appointment reminder emails |
+| `RESEND_API_KEY` | Appointment reminders + email verification codes (free tier shared daily/monthly caps) |
 | `RESEND_FROM_EMAIL` | Verified sender (must pair with `RESEND_API_KEY`) |
+| `EMAIL_CODE_PEPPER` | Optional secret for hashing email verification codes (falls back to `CRON_SECRET` / service role key) |
 | `CLINIC_NAME` | Email template clinic name |
 | `CLINIC_ADDRESS` | Email template address |
 | `RETENTION_DAYS` | Days to keep `rate_limits` / `audit_log` (default `2190` / 6 years) |

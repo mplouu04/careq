@@ -26,6 +26,7 @@ import {
   parseGuestPatientFieldErrors,
 } from "@/lib/schemas/patient";
 import { cn } from "@/lib/utils";
+import { EmailVerifyField } from "@/components/patient/EmailVerifyField";
 
 type RegStep = "personal" | "contact" | "consent";
 
@@ -41,6 +42,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const [dob, setDob] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [emailProofToken, setEmailProofToken] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   const [consent, setConsent] = useState(false);
   const [matchedModal, setMatchedModal] = useState<{
@@ -107,6 +109,9 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     for (const key of contactKeys) {
       if (all[key]) errors[key] = all[key];
     }
+    if (!errors.email && !emailProofToken) {
+      errors.email = "Verify your email with the code we send";
+    }
     setFieldErrors(errors);
     setError(Object.keys(errors).length ? "Please fix the highlighted fields." : null);
     return Object.keys(errors).length === 0;
@@ -156,6 +161,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
           gender: payload.gender,
           phone: phoneDigits,
           email: payload.email,
+          emailProofToken,
           address: payload.address,
           consent: true,
         }),
@@ -407,37 +413,14 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     </FormHelperText>
                   )}
                 </div>
-                <div>
-                  <FormLabel htmlFor="email" required>
-                    Email
-                  </FormLabel>
-                  <FormInput
-                    id="email"
-                    name="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => {
-                      clearFieldError("email");
-                      setEmail(e.target.value);
-                    }}
-                    aria-invalid={!!fieldErrors.email}
-                    aria-describedby={
-                      fieldErrors.email ? "email-error" : "email-hint"
-                    }
-                    className={cn(fieldErrors.email && "border-destructive")}
-                  />
-                  {fieldErrors.email ? (
-                    <FormHelperText id="email-error" className="text-destructive">
-                      {fieldErrors.email}
-                    </FormHelperText>
-                  ) : (
-                    <FormHelperText id="email-hint">
-                      Required for appointment reminders
-                    </FormHelperText>
-                  )}
-                </div>
+                <EmailVerifyField
+                  email={email}
+                  onEmailChange={setEmail}
+                  emailProofToken={emailProofToken}
+                  onProofChange={setEmailProofToken}
+                  emailError={fieldErrors.email}
+                  onClearEmailError={() => clearFieldError("email")}
+                />
                 <div>
                   <FormLabel htmlFor="address" required>
                     Address

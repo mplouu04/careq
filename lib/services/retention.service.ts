@@ -13,16 +13,20 @@ export async function purgeOldLogs(retentionDays?: number) {
     throw new Error(`purge_old_logs failed: ${error.message}`);
   }
 
+  const { data: emailPurged } = await supabase.rpc("purge_expired_email_verify");
+
   const row = Array.isArray(data) ? data[0] : data;
   const rateLimitsDeleted = Number(row?.rate_limits_deleted ?? 0);
   const auditDeleted = Number(row?.audit_deleted ?? 0);
   const sessionsDeleted = Number(row?.sessions_deleted ?? 0);
+  const emailVerifyDeleted = Number(emailPurged ?? 0);
 
   logInfo("retention_purge", {
     retention_days: days,
     rate_limits_deleted: rateLimitsDeleted,
     audit_deleted: auditDeleted,
     sessions_deleted: sessionsDeleted,
+    email_verify_deleted: emailVerifyDeleted,
   });
 
   return {
@@ -30,5 +34,6 @@ export async function purgeOldLogs(retentionDays?: number) {
     rate_limits_deleted: rateLimitsDeleted,
     audit_deleted: auditDeleted,
     sessions_deleted: sessionsDeleted,
+    email_verify_deleted: emailVerifyDeleted,
   };
 }

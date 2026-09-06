@@ -55,6 +55,7 @@ import {
   useAppointmentBookingCatalog,
   useBookingViewMonth,
 } from "@/components/patient/useAppointmentBookingCatalog";
+import { EmailVerifyField } from "@/components/patient/EmailVerifyField";
 
 const AVATAR_COLORS = [CAREQ_PRIMARY, "#1a5fb4", "#003d99", "#2563c4"];
 
@@ -94,6 +95,7 @@ export function AppointmentBooking() {
   const { viewMonth, setViewMonth } = useBookingViewMonth();
   const [confirming, setConfirming] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [emailProofToken, setEmailProofToken] = useState<string | null>(null);
 
   const {
     queryClient,
@@ -180,6 +182,9 @@ export function AppointmentBooking() {
     if (!state.consent) {
       errors.consent = "Consent is required";
     }
+    if (!errors.email && !emailProofToken) {
+      errors.email = "Verify your email with the code we send";
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -235,6 +240,7 @@ export function AppointmentBooking() {
         payload.address = guest.address;
         payload.consent = guest.consent;
         payload.email = guest.email;
+        payload.emailProofToken = emailProofToken;
       }
 
       const { ok, data } = await appointmentApi.book(payload);
@@ -796,35 +802,14 @@ export function AppointmentBooking() {
                   )}
                 </div>
 
-                <div>
-                  <FormLabel htmlFor="email" required>
-                    Email
-                  </FormLabel>
-                  <FormInput
-                    id="email"
-                    type="email"
-                    value={state.email}
-                    onChange={(e) => {
-                      clearFieldError("email");
-                      patch({ email: e.target.value });
-                    }}
-                    aria-invalid={!!fieldErrors.email}
-                    aria-describedby={
-                      fieldErrors.email ? "email-error" : "email-hint"
-                    }
-                    className={cn(fieldErrors.email && "border-destructive")}
-                    autoComplete="email"
-                  />
-                  {fieldErrors.email ? (
-                    <FormHelperText id="email-error" className="text-destructive">
-                      {fieldErrors.email}
-                    </FormHelperText>
-                  ) : (
-                    <FormHelperText id="email-hint">
-                      Required for appointment reminders
-                    </FormHelperText>
-                  )}
-                </div>
+                <EmailVerifyField
+                  email={state.email}
+                  onEmailChange={(value) => patch({ email: value })}
+                  emailProofToken={emailProofToken}
+                  onProofChange={setEmailProofToken}
+                  emailError={fieldErrors.email}
+                  onClearEmailError={() => clearFieldError("email")}
+                />
 
                 <div>
                   <label className="flex items-start gap-2 text-body-sm cursor-pointer min-h-[44px]">

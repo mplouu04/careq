@@ -32,6 +32,7 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 24 | `021_staff_trigger_insert_only.sql` | Staff auth trigger only runs on INSERT (not UPDATE) |
 | 25 | `022_audit_hardening.sql` | Slot booking RPC, `phone_last7` index, schedule upsert RPC, atomic verify-failure counter |
 | 26 | `023_queue_number_clinic_date.sql` | Unique `(queue_number, clinic_date)` instead of UTC day — fixes midnight walk-in collisions |
+| 27 | `024_email_verifications.sql` | Email verification codes + short-lived email proof tokens for register/guest book |
 
 **Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
 

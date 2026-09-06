@@ -223,6 +223,43 @@ export type Database = {
         };
         Update: Partial<Database["public"]["Tables"]["patient_sessions"]["Insert"]>;
       };
+      email_verifications: {
+        Row: {
+          id: string;
+          email: string;
+          code_hash: string;
+          expires_at: string;
+          attempts: number;
+          consumed: boolean;
+          ip: string | null;
+          created_at: string;
+        };
+        Insert: Omit<
+          Database["public"]["Tables"]["email_verifications"]["Row"],
+          "id" | "created_at" | "attempts" | "consumed"
+        > & {
+          id?: string;
+          created_at?: string;
+          attempts?: number;
+          consumed?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["email_verifications"]["Insert"]>;
+      };
+      email_proofs: {
+        Row: {
+          token: string;
+          email: string;
+          expires_at: string;
+          used: boolean;
+          created_at: string;
+        };
+        Insert: Omit<Database["public"]["Tables"]["email_proofs"]["Row"], "token" | "created_at" | "used"> & {
+          token?: string;
+          created_at?: string;
+          used?: boolean;
+        };
+        Update: Partial<Database["public"]["Tables"]["email_proofs"]["Insert"]>;
+      };
       reminder_failures: {
         Row: {
           id: number;
@@ -275,6 +312,10 @@ export type Database = {
         }[];
       };
       purge_expired_patient_sessions: {
+        Args: Record<string, never>;
+        Returns: number;
+      };
+      purge_expired_email_verify: {
         Args: Record<string, never>;
         Returns: number;
       };

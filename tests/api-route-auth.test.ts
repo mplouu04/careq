@@ -30,6 +30,14 @@ const ROUTE_AUTH: Record<string, { kind: AuthKind; notes?: string }> = {
     kind: "public-rate-limited",
     notes: "Web Push subscribe/unsubscribe for queue turn alerts",
   },
+  "email-verify/send/route.ts": {
+    kind: "public-rate-limited",
+    notes: "send email verification code",
+  },
+  "email-verify/confirm/route.ts": {
+    kind: "public-rate-limited",
+    notes: "confirm email verification code",
+  },
   "queue/analytics/route.ts": { kind: "staff" },
   "queue/actions/route.ts": { kind: "staff" },
   "queue/[id]/call/route.ts": { kind: "staff" },

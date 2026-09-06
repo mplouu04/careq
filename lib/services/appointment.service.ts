@@ -3,7 +3,7 @@ import { CHECKIN_TYPE, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
 import { normalizePhone, patientPhonesMatch } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd, getClinicDayStartIso, addClinicDays } from "@/lib/datetime";
-import { nextAppointmentReference } from "@/lib/counters";
+import { CheckinError, nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
 import { format } from "date-fns";
@@ -259,6 +259,7 @@ export async function bookAppointment(body: {
   address?: string;
   phone?: string;
   email?: string;
+  emailProofToken?: string;
   consent?: boolean | string;
   reason?: string;
 }) {
@@ -351,6 +352,26 @@ export async function bookAppointment(body: {
       return { error: "Enter a valid email address.", status: 400 as const };
     }
     const emailNorm = emailRaw.toLowerCase();
+
+    if (!body.emailProofToken) {
+      return {
+        error: "Email verification required. Please verify your email.",
+        status: 403 as const,
+      };
+    }
+
+    try {
+      const { consumeEmailProof } = await import("@/lib/services/email-verify.service");
+      await consumeEmailProof(body.emailProofToken, emailNorm);
+    } catch (err) {
+      if (err instanceof CheckinError) {
+        return { error: err.message, status: err.status as 403 | 500 };
+      }
+      return {
+        error: "Email verification required. Please verify your email.",
+        status: 403 as const,
+      };
+    }
 
     const existing = await resolveExistingPatient({
       firstName: body.firstName!,

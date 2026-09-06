@@ -1182,6 +1182,7 @@ describe("parseJsonBody", () => {
         phone: "09171234567",
         address: "123 Test Street",
         email: "test@example.com",
+        emailProofToken: "550e8400-e29b-41d4-a716-446655440000",
         consent: true,
       }),
     });

@@ -99,3 +99,74 @@ export async function sendAppointmentReminder(
     };
   }
 }
+
+export type EmailVerificationCodePayload = {
+  to: string;
+  code: string;
+  clinicName: string;
+};
+
+function buildVerificationHtml(payload: EmailVerificationCodePayload): string {
+  const clinic = escapeHtml(payload.clinicName);
+  const code = escapeHtml(payload.code);
+  return `
+    <p>Your verification code for <strong>${clinic}</strong> is:</p>
+    <p style="font-size:24px;letter-spacing:4px;font-weight:700">${code}</p>
+    <p>This code expires in 10 minutes. If you did not request this, you can ignore this email.</p>
+  `.trim();
+}
+
+/** Sends a 6-digit email verification code via Resend. */
+export async function sendEmailVerificationCode(
+  payload: EmailVerificationCodePayload
+): Promise<SendEmailResult> {
+  const env = getEnvSafe();
+  const apiKey = env?.RESEND_API_KEY;
+  const from = env?.RESEND_FROM_EMAIL;
+
+  if (!apiKey || !from) {
+    logWarn("email_skipped", {
+      reason: "RESEND_API_KEY or RESEND_FROM_EMAIL not configured",
+      context: "email_verification",
+    });
+    return { ok: false, error: "Email provider not configured", retryable: false };
+  }
+
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: payload.to,
+        subject: `Your verification code — ${payload.clinicName}`,
+        html: buildVerificationHtml(payload),
+      }),
+    });
+
+    const body = (await res.json().catch(() => ({}))) as { id?: string; message?: string };
+
+    if (!res.ok) {
+      const message = body.message ?? `Resend HTTP ${res.status}`;
+      logWarn("email_send_failed", {
+        context: "email_verification",
+        to: payload.to,
+        status: res.status,
+        message,
+      });
+      return { ok: false, error: message, retryable: res.status >= 500 || res.status === 429 };
+    }
+
+    return { ok: true, id: body.id };
+  } catch (err) {
+    captureException(err, { context: "sendEmailVerificationCode" });
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Send failed",
+      retryable: true,
+    };
+  }
+}

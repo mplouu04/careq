@@ -47,6 +47,7 @@ export const BookAppointmentSchema = z
     address: z.string().optional(),
     phone: z.string().optional(),
     email: PatientEmailSchema.optional(),
+    emailProofToken: z.string().uuid().optional(),
     consent: z.union([z.boolean(), z.string()]).optional(),
     reason: z.string().optional(),
   })
@@ -62,6 +63,14 @@ export const BookAppointmentSchema = z
           path: [field],
         });
       }
+    }
+    const proof = z.string().uuid().safeParse(data.emailProofToken);
+    if (!proof.success) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Email verification required",
+        path: ["emailProofToken"],
+      });
     }
   });
 
