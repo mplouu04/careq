@@ -118,8 +118,9 @@ describe("Email validation (FILTER_VALIDATE_EMAIL equivalent)", () => {
     expect(isValidEmail("")).toBe(false);
   });
 
-  it("empty email is optional (bypasses validation)", () => {
-    // Legacy: empty email passes ($emailRaw === '') → stored as null
+  it("rejects empty email for new patients", () => {
+    // Empty email is no longer accepted — required for appointment reminders
+    expect(isValidEmail("")).toBe(false);
     expect("".trim() === "").toBe(true);
   });
 });

@@ -29,6 +29,7 @@ const guestFields = {
   address: PatientAddressSchema,
   phone: PatientPhoneSchema,
   consent: PatientConsentSchema,
+  email: PatientEmailSchema,
 } as const;
 
 export const BookAppointmentSchema = z

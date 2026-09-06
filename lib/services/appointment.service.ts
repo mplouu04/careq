@@ -7,7 +7,7 @@ import { nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
 import { format } from "date-fns";
-import { normalizeAppointmentReference } from "@/lib/utils";
+import { isValidEmail, normalizeAppointmentReference } from "@/lib/utils";
 
 /** Pending always shows; other active statuses only from start of clinic day onward. */
 export function isActiveAppointmentForLookup(
@@ -347,7 +347,10 @@ export async function bookAppointment(body: {
     }
 
     const emailRaw = (body.email ?? "").toString().trim();
-    const emailNorm = emailRaw !== "" ? emailRaw.toLowerCase() : null;
+    if (!emailRaw || !isValidEmail(emailRaw)) {
+      return { error: "Enter a valid email address.", status: 400 as const };
+    }
+    const emailNorm = emailRaw.toLowerCase();
 
     const existing = await resolveExistingPatient({
       firstName: body.firstName!,

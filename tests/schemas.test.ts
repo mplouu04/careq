@@ -24,6 +24,7 @@ const validGuest = {
   gender: "male",
   address: "123 Manila Street",
   phone: "09171234567",
+  email: "juan@example.com",
   consent: true,
 };
 
@@ -66,6 +67,15 @@ describe("BookAppointmentSchema", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects guest booking without email", () => {
+    const { email: _email, ...guestWithoutEmail } = validGuest;
+    const result = BookAppointmentSchema.safeParse({
+      ...base,
+      ...guestWithoutEmail,
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("CancelAppointmentSchema", () => {
@@ -93,30 +103,28 @@ describe("StaffUpdateAppointmentSchema", () => {
 });
 
 describe("RegisterPatientSchema", () => {
+  const validRegister = {
+    firstName: "Maria",
+    lastName: "Santos",
+    dob: "1985-03-20",
+    gender: "female",
+    phone: "09171234567",
+    address: "Quezon City",
+    email: "maria@example.com",
+    consent: true,
+  };
+
   it("accepts valid registration", () => {
-    expect(
-      RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
-        dob: "1985-03-20",
-        gender: "female",
-        phone: "09171234567",
-        address: "Quezon City",
-        consent: true,
-      }).success
-    ).toBe(true);
+    expect(RegisterPatientSchema.safeParse(validRegister).success).toBe(true);
   });
 
   it("accepts names with hyphen and apostrophe", () => {
     expect(
       RegisterPatientSchema.safeParse({
+        ...validRegister,
         firstName: "Anne-Marie",
         lastName: "O'Brien",
-        dob: "1985-03-20",
-        gender: "female",
-        phone: "09171234567",
         address: "123 Quezon City Ave",
-        consent: true,
       }).success
     ).toBe(true);
   });
@@ -124,13 +132,8 @@ describe("RegisterPatientSchema", () => {
   it("rejects invalid DOB format", () => {
     expect(
       RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
+        ...validRegister,
         dob: "03/20/1985",
-        gender: "female",
-        phone: "09171234567",
-        address: "Quezon City",
-        consent: true,
       }).success
     ).toBe(false);
   });
@@ -138,13 +141,8 @@ describe("RegisterPatientSchema", () => {
   it("rejects numeric names", () => {
     expect(
       RegisterPatientSchema.safeParse({
+        ...validRegister,
         firstName: "938571",
-        lastName: "Santos",
-        dob: "1985-03-20",
-        gender: "female",
-        phone: "09171234567",
-        address: "Quezon City",
-        consent: true,
       }).success
     ).toBe(false);
   });
@@ -152,13 +150,8 @@ describe("RegisterPatientSchema", () => {
   it("rejects future DOB", () => {
     expect(
       RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
+        ...validRegister,
         dob: "3000-05-02",
-        gender: "female",
-        phone: "09171234567",
-        address: "Quezon City",
-        consent: true,
       }).success
     ).toBe(false);
   });
@@ -169,13 +162,8 @@ describe("RegisterPatientSchema", () => {
     const ymd = under18.toISOString().slice(0, 10);
     expect(
       RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
+        ...validRegister,
         dob: ymd,
-        gender: "female",
-        phone: "09171234567",
-        address: "Quezon City",
-        consent: true,
       }).success
     ).toBe(false);
   });
@@ -183,13 +171,8 @@ describe("RegisterPatientSchema", () => {
   it("rejects short numeric address", () => {
     expect(
       RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
-        dob: "1985-03-20",
-        gender: "female",
-        phone: "09171234567",
+        ...validRegister,
         address: "41421",
-        consent: true,
       }).success
     ).toBe(false);
   });
@@ -197,30 +180,30 @@ describe("RegisterPatientSchema", () => {
   it("rejects phone not starting with 09", () => {
     expect(
       RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
-        dob: "1985-03-20",
-        gender: "female",
+        ...validRegister,
         phone: "08171234567",
-        address: "Quezon City",
-        consent: true,
       }).success
     ).toBe(false);
   });
 
-  it("rejects invalid optional email", () => {
+  it("rejects invalid email", () => {
     expect(
       RegisterPatientSchema.safeParse({
-        firstName: "Maria",
-        lastName: "Santos",
-        dob: "1985-03-20",
-        gender: "female",
-        phone: "09171234567",
-        address: "Quezon City",
+        ...validRegister,
         email: "not-an-email",
-        consent: true,
       }).success
     ).toBe(false);
+  });
+
+  it("rejects missing or empty email", () => {
+    expect(
+      RegisterPatientSchema.safeParse({
+        ...validRegister,
+        email: "",
+      }).success
+    ).toBe(false);
+    const { email: _email, ...withoutEmail } = validRegister;
+    expect(RegisterPatientSchema.safeParse(withoutEmail).success).toBe(false);
   });
 });
 
@@ -233,17 +216,27 @@ describe("GuestPatientDetailsSchema / parseGuestPatientFieldErrors", () => {
       gender: "male",
       address: "41421",
       phone: "09269708814",
+      email: "",
       consent: true,
     });
     expect(errors.firstName).toBeTruthy();
     expect(errors.lastName).toBeTruthy();
     expect(errors.dob).toBeTruthy();
     expect(errors.address).toBeTruthy();
+    expect(errors.email).toBeTruthy();
     expect(errors.phone).toBeUndefined();
   });
 
   it("accepts valid guest details", () => {
     expect(GuestPatientDetailsSchema.safeParse(validGuest).success).toBe(true);
+  });
+
+  it("rejects missing email on guest details", () => {
+    const { email: _email, ...withoutEmail } = validGuest;
+    expect(GuestPatientDetailsSchema.safeParse(withoutEmail).success).toBe(false);
+    expect(
+      parseGuestPatientFieldErrors({ ...validGuest, email: "" }).email
+    ).toBeTruthy();
   });
 });
 

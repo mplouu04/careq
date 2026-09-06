@@ -101,7 +101,7 @@ export const PatientPhoneSchema = z
 
 export const PatientEmailSchema = z.preprocess(
   (v) => (v == null ? "" : String(v).trim()),
-  z.union([z.literal(""), z.string().email("Enter a valid email address")])
+  z.string().min(1, "Email is required").email("Enter a valid email address")
 );
 
 export const PatientGenderSchema = z.string().trim().min(1, "Gender is required");
@@ -118,7 +118,7 @@ export const GuestPatientDetailsSchema = z.object({
   phone: PatientPhoneSchema,
   address: PatientAddressSchema,
   consent: PatientConsentSchema,
-  email: PatientEmailSchema.optional(),
+  email: PatientEmailSchema,
 });
 
 export type GuestPatientDetails = z.infer<typeof GuestPatientDetailsSchema>;
@@ -145,7 +145,7 @@ export const RegisterPatientSchema = z.object({
   phone: PatientPhoneSchema,
   address: PatientAddressSchema,
   consent: PatientConsentSchema,
-  email: PatientEmailSchema.optional(),
+  email: PatientEmailSchema,
 });
 
 export const PatientSearchSchema = z.object({

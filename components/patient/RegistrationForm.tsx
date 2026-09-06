@@ -155,7 +155,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
           dob: payload.dob,
           gender: payload.gender,
           phone: phoneDigits,
-          email: payload.email || undefined,
+          email: payload.email,
           address: payload.address,
           consent: true,
         }),
@@ -408,8 +408,8 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                   )}
                 </div>
                 <div>
-                  <FormLabel htmlFor="email">
-                    Email <span className="text-on-surface-variant font-normal">(optional)</span>
+                  <FormLabel htmlFor="email" required>
+                    Email
                   </FormLabel>
                   <FormInput
                     id="email"
@@ -423,12 +423,18 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                       setEmail(e.target.value);
                     }}
                     aria-invalid={!!fieldErrors.email}
-                    aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                    aria-describedby={
+                      fieldErrors.email ? "email-error" : "email-hint"
+                    }
                     className={cn(fieldErrors.email && "border-destructive")}
                   />
-                  {fieldErrors.email && (
+                  {fieldErrors.email ? (
                     <FormHelperText id="email-error" className="text-destructive">
                       {fieldErrors.email}
+                    </FormHelperText>
+                  ) : (
+                    <FormHelperText id="email-hint">
+                      Required for appointment reminders
                     </FormHelperText>
                   )}
                 </div>

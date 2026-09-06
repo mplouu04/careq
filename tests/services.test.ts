@@ -1181,6 +1181,7 @@ describe("parseJsonBody", () => {
         gender: "male",
         phone: "09171234567",
         address: "123 Test Street",
+        email: "test@example.com",
         consent: true,
       }),
     });

@@ -343,15 +343,19 @@ export type RegisterPatientInput = {
   phone: string;
   address: string;
   consent: boolean | string;
-  email?: string;
+  email: string;
 };
 
 export async function registerPatient(body: RegisterPatientInput) {
   const supabase = createAdminClient();
   const { normalizePhone } = await import("@/lib/phone");
-  const { sanitize } = await import("@/lib/utils");
+  const { sanitize, isValidEmail } = await import("@/lib/utils");
 
-  const emailNorm = body.email ? body.email.toLowerCase() : null;
+  const emailRaw = (body.email ?? "").toString().trim();
+  if (!emailRaw || !isValidEmail(emailRaw)) {
+    return { error: "Enter a valid email address.", status: 400 as const };
+  }
+  const emailNorm = emailRaw.toLowerCase();
   const phoneDigits = normalizePhone(body.phone);
 
   if (phoneDigits.length !== 11 || !/^09\d{9}$/.test(phoneDigits)) {

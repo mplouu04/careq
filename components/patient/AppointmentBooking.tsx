@@ -234,7 +234,7 @@ export function AppointmentBooking() {
         payload.gender = guest.gender;
         payload.address = guest.address;
         payload.consent = guest.consent;
-        if (guest.email) payload.email = guest.email;
+        payload.email = guest.email;
       }
 
       const { ok, data } = await appointmentApi.book(payload);
@@ -797,9 +797,8 @@ export function AppointmentBooking() {
                 </div>
 
                 <div>
-                  <FormLabel htmlFor="email">
-                    Email{" "}
-                    <span className="text-on-surface-variant font-normal">(optional)</span>
+                  <FormLabel htmlFor="email" required>
+                    Email
                   </FormLabel>
                   <FormInput
                     id="email"
@@ -810,13 +809,19 @@ export function AppointmentBooking() {
                       patch({ email: e.target.value });
                     }}
                     aria-invalid={!!fieldErrors.email}
-                    aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                    aria-describedby={
+                      fieldErrors.email ? "email-error" : "email-hint"
+                    }
                     className={cn(fieldErrors.email && "border-destructive")}
                     autoComplete="email"
                   />
-                  {fieldErrors.email && (
+                  {fieldErrors.email ? (
                     <FormHelperText id="email-error" className="text-destructive">
                       {fieldErrors.email}
+                    </FormHelperText>
+                  ) : (
+                    <FormHelperText id="email-hint">
+                      Required for appointment reminders
                     </FormHelperText>
                   )}
                 </div>

@@ -85,7 +85,7 @@ export const POST = withRateLimit(
       phone: body.phone,
       address: body.address,
       consent: body.consent,
-      email: body.email || undefined,
+      email: body.email,
     });
 
     if ("error" in result && !("success" in result)) {
