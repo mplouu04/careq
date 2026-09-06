@@ -816,6 +816,48 @@ describe("patient.service consumePatientVerifyToken", () => {
   });
 });
 
+describe("patient.service validatePatientVerifyToken", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
+  });
+
+  it("returns patient_id without marking token used", async () => {
+    mockFrom.mockReturnValue(
+      chain({
+        data: { patient_id: 42 },
+        error: null,
+      })
+    );
+
+    const { validatePatientVerifyToken } = await import(
+      "../lib/services/patient.service"
+    );
+    const patientId = await validatePatientVerifyToken(
+      "550e8400-e29b-41d4-a716-446655440000"
+    );
+
+    expect(patientId).toBe(42);
+    expect(mockFrom).toHaveBeenCalledWith("patient_sessions");
+  });
+
+  it("throws 403 when token is invalid, expired, or already used", async () => {
+    mockFrom.mockReturnValue(chain({ data: null, error: null }));
+
+    const { validatePatientVerifyToken } = await import(
+      "../lib/services/patient.service"
+    );
+
+    await expect(
+      validatePatientVerifyToken("550e8400-e29b-41d4-a716-446655440000")
+    ).rejects.toMatchObject({
+      message: "Invalid or expired verification token",
+      status: 403,
+    });
+  });
+});
+
 describe("checkin.service checkinAppointment", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -876,7 +918,6 @@ describe("checkin.service checkinWalkIn", () => {
     vi.clearAllMocks();
     mockFrom.mockReset();
     mockRpc.mockReset();
-    mockRpc.mockResolvedValue({ data: 1, error: null });
   });
 
   it("resolves patient from verifyToken and creates walk-in checkin", async () => {
@@ -893,7 +934,16 @@ describe("checkin.service checkinWalkIn", () => {
           error: null,
         })
       )
-      .mockReturnValueOnce(chain({ data: null, error: null }));
+      .mockReturnValueOnce(
+        chain({
+          data: { patient_id: 7 },
+          error: null,
+        })
+      );
+
+    mockRpc
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValueOnce({ data: "WALK-1", error: null });
 
     const { checkinWalkIn } = await import("../lib/services/checkin.service");
     const result = await checkinWalkIn({
@@ -903,8 +953,53 @@ describe("checkin.service checkinWalkIn", () => {
       termsAgreement: true,
     });
 
-    expect(result.queueNumber).toBeTruthy();
+    expect(result.queueNumber).toBe("WALK-1");
     expect(result.reference).toMatch(/^WALK/);
+    expect(mockFrom).toHaveBeenCalledWith("patient_sessions");
+    expect(mockFrom).toHaveBeenCalledWith("checkins");
+  });
+
+  it("deletes orphan check-in and does not consume token when queue assign fails", async () => {
+    const deleteChain = chain({ data: null, error: null });
+    mockFrom
+      .mockReturnValueOnce(
+        chain({
+          data: { patient_id: 7 },
+          error: null,
+        })
+      )
+      .mockReturnValueOnce(
+        chain({
+          data: { checkin_id: 99 },
+          error: null,
+        })
+      )
+      .mockReturnValueOnce(deleteChain);
+
+    mockRpc
+      .mockResolvedValueOnce({ data: 1, error: null })
+      .mockResolvedValue({
+        data: null,
+        error: { message: "duplicate key", code: "23505" },
+      });
+
+    const { checkinWalkIn } = await import("../lib/services/checkin.service");
+    await expect(
+      checkinWalkIn({
+        verifyToken: "550e8400-e29b-41d4-a716-446655440000",
+        appointmentType: 1,
+        additionalinfo: "Headache",
+        termsAgreement: true,
+      })
+    ).rejects.toMatchObject({
+      message: "Failed to assign queue number. Please try again.",
+      status: 409,
+    });
+
+    expect(deleteChain.delete).toHaveBeenCalled();
+    expect(deleteChain.eq).toHaveBeenCalledWith("checkin_id", 99);
+    // validate + insert + delete only — no fourth consume call on patient_sessions update path
+    expect(mockFrom).toHaveBeenCalledTimes(3);
   });
 });
 

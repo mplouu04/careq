@@ -219,6 +219,32 @@ async function createPatientSession(
   return session.token as string;
 }
 
+/** Validates a walk-in verify token without consuming it. */
+export async function validatePatientVerifyToken(
+  verifyToken: string
+): Promise<number> {
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: session, error } = await supabase
+    .from("patient_sessions")
+    .select("patient_id")
+    .eq("token", verifyToken)
+    .eq("used", false)
+    .gt("expires_at", now)
+    .maybeSingle();
+
+  if (error) {
+    throw new CheckinError(error.message, 500);
+  }
+
+  if (!session) {
+    throw new CheckinError("Invalid or expired verification token", 403);
+  }
+
+  return session.patient_id as number;
+}
+
 /** Validates a walk-in verify token and marks it used (single-use). */
 export async function consumePatientVerifyToken(
   verifyToken: string

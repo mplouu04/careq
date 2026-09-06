@@ -4,7 +4,10 @@ import { patientPhonesMatch } from "@/lib/phone";
 import { normalizeAppointmentReference, sanitize } from "@/lib/utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { checkinToQueue, CheckinError, nextCounter } from "@/lib/counters";
-import { consumePatientVerifyToken } from "@/lib/services/patient.service";
+import {
+  consumePatientVerifyToken,
+  validatePatientVerifyToken,
+} from "@/lib/services/patient.service";
 
 const TERMINAL_CHECKIN = ["cancelled", "completed", "no_show"];
 
@@ -126,7 +129,8 @@ export async function checkinWalkIn(body: {
   additionalinfo: string;
   termsAgreement: boolean | string;
 }) {
-  const patientId = await consumePatientVerifyToken(body.verifyToken);
+  // Validate without consuming so a later queue failure can retry with the same token.
+  const patientId = await validatePatientVerifyToken(body.verifyToken);
 
   const supabase = createAdminClient();
   const counter = await nextCounter("APT_REF");
@@ -152,6 +156,20 @@ export async function checkinWalkIn(body: {
     throw new CheckinError(cErr?.message ?? "Check-in failed", 500);
   }
 
-  const queueNumber = await checkinToQueue(checkin.checkin_id, "WALK");
+  let queueNumber: string;
+  try {
+    queueNumber = await checkinToQueue(checkin.checkin_id, "WALK");
+  } catch (err) {
+    await supabase.from("checkins").delete().eq("checkin_id", checkin.checkin_id);
+    throw err;
+  }
+
+  try {
+    await consumePatientVerifyToken(body.verifyToken);
+  } catch (err) {
+    // Patient is already in queue; do not fail the check-in if mark-used races.
+    console.warn("[checkinWalkIn] failed to consume verify token after queue assign", err);
+  }
+
   return { queueNumber, reference: ref };
 }
