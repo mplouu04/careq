@@ -249,7 +249,8 @@ async function staffQueueHandler() {
       | undefined;
 
     const name = patient ? `${patient.first_name} ${patient.last_name}` : "";
-    const reason = apptType?.name ?? checkinRaw?.reason ?? "";
+    const visitType = apptType?.name ?? "";
+    const reason = (checkinRaw?.reason as string | null | undefined) ?? "";
 
     if (row.status === "waiting") {
       waitingPosition++;
@@ -262,6 +263,7 @@ async function staffQueueHandler() {
           ? format(new Date(row.created_at), "hh:mm a")
           : "",
         priority: row.priority,
+        visitType,
         reason,
         position: waitingPosition,
         est_wait_minutes: waitingPosition * avgServiceTime,

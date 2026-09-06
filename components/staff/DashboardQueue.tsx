@@ -59,6 +59,7 @@ type QueueWaiting = {
   queue_number?: string;
   name: string;
   time: string;
+  visitType: string;
   reason: string;
   position: number;
   est_wait_minutes: number;
@@ -201,6 +202,7 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
         queue_number: item.queue_number,
         name: item.name,
         time: item.time,
+        visitType: "",
         reason: "",
         position: next.waiting.length + 1,
         est_wait_minutes: next.avg,
@@ -882,15 +884,27 @@ function WaitingRow({
   q: QueueWaiting;
   onRecall: () => void;
 }) {
+  const detail = [q.visitType, q.reason].filter(Boolean).join(" · ");
+
   return (
-    <li className="px-3 py-2 max-h-[72px] animate-in fade-in duration-200">
+    <li className="px-3 py-2 animate-in fade-in duration-200">
       <div className="flex items-center gap-2 min-h-[44px]">
         <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
           {q.queue_number ?? q.id}
         </span>
-        <span className="font-semibold text-body-md text-on-surface truncate flex-1 min-w-0">
-          {q.name}
-        </span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-body-md text-on-surface truncate block">
+            {q.name}
+          </span>
+          {detail ? (
+            <span
+              className="text-label-sm text-on-surface-variant truncate block"
+              title={detail}
+            >
+              {detail}
+            </span>
+          ) : null}
+        </div>
         <span className="text-body-sm text-on-surface-variant shrink-0">
           ~{q.est_wait_minutes}m
         </span>

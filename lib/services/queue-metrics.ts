@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { format, subDays } from "date-fns";
-import { getClinicTodayYmd } from "@/lib/datetime";
+import { format } from "date-fns";
+import { addClinicDays, getClinicTodayYmd } from "@/lib/datetime";
 
 const AVG_CACHE_TTL_MS = 45_000;
 const DEFAULT_AVG_MINUTES = 10;
@@ -77,18 +77,18 @@ export async function getAvgServiceTime(
 export async function getQueueReport(dayStart: string, historyDays = 7) {
   const supabase = createAdminClient();
   const span = Math.max(1, historyDays);
-  const historyStartDate = format(subDays(new Date(), span - 1), "yyyy-MM-dd");
+  const today = getClinicTodayYmd();
+  const historyStartDate = addClinicDays(today, -(span - 1));
   const historyStartIso = `${historyStartDate}T00:00:00`;
-  const historyEndExclusive = `${format(subDays(new Date(), -1), "yyyy-MM-dd")}T00:00:00`;
+  const historyEndExclusive = `${addClinicDays(today, 1)}T00:00:00`;
   const dayEnd = new Date().toISOString();
 
   const countsByDay = new Map<string, number>();
   for (let i = 0; i < span; i++) {
-    const d = format(subDays(new Date(), span - 1 - i), "yyyy-MM-dd");
+    const d = addClinicDays(today, -(span - 1 - i));
     countsByDay.set(d, 0);
   }
 
-  const today = getClinicTodayYmd();
   const [avgMinutes, waitingRes, historyRpc, servedRes] = await Promise.all([
     getAvgServiceTime(dayStart, dayEnd, supabase),
     supabase

@@ -1,7 +1,7 @@
-import { addDays, format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, TIMEZONE } from "@/lib/constants";
+import { addClinicDays, getClinicTodayYmd } from "@/lib/datetime";
 import { getEnvSafe } from "@/lib/env";
 import { sendAppointmentReminder } from "@/lib/email";
 import { logInfo, logWarn, captureException } from "@/lib/observability";
@@ -45,7 +45,7 @@ async function persistReminderFailure(row: {
 
 export async function sendTomorrowAppointmentReminders() {
   const supabase = createAdminClient();
-  const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
+  const tomorrow = addClinicDays(getClinicTodayYmd(), 1);
   const env = getEnvSafe();
   const clinicName = env?.CLINIC_NAME ?? "Your Clinic";
   const clinicAddress = env?.CLINIC_ADDRESS ?? "See clinic website for directions";

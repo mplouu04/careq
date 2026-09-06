@@ -2,11 +2,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { CHECKIN_TYPE, MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
 import { normalizePhone, patientPhonesMatch } from "@/lib/phone";
 import { getDoctorAvailableSlots } from "@/lib/slots-availability";
-import { getClinicTodayYmd, getClinicDayStartIso } from "@/lib/datetime";
+import { getClinicTodayYmd, getClinicDayStartIso, addClinicDays } from "@/lib/datetime";
 import { nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
-import { addDays, format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { normalizeAppointmentReference } from "@/lib/utils";
 
 /** Pending always shows; other active statuses only from start of clinic day onward. */
@@ -282,7 +282,7 @@ export async function bookAppointment(body: {
   if (appointmentDate < today) {
     return { error: "Appointment date cannot be in the past.", status: 400 as const };
   }
-  const maxDate = format(addDays(parseISO(today), MAX_ADVANCE_BOOKING_DAYS), "yyyy-MM-dd");
+  const maxDate = addClinicDays(today, MAX_ADVANCE_BOOKING_DAYS);
   if (appointmentDate > maxDate) {
     return {
       error: `Appointments can only be booked up to ${MAX_ADVANCE_BOOKING_DAYS} days in advance.`,

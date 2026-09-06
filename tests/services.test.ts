@@ -36,6 +36,11 @@ vi.mock("@/lib/supabase/broadcast", () => ({
 vi.mock("@/lib/datetime", () => ({
   getClinicTodayYmd: () => "2026-06-06",
   getClinicDayStartIso: (ymd: string) => `${ymd}T16:00:00.000Z`,
+  addClinicDays: (ymd: string, amount: number) => {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + amount);
+    return d.toISOString().slice(0, 10);
+  },
 }));
 
 function chain(resolved: { data?: unknown; error?: unknown; count?: number }) {
@@ -1023,8 +1028,8 @@ describe("queue-metrics getQueueReport", () => {
     const report = await getQueueReport("2026-06-07T00:00:00Z");
 
     expect(report.history).toHaveLength(7);
-    expect(report.history[0]?.date).toBe("2026-06-01");
-    expect(report.history[6]?.date).toBe("2026-06-07");
+    expect(report.history[0]?.date).toBe("2026-05-31");
+    expect(report.history[6]?.date).toBe("2026-06-06");
     expect(report.avg_service_time).toBe(10);
   });
 
@@ -1033,8 +1038,8 @@ describe("queue-metrics getQueueReport", () => {
     const report = await getQueueReport("2026-06-07T00:00:00Z", 14);
 
     expect(report.history).toHaveLength(14);
-    expect(report.history[0]?.date).toBe("2026-05-25");
-    expect(report.history[13]?.date).toBe("2026-06-07");
+    expect(report.history[0]?.date).toBe("2026-05-24");
+    expect(report.history[13]?.date).toBe("2026-06-06");
   });
 });
 

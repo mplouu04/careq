@@ -25,6 +25,11 @@ vi.mock("@/lib/services/queue-notify.service", () => ({
 vi.mock("@/lib/datetime", () => ({
   getClinicTodayYmd: () => "2026-06-06",
   getClinicDayStartIso: (ymd: string) => `${ymd}T16:00:00.000Z`,
+  addClinicDays: (ymd: string, amount: number) => {
+    const d = new Date(`${ymd}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + amount);
+    return d.toISOString().slice(0, 10);
+  },
 }));
 
 vi.mock("@/lib/slots-availability", () => ({

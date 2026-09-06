@@ -6,18 +6,15 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { catalogApi } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
-import { getClinicTodayYmd } from "@/lib/datetime";
+import { getClinicTodayYmd, addClinicDays } from "@/lib/datetime";
+import { MAX_ADVANCE_BOOKING_DAYS } from "@/lib/constants";
 import { maxDobForMinAge } from "@/lib/schemas/patient";
 import {
   DOCTORS_BROADCAST_EVENT,
   DOCTORS_BROADCAST_TOPIC,
 } from "@/lib/supabase/broadcast-shared";
 import { logRealtimeStatus } from "@/lib/observability-client";
-import {
-  addDays,
-  format,
-  startOfMonth,
-} from "date-fns";
+import { startOfMonth } from "date-fns";
 
 export type BookingDoctor = {
   id: string;
@@ -80,7 +77,7 @@ export function useAppointmentBookingCatalog(state: BookingState) {
   const todayYmd = getClinicTodayYmd();
   const maxDobYmd = useMemo(() => maxDobForMinAge(todayYmd), [todayYmd]);
   const maxDate = useMemo(
-    () => format(addDays(new Date(`${todayYmd}T12:00:00`), 30), "yyyy-MM-dd"),
+    () => addClinicDays(todayYmd, MAX_ADVANCE_BOOKING_DAYS),
     [todayYmd]
   );
 
