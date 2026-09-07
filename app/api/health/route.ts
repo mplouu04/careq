@@ -5,9 +5,18 @@ import { withRateLimit } from "@/lib/api/with-auth";
 
 export const dynamic = "force-dynamic";
 
+function detailAuthorized(request: Request): boolean {
+  const env = getEnvSafe();
+  const secret = env?.CRON_SECRET;
+  if (!secret) return false;
+  const auth = request.headers.get("authorization") ?? "";
+  return auth === `Bearer ${secret}`;
+}
+
 async function healthHandler(request: Request) {
   const { searchParams } = new URL(request.url);
-  const detail = searchParams.get("detail") === "1";
+  const wantDetail = searchParams.get("detail") === "1";
+  const detail = wantDetail && detailAuthorized(request);
   const env = getEnvSafe();
   let healthy = Boolean(env);
 
@@ -20,6 +29,12 @@ async function healthHandler(request: Request) {
   }
 
   if (!detail) {
+    if (wantDetail && !detailAuthorized(request)) {
+      return NextResponse.json(
+        { status: healthy ? "ok" : "degraded", error: "detail requires authorization" },
+        { status: healthy ? 200 : 503 }
+      );
+    }
     return NextResponse.json(
       { status: healthy ? "ok" : "degraded", timestamp: new Date().toISOString() },
       { status: healthy ? 200 : 503 }

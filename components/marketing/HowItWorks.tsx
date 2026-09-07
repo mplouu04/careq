@@ -5,7 +5,8 @@ const STEPS = [
   {
     icon: ClipboardList,
     title: "Check in",
-    description: "Walk in or use your appointment reference. Search by name, phone, or patient number.",
+    description:
+      "Walk in after verifying with your date of birth and phone, or check in with your appointment reference and registered phone.",
   },
   {
     icon: Clock,

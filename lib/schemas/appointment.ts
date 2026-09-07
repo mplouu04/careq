@@ -39,7 +39,9 @@ export const BookAppointmentSchema = z
     appointmentDate: z.string().min(1),
     appointmentTime: z.string().min(1),
     termsAgreement: z.union([z.boolean(), z.string(), z.literal("on")]),
+    /** @deprecated Prefer verifyToken for returning patients. */
     patient_id: z.union([z.string(), z.number()]).optional(),
+    verifyToken: z.string().uuid().optional(),
     firstName: z.string().optional(),
     lastName: z.string().optional(),
     dob: z.string().optional(),
@@ -52,7 +54,15 @@ export const BookAppointmentSchema = z
     reason: z.string().optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.patient_id) return;
+    if (data.verifyToken) return;
+    if (data.patient_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Identity verification required to book for an existing patient",
+        path: ["verifyToken"],
+      });
+      return;
+    }
     for (const [field, schema] of Object.entries(guestFields)) {
       const value = data[field as keyof typeof data];
       const parsed = schema.safeParse(value);

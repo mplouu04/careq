@@ -38,15 +38,23 @@ describe("BookAppointmentSchema", () => {
     termsAgreement: true,
   };
 
-  it("accepts booking with existing patient_id", () => {
+  it("rejects booking with patient_id alone (requires verifyToken)", () => {
     const result = BookAppointmentSchema.safeParse({
       ...base,
       patient_id: 42,
     });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts booking with verifyToken for returning patient", () => {
+    const result = BookAppointmentSchema.safeParse({
+      ...base,
+      verifyToken: "550e8400-e29b-41d4-a716-446655440000",
+    });
     expect(result.success).toBe(true);
   });
 
-  it("requires guest fields when patient_id is absent", () => {
+  it("requires guest fields when verifyToken is absent", () => {
     const result = BookAppointmentSchema.safeParse(base);
     expect(result.success).toBe(false);
   });

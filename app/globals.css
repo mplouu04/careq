@@ -26,9 +26,9 @@
     --ring: 222 100% 39%;
     --radius: 0.75rem;
     --status-waiting: 222 100% 39%;
-    --status-called: 142 76% 36%;
+    --status-called: 142 72% 28%;
     --status-completed: 215 16% 47%;
-    --status-no-show: 32 95% 44%;
+    --status-no-show: 25 90% 32%;
     --secondary-container: 214 89% 93%;
     --on-secondary-container: 215 25% 40%;
     /* Clinical Precision surface tokens (see design-system/MASTER.md) */

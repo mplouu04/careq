@@ -54,6 +54,9 @@ function statusBadgeVariant(
 
 /** Synthesise a short two-tone ascending chime (called). */
 function playCalledChime() {
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
   try {
     const ctx = new AudioContext();
     const gain = ctx.createGain();
@@ -76,6 +79,9 @@ function playCalledChime() {
 
 /** Softer single-tone chime for "approaching turn". */
 function playApproachingChime() {
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
   try {
     const ctx = new AudioContext();
     const gain = ctx.createGain();
@@ -96,6 +102,9 @@ function playApproachingChime() {
 
 /** Descending two-tone chime for "missed turn". */
 function playMissedChime() {
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return;
+  }
   try {
     const ctx = new AudioContext();
     const gain = ctx.createGain();

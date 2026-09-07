@@ -10,6 +10,7 @@ import {
   ReferencePhoneLookupSchema,
   StaffUpdateAppointmentSchema,
 } from "@/lib/schemas/appointment";
+import { z } from "zod";
 import {
   bookAppointment,
   cancelAppointment,
@@ -22,75 +23,15 @@ import { isValidRef, normalizeAppointmentReference, sanitize } from "@/lib/utils
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/appointments — staff list or patient self-lookup (?phone=&dob= or ?reference=&phone=) */
+/** GET /api/appointments — staff list only (patient lookup moved to POST body). */
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const reference = searchParams.get("reference");
-  const phone = searchParams.get("phone");
-  const dob = searchParams.get("dob");
-
-  if (reference) {
-    const parsed = ReferencePhoneLookupSchema.safeParse({ reference, phone: phone ?? "" });
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Reference and phone are required" },
-        { status: 400 }
-      );
-    }
-    return withRateLimit(
-      "patient_lookup",
-      async () => {
-        const ref = normalizeAppointmentReference(sanitize(parsed.data.reference, 30));
-        if (!isValidRef(ref)) {
-          return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
-        }
-        const result = await lookupAppointmentByReference(ref, parsed.data.phone);
-        void logAudit({
-          userId: null,
-          action: "appointment_reference_lookup",
-          tableName: "checkins",
-          recordId: ref,
-          ipAddress: getClientIp(request),
-          newValues: {
-            outcome: result.appointments.length ? "found" : "not_found",
-          },
-        });
-        return NextResponse.json({
-          success: true,
-          appointments: result.appointments,
-          publicId: result.publicId,
-          patientName: result.patientName,
-        });
-      },
-      { max: 10, windowSeconds: 60, failClosed: true }
-    )(request);
-  }
-
-  if (phone && dob) {
-    const parsed = PatientLookupSchema.safeParse({ phone, dob });
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-        { status: 400 }
-      );
-    }
-    return withRateLimit(
-      "patient_lookup",
-      async () => {
-        const result = await lookupPatientAppointments(parsed.data.phone, parsed.data.dob);
-        return NextResponse.json({
-          success: true,
-          appointments: result.appointments,
-          publicId: result.publicId,
-          patientName: result.patientName,
-        });
-      },
-      { max: 10, windowSeconds: 60, failClosed: true }
-    )(request);
-  }
-
   return staffListHandler(request);
 }
+
+const AppointmentLookupSchema = z.union([
+  PatientLookupSchema.extend({ action: z.literal("lookup") }),
+  ReferencePhoneLookupSchema.extend({ action: z.literal("lookup") }),
+]);
 
 const staffListHandler = withStaffAuth(async (request: Request) => {
   const filter = new URL(request.url).searchParams.get("filter") ?? "upcoming";
@@ -102,13 +43,59 @@ const staffListHandler = withStaffAuth(async (request: Request) => {
   return NextResponse.json({ success: true, appointments });
 });
 
-/** POST /api/appointments — book, cancel, or staff status update (legacy) */
+/** POST /api/appointments — lookup, book, cancel, or staff status update */
 export async function POST(request: Request) {
   let raw: unknown;
   try {
     raw = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const lookupParsed = AppointmentLookupSchema.safeParse(raw);
+  if (lookupParsed.success) {
+    return withRateLimit(
+      "patient_lookup",
+      async () => {
+        if ("reference" in lookupParsed.data) {
+          const ref = normalizeAppointmentReference(
+            sanitize(lookupParsed.data.reference, 30)
+          );
+          if (!isValidRef(ref)) {
+            return NextResponse.json({ error: "Invalid reference format" }, { status: 400 });
+          }
+          const result = await lookupAppointmentByReference(ref, lookupParsed.data.phone);
+          void logAudit({
+            userId: null,
+            action: "appointment_reference_lookup",
+            tableName: "checkins",
+            recordId: ref,
+            ipAddress: getClientIp(request),
+            newValues: {
+              outcome: result.appointments.length ? "found" : "not_found",
+            },
+          });
+          return NextResponse.json({
+            success: true,
+            appointments: result.appointments,
+            publicId: result.publicId,
+            patientName: result.patientName,
+          });
+        }
+
+        const result = await lookupPatientAppointments(
+          lookupParsed.data.phone,
+          lookupParsed.data.dob
+        );
+        return NextResponse.json({
+          success: true,
+          appointments: result.appointments,
+          publicId: result.publicId,
+          patientName: result.patientName,
+        });
+      },
+      { max: 10, windowSeconds: 60, failClosed: true }
+    )(request);
   }
 
   const cancelParsed = CancelAppointmentSchema.safeParse(raw);

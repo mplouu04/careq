@@ -27,6 +27,7 @@ import {
 } from "@/lib/schemas/patient";
 import { cn } from "@/lib/utils";
 import { EmailVerifyField } from "@/components/patient/EmailVerifyField";
+import { ConsentLegalLinks } from "@/components/legal/ConsentLegalLinks";
 
 type RegStep = "personal" | "contact" | "consent";
 
@@ -57,11 +58,13 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const todayYmd = getClinicTodayYmd();
   const maxDobYmd = useMemo(() => maxDobForMinAge(todayYmd), [todayYmd]);
 
-  function navigateAfterRegister(publicId: string, token?: string) {
+  function navigateAfterRegister(_publicId: string, token?: string) {
+    if (token) storeVerifyToken(token);
     if (redirectTo) {
-      router.push(`${redirectTo}?publicId=${publicId}`);
-    } else if (token) {
-      storeVerifyToken(token);
+      router.push(redirectTo);
+      return;
+    }
+    if (token) {
       router.push("/checkin?tab=walk-in");
     } else {
       router.push("/patient-search");
@@ -219,7 +222,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
         }}
         secondaryCta={{
           label: "Book appointment",
-          href: `/appointments?publicId=${successPublicId}`,
+          href: "/appointments",
         }}
       />
     );
@@ -466,8 +469,12 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     className="mt-1 rounded border-input"
                   />
                   <span>
-                    I consent to the storage and processing of my personal data.{" "}
+                    I understand my personal data will be used for clinic registration, appointments,
+                    queue management, and related transactional emails (verification and reminders), as
+                    described in the Privacy Notice.{" "}
                     <span className="text-destructive">*</span>
+                    <br />
+                    <ConsentLegalLinks className="text-body-sm text-on-surface-variant" />
                   </span>
                 </label>
                 {fieldErrors.consent && (
@@ -521,11 +528,17 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
             <Button variant="outline" asChild>
               <Link href="/patient-search">Find Patient</Link>
             </Button>
-            <Button variant="outline" asChild>
-              <Link href={`/appointments?publicId=${matchedModal?.publicId}`}>
-                <Calendar className="h-4 w-4" />
-                Book Appointment
-              </Link>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (matchedModal?.verifyToken) {
+                  storeVerifyToken(matchedModal.verifyToken);
+                }
+                router.push("/appointments");
+              }}
+            >
+              <Calendar className="h-4 w-4" />
+              Book Appointment
             </Button>
             <CareqButton
               onClick={() =>

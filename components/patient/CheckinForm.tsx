@@ -18,6 +18,7 @@ import {
   SuccessCard,
 } from "@/components/careq";
 import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
+import { ConsentLegalLinks } from "@/components/legal/ConsentLegalLinks";
 import { catalogApi } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { useRovingTabs } from "@/lib/hooks/useRovingTabs";
@@ -42,11 +43,21 @@ export function CheckinForm() {
   const params = useSearchParams();
   const queryClient = useQueryClient();
   const urlToken = params.get("verifyToken");
-  const verifyToken = urlToken ?? readVerifyToken();
+  // Prefer sessionStorage; ignore verifyToken in URL after capture to reduce history leakage
+  const [verifyToken, setVerifyToken] = useState<string | null>(null);
 
   useEffect(() => {
     if (urlToken) {
       storeVerifyToken(urlToken);
+      setVerifyToken(urlToken);
+      // Strip token from the address bar without reload
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("verifyToken");
+        window.history.replaceState({}, "", url.pathname + url.search);
+      }
+    } else {
+      setVerifyToken(readVerifyToken());
     }
   }, [urlToken]);
 
@@ -123,11 +134,15 @@ export function CheckinForm() {
     const t = setTimeout(async () => {
       setLookingUp(true);
       try {
-        const params = new URLSearchParams({
-          appointmentID: ref.toUpperCase(),
-          phone: phone.trim(),
+        const res = await fetch("/api/checkin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "lookup",
+            appointmentID: ref.toUpperCase(),
+            phone: phone.trim(),
+          }),
         });
-        const res = await fetch(`/api/checkin?${params.toString()}`);
         const data = await res.json();
         if (data.success && data.appointment?.[0]) {
           setRefLookup(data.appointment[0]);
@@ -301,8 +316,11 @@ export function CheckinForm() {
             aria-labelledby="tab-appointment"
           >
             <div>
-              <FormLabel required>Reference</FormLabel>
+              <FormLabel htmlFor="checkin-ref" required>
+                Reference
+              </FormLabel>
               <FormInput
+                id="checkin-ref"
                 type="text"
                 value={ref}
                 onChange={(e) => setRef(e.target.value.toUpperCase())}
@@ -323,8 +341,11 @@ export function CheckinForm() {
             </div>
 
             <div>
-              <FormLabel required>Registered phone</FormLabel>
+              <FormLabel htmlFor="checkin-phone" required>
+                Registered phone
+              </FormLabel>
               <FormInput
+                id="checkin-phone"
                 type="tel"
                 inputMode="tel"
                 value={phone}
@@ -375,8 +396,14 @@ export function CheckinForm() {
             )}
 
             <div>
-              <FormLabel required>Visit type</FormLabel>
-              <FormSelect value={apptType} onChange={(e) => setApptType(e.target.value)}>
+              <FormLabel htmlFor="checkin-visit-type" required>
+                Visit type
+              </FormLabel>
+              <FormSelect
+                id="checkin-visit-type"
+                value={apptType}
+                onChange={(e) => setApptType(e.target.value)}
+              >
                 <option value="" disabled>
                   Select type
                 </option>
@@ -389,8 +416,11 @@ export function CheckinForm() {
             </div>
 
             <div>
-              <FormLabel required>Reason</FormLabel>
+              <FormLabel htmlFor="checkin-reason" required>
+                Reason
+              </FormLabel>
               <textarea
+                id="checkin-reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Brief reason"
@@ -406,7 +436,18 @@ export function CheckinForm() {
                 onChange={(e) => setTermsAgreed(e.target.checked)}
                 className="mt-1 rounded"
               />
-              <span>I agree to clinic terms.</span>
+              <span>
+                I agree to the{" "}
+                <Link
+                  href="/terms"
+                  className="text-primary underline underline-offset-2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Terms of Use
+                </Link>
+                . <ConsentLegalLinks className="text-body-sm text-on-surface-variant" />
+              </span>
             </label>
 
             <CareqButton

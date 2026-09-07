@@ -222,16 +222,18 @@ export const adminApi = {
 
 export const appointmentsDataApi = {
   byPhone: (phone: string, dob: string) =>
-    api.get<{ appointments: unknown[]; patientName?: string }>(
-      `/api/appointments?phone=${encodeURIComponent(phone)}&dob=${encodeURIComponent(dob)}`
-    ),
+    api.post<{ appointments: unknown[]; patientName?: string }>("/api/appointments", {
+      action: "lookup",
+      phone,
+      dob,
+    }),
 
-  byReference: (reference: string, phone: string) => {
-    const params = new URLSearchParams({ reference, phone });
-    return api.get<{ appointments: unknown[]; patientName?: string }>(
-      `/api/appointments?${params.toString()}`
-    );
-  },
+  byReference: (reference: string, phone: string) =>
+    api.post<{ appointments: unknown[]; patientName?: string }>("/api/appointments", {
+      action: "lookup",
+      reference,
+      phone,
+    }),
 };
 
 export const queueApi = {

@@ -59,15 +59,15 @@ export function LandingHero() {
             <div className="absolute top-md right-md rounded-lg border border-outline-variant/80 bg-surface-container-lowest/95 backdrop-blur px-md py-sm shadow-sm">
               <div className="flex items-center gap-sm">
                 <span className="w-2 h-2 rounded-full bg-status-called" aria-hidden />
-                <span className="text-label-md text-on-surface">Live queue sync</span>
+                <span className="text-label-md text-on-surface">Example preview</span>
               </div>
             </div>
             <div className="absolute bottom-md left-md right-md rounded-xl border border-outline-variant bg-surface-container-lowest/95 backdrop-blur p-md shadow-sm">
               <span className="text-label-sm text-on-surface-variant uppercase">
-                Now serving
+                Example · Now serving
               </span>
               <p className="font-mono text-headline-lg text-primary mt-0.5">WALK-12</p>
-              <p className="text-body-sm text-on-surface-variant">Room 2 · ~4 min wait</p>
+              <p className="text-body-sm text-on-surface-variant">Room 2 · sample wait time</p>
             </div>
           </div>
         </div>

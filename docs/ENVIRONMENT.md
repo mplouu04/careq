@@ -40,8 +40,10 @@ Validated at server startup via [`lib/env.ts`](../lib/env.ts) (Zod). Invalid con
 | `RESEND_API_KEY` | Appointment reminders + email verification codes (free tier shared daily/monthly caps) |
 | `RESEND_FROM_EMAIL` | Verified sender (must pair with `RESEND_API_KEY`) |
 | `EMAIL_CODE_PEPPER` | Optional secret for hashing email verification codes (falls back to `CRON_SECRET` / service role key) |
-| `CLINIC_NAME` | Email template clinic name |
-| `CLINIC_ADDRESS` | Email template address |
+| `CLINIC_NAME` | Clinic display name (emails, Privacy Notice, footer) |
+| `CLINIC_ADDRESS` | Clinic address (emails, Privacy Notice, footer) |
+| `CLINIC_PHONE` | Public phone (Privacy Notice / footer) |
+| `CLINIC_PRIVACY_EMAIL` | Privacy / DPO contact email |
 | `RETENTION_DAYS` | Days to keep `rate_limits` / `audit_log` (default `2190` / 6 years) |
 
 ## Cron jobs
@@ -58,7 +60,7 @@ A GitHub Actions backup cron (`.github/workflows/cron-backup.yml`) can call `/ap
 ## Health check
 
 - **Public:** `GET /api/health` returns `{ status: "ok" | "degraded" }` only.
-- **Ops detail:** `GET /api/health?detail=1` includes database and config checks (use for internal monitors).
+- **Ops detail:** `GET /api/health?detail=1` with `Authorization: Bearer $CRON_SECRET` includes database and config checks (unauthorized detail requests get status only).
 
 Wire an external uptime monitor (Better Stack, Checkly, UptimeRobot) to `GET /api/health`.
 

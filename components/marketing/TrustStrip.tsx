@@ -9,8 +9,9 @@ const TRUST_ITEMS = [
   },
   {
     icon: Lock,
-    title: "Privacy-first check-in",
-    description: "Patient data used only for visit management at your facility.",
+    title: "Visit data, explained",
+    description:
+      "Used to run registration, booking, and queues—shared only with clinic staff and service providers listed in our Privacy Notice.",
   },
   {
     icon: HeartPulse,

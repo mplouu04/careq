@@ -163,6 +163,18 @@ export function PatientSearch() {
                 type="button"
                 variant="outline"
                 className="min-h-11 rounded-xl cursor-pointer"
+                onClick={() => {
+                  if (!match) return;
+                  storeVerifyToken(match.verifyToken);
+                  router.push("/appointments");
+                }}
+              >
+                Book appointment
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 rounded-xl cursor-pointer"
                 onClick={resetForm}
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -182,7 +194,15 @@ export function PatientSearch() {
               Got it
             </CareqButton>
           }
-        />
+        >
+          <p className="text-body-sm text-on-surface-variant">
+            See our{" "}
+            <Link href="/privacy" className="text-primary underline">
+              Privacy Notice
+            </Link>{" "}
+            for how visit data is processed with clinic staff and service providers.
+          </p>
+        </ConfirmDialog>
       </>
     );
   }
@@ -295,7 +315,15 @@ export function PatientSearch() {
             Got it
           </CareqButton>
         }
-      />
+      >
+        <p className="text-body-sm text-on-surface-variant">
+          See our{" "}
+          <Link href="/privacy" className="text-primary underline">
+            Privacy Notice
+          </Link>{" "}
+          for how visit data is processed.
+        </p>
+      </ConfirmDialog>
     </>
   );
 }

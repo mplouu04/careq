@@ -56,6 +56,8 @@ import {
   useBookingViewMonth,
 } from "@/components/patient/useAppointmentBookingCatalog";
 import { EmailVerifyField } from "@/components/patient/EmailVerifyField";
+import { ConsentLegalLinks } from "@/components/legal/ConsentLegalLinks";
+import { readVerifyToken } from "@/lib/verify-session";
 
 const AVATAR_COLORS = [CAREQ_PRIMARY, "#1a5fb4", "#003d99", "#2563c4"];
 
@@ -89,13 +91,15 @@ function doctorInitials(d: BookingDoctor): string {
 
 export function AppointmentBooking() {
   const params = useSearchParams();
-  const publicId = params.get("publicId");
+  const legacyPublicId = params.get("publicId");
+  const verifyToken = readVerifyToken();
 
   const [state, setState] = useState<BookingState>(BOOKING_INITIAL_STATE);
   const { viewMonth, setViewMonth } = useBookingViewMonth();
   const [confirming, setConfirming] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [emailProofToken, setEmailProofToken] = useState<string | null>(null);
+  const returningPatient = Boolean(verifyToken);
 
   const {
     queryClient,
@@ -199,9 +203,9 @@ export function AppointmentBooking() {
   };
 
   const handleStep3Continue = () => {
-    if (!publicId && !validateGuestDetails()) return;
+    if (!returningPatient && !validateGuestDetails()) return;
     if (!state.termsAgreed) {
-      toast.error("Agree to clinic terms to continue.");
+      toast.error("Agree to the Terms of Use to continue.");
       return;
     }
     goStep(4);
@@ -209,12 +213,16 @@ export function AppointmentBooking() {
 
   const handleConfirm = async () => {
     if (!state.termsAgreed) {
-      toast.error("Agree to clinic terms to continue.");
+      toast.error("Agree to the Terms of Use to continue.");
       return;
     }
-    if (!publicId && !validateGuestDetails()) {
+    if (!returningPatient && !validateGuestDetails()) {
       toast.error("Please fix the highlighted fields.");
       goStep(3);
+      return;
+    }
+    if (returningPatient && !verifyToken) {
+      toast.error("Verify your identity first, then book again.");
       return;
     }
     setConfirming(true);
@@ -228,8 +236,8 @@ export function AppointmentBooking() {
         reason: state.reason.trim() || undefined,
       };
 
-      if (publicId) {
-        payload.patient_id = publicId;
+      if (returningPatient && verifyToken) {
+        payload.verifyToken = verifyToken;
       } else {
         const guest = guestPayload();
         payload.firstName = guest.firstName;
@@ -348,9 +356,18 @@ export function AppointmentBooking() {
         <p className="text-body-md text-on-surface-variant mt-2">
           Choose your doctor, pick a time, and confirm your details in a few steps.
         </p>
-        {publicId && (
+        {returningPatient && (
           <p className="text-body-sm text-primary mt-2">
-            Booking as a registered patient.
+            Booking as a verified returning patient.
+          </p>
+        )}
+        {legacyPublicId && !returningPatient && (
+          <p className="text-body-sm text-destructive mt-2" role="alert">
+            For your privacy, booking links with a patient id are no longer accepted.{" "}
+            <Link href="/patient-search" className="underline">
+              Verify your identity
+            </Link>{" "}
+            first, then book.
           </p>
         )}
       </header>
@@ -625,7 +642,7 @@ export function AppointmentBooking() {
               />
             </div>
 
-            {!publicId && (
+            {!returningPatient && (
               <>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -824,8 +841,11 @@ export function AppointmentBooking() {
                       className="mt-1 rounded"
                     />
                     <span>
-                      I consent to the storage and processing of my personal data.{" "}
-                      <span className="text-destructive">*</span>
+                      I understand my personal data will be used for clinic registration,
+                      appointments, queue management, and related transactional emails, as described
+                      in the Privacy Notice. <span className="text-destructive">*</span>
+                      <br />
+                      <ConsentLegalLinks className="text-body-sm text-on-surface-variant" />
                     </span>
                   </label>
                   {fieldErrors.consent && (
@@ -845,7 +865,16 @@ export function AppointmentBooking() {
                 className="mt-1 rounded"
               />
               <span>
-                I agree to clinic terms. <span className="text-destructive">*</span>
+                I agree to the{" "}
+                <Link
+                  href="/terms"
+                  className="text-primary underline underline-offset-2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Terms of Use
+                </Link>
+                . <span className="text-destructive">*</span>
               </span>
             </label>
           </div>
@@ -911,8 +940,8 @@ export function AppointmentBooking() {
               icon={<User className="h-4 w-4" />}
               label="Patient"
               value={
-                publicId
-                  ? "Registered patient (pre-selected)"
+                returningPatient
+                  ? "Verified returning patient"
                   : `${state.fname} ${state.lname} · ${state.phone}`
               }
             />

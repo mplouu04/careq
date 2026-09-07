@@ -5,7 +5,7 @@ import { getDoctorAvailableSlots } from "@/lib/slots-availability";
 import { getClinicTodayYmd, getClinicDayStartIso, addClinicDays } from "@/lib/datetime";
 import { CheckinError, nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
-import { resolveExistingPatient, resolvePatientIdFromRef } from "@/lib/services/patient.service";
+import { resolveExistingPatient } from "@/lib/services/patient.service";
 import { format } from "date-fns";
 import { isValidEmail, normalizeAppointmentReference } from "@/lib/utils";
 
@@ -252,6 +252,7 @@ export async function bookAppointment(body: {
   appointmentTime: string;
   termsAgreement: boolean | string;
   patient_id?: string | number;
+  verifyToken?: string;
   firstName?: string;
   lastName?: string;
   dob?: string;
@@ -324,23 +325,33 @@ export async function bookAppointment(body: {
   let matchedBy: string | null = null;
 
   const patientIdRaw = String(body.patient_id ?? "").trim();
+  const verifyTokenRaw = String(body.verifyToken ?? "").trim();
 
-  if (patientIdRaw) {
-    const resolvedId = await resolvePatientIdFromRef(patientIdRaw);
-    if (resolvedId == null) {
-      return { error: "Patient not found.", status: 400 as const };
+  if (verifyTokenRaw) {
+    const { validatePatientVerifyToken } = await import("@/lib/services/patient.service");
+    try {
+      const resolvedId = await validatePatientVerifyToken(verifyTokenRaw);
+      const { data: pCheck } = await supabase
+        .from("patients")
+        .select("id, public_id")
+        .eq("id", resolvedId)
+        .maybeSingle();
+      if (!pCheck) {
+        return { error: "Patient not found.", status: 400 as const };
+      }
+      patientId = String(pCheck.id);
+      patientPublicId = pCheck.public_id;
+    } catch (err) {
+      if (err instanceof CheckinError) {
+        return { error: err.message, status: err.status as 403 | 400 | 500 };
+      }
+      return { error: "Identity verification required.", status: 403 as const };
     }
-
-    const { data: pCheck } = await supabase
-      .from("patients")
-      .select("id, public_id")
-      .eq("id", resolvedId)
-      .maybeSingle();
-    if (!pCheck) {
-      return { error: "Patient not found.", status: 400 as const };
-    }
-    patientId = String(pCheck.id);
-    patientPublicId = pCheck.public_id;
+  } else if (patientIdRaw) {
+    return {
+      error: "Identity verification required to book for an existing patient.",
+      status: 403 as const,
+    };
   } else {
     const phoneDigits = normalizePhone(body.phone ?? "");
     if (phoneDigits.length !== 11 || !/^09\d{9}$/.test(phoneDigits)) {

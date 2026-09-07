@@ -172,7 +172,7 @@ describe("bookAppointment slot locking via RPC", () => {
           error: null,
         })
       )
-      .mockReturnValueOnce(chain({ data: { id: 9 }, error: null }))
+      .mockReturnValueOnce(chain({ data: { patient_id: 9 }, error: null }))
       .mockReturnValueOnce(chain({ data: { id: 9, public_id: "pub-9" }, error: null }))
       .mockReturnValueOnce(chain({ data: null, error: null, count: 0 }))
       .mockReturnValueOnce(chain({ data: null, error: null }));
@@ -191,7 +191,7 @@ describe("bookAppointment slot locking via RPC", () => {
       appointmentDate: "2026-06-10",
       appointmentTime: "09:00",
       termsAgreement: true,
-      patient_id: 9,
+      verifyToken: "550e8400-e29b-41d4-a716-446655440099",
     });
 
     expect(result).toMatchObject({
