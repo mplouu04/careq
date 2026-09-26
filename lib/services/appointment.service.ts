@@ -566,9 +566,17 @@ async function insertAppointmentCheckin(params: {
       };
     }
 
+    console.error("[insertAppointmentCheckin] book_appointment_slot failed", {
+      message: error?.message,
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+      attempt: attempt + 1,
+    });
     return { error: "Failed to book appointment", status: 500 as const };
   }
 
+  console.error("[insertAppointmentCheckin] exhausted reference retries");
   return { error: "Failed to book appointment", status: 500 as const };
 }
 
