@@ -318,6 +318,15 @@ describe("QueueActionSchema", () => {
     ).toBe(true);
   });
 
+  it("accepts mark_present and return_to_queue", () => {
+    expect(
+      QueueActionSchema.safeParse({ action: "mark_present", queueId: 3 }).success
+    ).toBe(true);
+    expect(
+      QueueActionSchema.safeParse({ action: "return_to_queue", queueId: 3 }).success
+    ).toBe(true);
+  });
+
   it("accepts get_report and get_analytics", () => {
     expect(QueueActionSchema.safeParse({ action: "get_report" }).success).toBe(true);
     expect(QueueActionSchema.safeParse({ action: "get_analytics" }).success).toBe(true);

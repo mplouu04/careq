@@ -7,8 +7,17 @@ import { getClientIp } from "@/lib/rate-limit";
 import { CAREQ_DEFAULT_THEME_COLOR } from "@/lib/design-tokens";
 import { getClinicDayEndIso, getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
-import { completeQueueEntries } from "@/lib/services/queue.service";
+import {
+  autoNoShowExpiredCalled,
+  completeQueueEntries,
+} from "@/lib/services/queue.service";
 import { isCalledLikeStatus } from "@/lib/queue-status";
+import {
+  filterRoomsByIds,
+  parseRoomsQueryParam,
+  resolveRoomFilter,
+} from "@/lib/display-rooms";
+import { getNoShowGraceMinutes } from "@/lib/clinic-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +30,7 @@ const DEFAULT_DISPLAY = {
   theme_color: CAREQ_DEFAULT_THEME_COLOR,
   show_wait_time: true,
   show_priority: true,
+  no_show_grace_minutes: 5,
 };
 
 type StaffName = { first_name: string; last_name: string };
@@ -63,14 +73,18 @@ export const GET = withRateLimit(
   const today = getClinicTodayYmd();
   const dayStart = getClinicDayStartIso(today);
   const dayEnd = getClinicDayEndIso(today);
-  const screenId = new URL(request.url).searchParams.get("screenId");
+  const url = new URL(request.url);
+  const screenId = url.searchParams.get("screenId");
   const screenIdNum = screenId != null ? parseInt(screenId, 10) : NaN;
+  const urlRooms = parseRoomsQueryParam(url.searchParams.get("rooms"));
 
   const screenQuery =
     screenId != null
       ? supabase
           .from("display_settings")
-          .select("display_name, location, theme_color, show_wait_time, show_priority, is_active")
+          .select(
+            "display_name, location, theme_color, show_wait_time, show_priority, is_active, room_ids"
+          )
           .eq("id", Number.isNaN(screenIdNum) ? screenId : screenIdNum)
           .maybeSingle()
       : Promise.resolve({ data: null as null });
@@ -85,10 +99,10 @@ export const GET = withRateLimit(
     { data: occupiedRows },
     { data: waitingRows },
     avgServiceTime,
+    graceMinutes,
   ] = await Promise.all([
     screenQuery,
     supabase.from("rooms").select("id, name, description").eq("is_active", true).order("name"),
-    // All occupied rooms for today — no limit (every room card must be accurate)
     supabase
       .from("queue")
       .select(queueSelect)
@@ -96,19 +110,20 @@ export const GET = withRateLimit(
       .in("status", ["in_progress", "called"])
       .order("skip_count", { ascending: true })
       .order("id", { ascending: true }),
-    // Only the upcoming list the TV board displays
     supabase
       .from("queue")
       .select(queueSelect)
       .eq("clinic_date", today)
       .eq("status", "waiting")
       .order("skip_count", { ascending: true })
+      .order("waiting_since", { ascending: true })
       .order("id", { ascending: true })
       .limit(WAITING_BOARD_LIMIT),
     getAvgServiceTime(dayStart, dayEnd, supabase),
+    getNoShowGraceMinutes(),
   ]);
 
-  let display = { ...DEFAULT_DISPLAY };
+  let display = { ...DEFAULT_DISPLAY, no_show_grace_minutes: graceMinutes };
   if (screen?.is_active) {
     display = {
       display_name: screen.display_name,
@@ -116,15 +131,21 @@ export const GET = withRateLimit(
       theme_color: screen.theme_color ?? CAREQ_DEFAULT_THEME_COLOR,
       show_wait_time: screen.show_wait_time ?? true,
       show_priority: screen.show_priority ?? true,
+      no_show_grace_minutes: graceMinutes,
     };
   }
+
+  const roomFilter = resolveRoomFilter({
+    urlRooms,
+    screenRoomIds: (screen as { room_ids?: number[] | null } | null)?.room_ids ?? null,
+  });
 
   const occupied = (occupiedRows ?? []) as QueueRow[];
   const waiting = (waitingRows ?? []) as QueueRow[];
 
   const inProgressByRoom = new Map<
     number,
-    { queue_number: string; status: string; doctor_name?: string }
+    { queue_number: string; status: string; doctor_name?: string; called_at?: string | null }
   >();
   for (const item of occupied.filter((q) => isCalledLikeStatus(q.status))) {
     if (item.room_id != null) {
@@ -132,16 +153,20 @@ export const GET = withRateLimit(
         queue_number: item.queue_number,
         status: item.status,
         doctor_name: doctorNameFromQueueRow(item),
+        called_at: item.called_at,
       });
     }
   }
 
-  const rooms = (roomRows ?? []).map((room) => ({
+  const allRooms = (roomRows ?? []).map((room) => ({
     id: room.id,
     name: room.name,
     description: room.description ?? undefined,
     current: inProgressByRoom.get(room.id) ?? null,
   }));
+
+  const rooms = filterRoomsByIds(allRooms, roomFilter);
+  const allowedRoomIds = roomFilter ? new Set(roomFilter) : null;
 
   const waitingMapped = waiting.map((q, i) => ({
     id: q.queue_number,
@@ -154,6 +179,7 @@ export const GET = withRateLimit(
 
   const nowServing = occupied
     .filter((q) => isCalledLikeStatus(q.status))
+    .filter((q) => allowedRoomIds == null || (q.room_id != null && allowedRoomIds.has(Number(q.room_id))))
     .map((q) => ({
       id: q.queue_number,
       queueId: q.id,
@@ -187,19 +213,25 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
   const today = getClinicTodayYmd();
+  const ip = getClientIp(request);
+  const userId = auth.session.userId;
+
+  const autoNoShowed = await autoNoShowExpiredCalled({ userId, ip });
+
+  // Stale consult auto-complete: in_progress only (use present_at when available)
   const { data: inProgress } = await supabase
     .from("queue")
-    .select("id, called_at")
+    .select("id, called_at, present_at")
     .eq("clinic_date", today)
-    .eq("status", "in_progress")
-    .not("called_at", "is", null);
+    .eq("status", "in_progress");
 
   const now = Date.now();
   const toComplete: number[] = [];
 
   for (const row of inProgress ?? []) {
-    const calledAt = new Date(row.called_at!).getTime();
-    const minutes = (now - calledAt) / 60000;
+    const startIso = row.present_at ?? row.called_at;
+    if (!startIso) continue;
+    const minutes = (now - new Date(startIso).getTime()) / 60000;
     if (minutes > 20) {
       toComplete.push(row.id);
     }
@@ -210,8 +242,6 @@ export async function POST(request: Request) {
     updated = await completeQueueEntries(toComplete);
 
     if (updated) {
-      const ip = getClientIp(request);
-      const userId = auth.session.userId;
       await Promise.all(
         toComplete.map((id) =>
           logAudit({
@@ -227,5 +257,9 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ success: true, updated_records: updated });
+  return NextResponse.json({
+    success: true,
+    updated_records: updated,
+    auto_no_show: autoNoShowed,
+  });
 }

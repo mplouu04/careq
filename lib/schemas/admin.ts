@@ -32,13 +32,18 @@ export const StaffActionSchema = z.discriminatedUnion("action", [
   ToggleStaffActiveSchema,
 ]);
 
+const themeColorSchema = z
+  .string()
+  .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Theme color must be a hex color");
+
 export const AddDisplayScreenSchema = z.object({
   action: z.literal("add"),
   display_name: z.string().min(1),
   location: z.string().min(1),
   show_wait_time: z.boolean().optional(),
   show_priority: z.boolean().optional(),
-  theme_color: z.string().optional(),
+  theme_color: themeColorSchema.optional(),
+  room_ids: z.array(z.number().int().positive()).optional(),
 });
 
 export const ToggleDisplayScreenSchema = z.object({
@@ -53,8 +58,9 @@ export const UpdateDisplayScreenSchema = z.object({
   location: z.string().min(1),
   show_wait_time: z.boolean().optional(),
   show_priority: z.boolean().optional(),
-  theme_color: z.string().optional(),
+  theme_color: themeColorSchema.optional(),
   is_active: z.boolean().optional(),
+  room_ids: z.array(z.number().int().positive()).nullable().optional(),
 });
 
 export const DeleteDisplayScreenSchema = z.object({
@@ -62,11 +68,17 @@ export const DeleteDisplayScreenSchema = z.object({
   id: z.number().int().positive(),
 });
 
+export const UpdateClinicSettingsSchema = z.object({
+  action: z.literal("update_clinic"),
+  no_show_grace_minutes: z.number().int().min(1).max(60),
+});
+
 export const DisplaySettingsActionSchema = z.discriminatedUnion("action", [
   AddDisplayScreenSchema,
   ToggleDisplayScreenSchema,
   UpdateDisplayScreenSchema,
   DeleteDisplayScreenSchema,
+  UpdateClinicSettingsSchema,
 ]);
 
 export const QueueCallBodySchema = z.object({

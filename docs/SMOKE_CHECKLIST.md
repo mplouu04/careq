@@ -93,10 +93,14 @@
 | # | Step | Expected | Pass/Fail |
 |---|------|----------|-----------|
 | 7.1 | Navigate to `/queue` (new tab) | TV board: "Now Serving" + "Upcoming" sections | |
-| 7.2 | Board shows in-progress patient with queue number, doctor, room | Matches queue state | |
-| 7.3 | Board shows up to 8 waiting patients with position and est. wait | Ordered by skip_count ASC, id ASC | |
+| 7.2 | Board shows called/in-progress patient with queue number, doctor, room | Matches queue state | |
+| 7.3 | Board shows waiting patients with position and **Est. wait** label | Ordered by skip_count, waiting_since, id | |
 | 7.4 | Board auto-updates when queue changes | Refreshes without page reload | |
 | 7.5 | Clock shows current time | Updates every second | |
+| 7.6 | Screen A with rooms 1–N only; Screen B with other rooms | Each TV shows only its assigned rooms | |
+| 7.7 | `/queue/{id}?rooms=1-5` URL override | Board filters to those room IDs | |
+| 7.8 | Room labels | No visible "Room Room …"; table header "Room" + cell without duplicate prefix | |
+| 7.9 | TV text contrast | White text on theme/panel background readable (WCAG AA) | |
 
 ## 8. Staff — Login
 
@@ -112,16 +116,18 @@
 | # | Step | Expected | Pass/Fail |
 |---|------|----------|-----------|
 | 9.1 | Dashboard loads | Analytics (served today, waiting, avg), queue columns, chart | |
-| 9.2 | "Call Next" button visible; select doctor + room → click | First waiting patient moved to In Progress | |
-| 9.3 | In-progress patient: Skip button | Returns to Waiting; skip_count++; patient goes to back of queue | |
-| 9.4 | In-progress patient: Mark Done | Moved to Completed | |
-| 9.5 | Waiting patient: Recall button | Modal to select doctor + room; moves to In Progress | |
-| 9.6 | Queue ordered by skip_count ASC then id ASC | Skipped patients are at the back | |
-| 9.7 | Est. wait time shown per waiting patient | ~position × avg_service_time | |
-| 9.8 | Admin role sees "Reset Daily Queue" button | Non-admin does not see it | |
-| 9.9 | Reset Daily Queue (admin) | All waiting entries cancelled; count shown in toast | |
-| 9.10 | 7-day chart populated | Shows bar chart of patients served each day | |
-| 9.11 | Dashboard updates every 5 seconds | Live queue reflects check-ins | |
+| 9.2 | "Call Next"; select doctor + room → click | Patient moves to In Progress column as **called**; countdown **No-show in M:SS** shown | |
+| 9.3 | Called patient: **Present** | Countdown stops; status becomes in_progress; Skip/Done available | |
+| 9.4 | In-progress patient: Skip | Returns to Waiting (end); skip_count++ | |
+| 9.5 | In-progress patient: Mark Done | Moved to Completed | |
+| 9.6 | Called patient: wait past grace (default 5 min) without Present | Auto no-show; appears in No Show column | |
+| 9.7 | Waiting patient: Recall | Modal doctor + room; patient becomes **called** (same as Call) | |
+| 9.8 | No Show row: **Return to queue** | Patient appears at **end** of Waiting | |
+| 9.9 | StatCard **Avg service (today)** | Subtext Present → done · today; tooltip explains metric | |
+| 9.10 | Admin role sees "Reset Daily Queue" button | Non-admin does not see it | |
+| 9.11 | Reset Daily Queue (admin) | All waiting entries cancelled; count shown in toast | |
+| 9.12 | 7-day chart populated | Shows bar chart of patients served each day | |
+| 9.13 | Dashboard updates every 5 seconds | Live queue reflects check-ins | |
 
 ## 10. Admin — Staff Management
 
@@ -163,6 +169,24 @@
 | 13.2 | Add screen without name/location | Error: fields required | |
 | 13.3 | Add valid screen | Appears in list | |
 | 13.4 | Toggle screen (deactivate/activate) | Is_active flipped | |
+| 13.5 | Assign rooms to a screen → Save rooms → Open Board | Board shows only selected rooms | |
+| 13.6 | Set no-show grace minutes (1–60) → Save | Countdown on dashboard uses new value | |
+| 13.7 | Theme color too light for white text | Save rejected with WCAG AA contrast error | |
+
+## 17. Panel acceptance — deploy gate
+
+| # | Concern | Acceptance | Pass/Fail |
+|---|------|----------|-----------|
+| 17.1 | Avg service / wait labels | Staff shows Avg service (today); TV shows Est. wait | |
+| 17.2 | Auto no-show after grace | Default 5 min; configurable | |
+| 17.3 | Countdown timer | "No-show in M:SS" on called patient | |
+| 17.4 | Present button | Stops timer; → in_progress | |
+| 17.5 | Return to queue | No-show → end of waiting | |
+| 17.6 | Split rooms across TVs | Per-screen room_ids (+ `?rooms=`) | |
+| 17.7 | Duplicate Room text | No "Room Room …" | |
+| 17.8 | Text contrast | TV board AA; invalid theme blocked | |
+
+**Deploy only when:** High items 17.2–17.4, 17.6, 17.8 pass; Medium/Low verified or deferred in writing; no open Critical defects.
 
 ## 14. Admin — Appointments
 

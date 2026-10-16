@@ -35,6 +35,7 @@ Run migrations **in order** in the Supabase SQL Editor (or via Supabase CLI).
 | 27 | `024_email_verifications.sql` | Email verification codes + short-lived email proof tokens for register/guest book |
 | 28 | `025_doctors_public_view.sql` | Public doctor catalog view (name only); drop anon full-row staff policy |
 | 29 | `026_book_appointment_priority_cast.sql` | Cast `p_priority` to `priority_level` in `book_appointment_slot` (fixes guest booking 500) |
+| 30 | `027_panel_queue_improvements.sql` | `present_at`, `waiting_since`, `display_settings.room_ids`, `clinic_settings` no-show grace, metrics/position RPCs |
 
 **Note:** Three files share the `003_` prefix. Always apply them in the order above (`003_booking_and_queue` → `003_fix_staff_user_trigger` → `003_improvements`).
 

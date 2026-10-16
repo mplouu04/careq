@@ -60,6 +60,7 @@ type DisplayScreen = {
   show_priority: boolean;
   theme_color: string;
   is_active: boolean;
+  room_ids?: number[] | null;
 };
 
 type Appointment = {
@@ -119,6 +120,8 @@ export function AdminPanel() {
   const [editTypeName, setEditTypeName] = useState("");
   const [editTypeDuration, setEditTypeDuration] = useState("");
   const [editTypeDesc, setEditTypeDesc] = useState("");
+  const [graceMinutes, setGraceMinutes] = useState(5);
+  const [screenRoomDraft, setScreenRoomDraft] = useState<Record<string, number[]>>({});
 
   const staffQuery = useQuery({
     queryKey: queryKeys.admin.staff(),
@@ -140,7 +143,10 @@ export function AdminPanel() {
     queryKey: queryKeys.admin.settings(),
     queryFn: async () => {
       const d = await adminApi.settings();
-      return (d.screens ?? []) as DisplayScreen[];
+      return {
+        screens: (d.screens ?? []) as DisplayScreen[],
+        no_show_grace_minutes: d.no_show_grace_minutes ?? 5,
+      };
     },
   });
 
@@ -184,10 +190,25 @@ export function AdminPanel() {
 
   const staffList = staffQuery.data ?? [];
   const types = typesQuery.data ?? [];
-  const settings = settingsQuery.data ?? [];
+  const settings = settingsQuery.data?.screens ?? [];
   const appointments = appointmentsQuery.data ?? [];
   const roomsList = roomsQuery.data ?? [];
   const adminDoctors = doctorsQuery.data ?? [];
+
+  useEffect(() => {
+    if (settingsQuery.data?.no_show_grace_minutes != null) {
+      setGraceMinutes(settingsQuery.data.no_show_grace_minutes);
+    }
+  }, [settingsQuery.data?.no_show_grace_minutes]);
+
+  useEffect(() => {
+    if (!settingsQuery.data?.screens) return;
+    const draft: Record<string, number[]> = {};
+    for (const s of settingsQuery.data.screens) {
+      draft[s.id] = s.room_ids ?? [];
+    }
+    setScreenRoomDraft(draft);
+  }, [settingsQuery.data?.screens]);
 
   const initialLoading =
     (staffQuery.isPending && !staffQuery.data) ||
@@ -532,15 +553,52 @@ export function AdminPanel() {
       toast.error("Display name and location are required");
       return;
     }
+    const roomChecks = fd.getAll("roomIds").map((v) => Number(v)).filter((n) => n > 0);
     try {
       await api.post("/api/admin/settings", {
         action: "add",
         display_name,
         location,
         theme_color: fd.get("themeColor") || CAREQ_DEFAULT_THEME_COLOR,
+        room_ids: roomChecks.length ? roomChecks : undefined,
       });
       toast.success("Display screen added");
       (e.target as HTMLFormElement).reset();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.settings() });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function saveScreenRooms(screen: DisplayScreen) {
+    const room_ids = screenRoomDraft[screen.id] ?? [];
+    try {
+      await api.post("/api/admin/settings", {
+        action: "update",
+        id: Number(screen.id),
+        display_name: screen.display_name,
+        location: screen.location,
+        theme_color: screen.theme_color,
+        show_wait_time: screen.show_wait_time,
+        show_priority: screen.show_priority,
+        is_active: screen.is_active,
+        room_ids,
+      });
+      toast.success("Screen rooms updated");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.admin.settings() });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    }
+  }
+
+  async function saveGraceMinutes(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      await api.post("/api/admin/settings", {
+        action: "update_clinic",
+        no_show_grace_minutes: graceMinutes,
+      });
+      toast.success("No-show grace period updated");
       void queryClient.invalidateQueries({ queryKey: queryKeys.admin.settings() });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed");
@@ -870,6 +928,26 @@ export function AdminPanel() {
 
           {activeTab === "display" && (
             <>
+              <AdminCard>
+                <AdminCardTitle>Queue no-show grace</AdminCardTitle>
+                <p className="mb-3 text-[13px] text-[#6B7280]">
+                  Minutes after Call before a patient is auto-marked no-show if Present is not tapped.
+                </p>
+                <form onSubmit={saveGraceMinutes} className="flex flex-wrap items-end gap-4">
+                  <div>
+                    <AdminLabel>Grace minutes</AdminLabel>
+                    <AdminInput
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={graceMinutes}
+                      onChange={(e) => setGraceMinutes(Number(e.target.value) || 5)}
+                      className="w-28"
+                    />
+                  </div>
+                  <AdminButton type="submit">Save</AdminButton>
+                </form>
+              </AdminCard>
               <div className="grid gap-4 sm:grid-cols-2">
                 {settings.map((s) => (
                   <AdminCard key={s.id}>
@@ -884,6 +962,53 @@ export function AdminPanel() {
                         style={{ background: s.theme_color }}
                       />
                       <span className="text-xs text-[#9CA3AF]">{s.theme_color}</span>
+                    </div>
+                    <div className="mt-3">
+                      <AdminLabel>Rooms on this screen</AdminLabel>
+                      <p className="mb-2 text-xs text-[#9CA3AF]">
+                        Leave all unchecked to show every active room.
+                      </p>
+                      <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-[#E5E7EB] p-2">
+                        {roomsList
+                          .filter((r) => r.is_active)
+                          .map((r) => {
+                            const rid = Number(r.id);
+                            const selected = screenRoomDraft[s.id] ?? [];
+                            const checked = selected.includes(rid);
+                            return (
+                              <label
+                                key={r.id}
+                                className="flex cursor-pointer items-center gap-2 text-[13px] text-[#111827]"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setScreenRoomDraft((prev) => {
+                                      const cur = prev[s.id] ?? [];
+                                      const next = checked
+                                        ? cur.filter((id) => id !== rid)
+                                        : [...cur, rid];
+                                      return { ...prev, [s.id]: next };
+                                    });
+                                  }}
+                                />
+                                {r.name}
+                              </label>
+                            );
+                          })}
+                        {roomsList.filter((r) => r.is_active).length === 0 && (
+                          <span className="text-xs text-[#9CA3AF]">No active rooms</span>
+                        )}
+                      </div>
+                      <AdminButton
+                        type="button"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => saveScreenRooms(s)}
+                      >
+                        Save rooms
+                      </AdminButton>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <AdminButtonLink
@@ -942,6 +1067,22 @@ export function AdminPanel() {
                       defaultValue={CAREQ_DEFAULT_THEME_COLOR}
                       className="h-[34px] w-16 p-1"
                     />
+                  </div>
+                  <div className="w-full">
+                    <AdminLabel>Rooms (optional)</AdminLabel>
+                    <div className="mt-1 flex max-h-28 flex-wrap gap-3 overflow-y-auto rounded border border-[#E5E7EB] p-2">
+                      {roomsList
+                        .filter((r) => r.is_active)
+                        .map((r) => (
+                          <label
+                            key={r.id}
+                            className="flex cursor-pointer items-center gap-1.5 text-[13px]"
+                          >
+                            <input type="checkbox" name="roomIds" value={r.id} />
+                            {r.name}
+                          </label>
+                        ))}
+                    </div>
                   </div>
                   <AdminButton type="submit">Add Display</AdminButton>
                 </form>
@@ -1123,7 +1264,11 @@ export function AdminPanel() {
                 <form onSubmit={addRoom} className="flex flex-wrap items-end gap-4">
                   <div>
                     <AdminLabel>Name</AdminLabel>
-                    <AdminInput name="name" required />
+                    <AdminInput
+                      name="name"
+                      required
+                      placeholder="e.g. 1 or Room 1"
+                    />
                   </div>
                   <div>
                     <AdminLabel>Description</AdminLabel>

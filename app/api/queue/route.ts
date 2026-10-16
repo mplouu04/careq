@@ -10,6 +10,7 @@ import { requireStaff } from "@/lib/auth";
 import { captureException } from "@/lib/observability";
 import { isCalledLikeStatus } from "@/lib/queue-status";
 import { getRoomNameMap, resolveRoomName } from "@/lib/rooms-map";
+import { getNoShowGraceMinutes } from "@/lib/clinic-settings";
 
 export const dynamic = "force-dynamic";
 
@@ -197,13 +198,13 @@ async function staffQueueHandler() {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  // Round-trip 1: rooms, queue join, and avg service time all fire in parallel
-  const [roomMap, queueRes, avgServiceTime] = await Promise.all([
+  // Round-trip 1: rooms, queue join, avg service time, and grace setting
+  const [roomMap, queueRes, avgServiceTime, graceMinutes] = await Promise.all([
     getRoomNameMap(supabase),
     supabase
       .from("queue")
       .select(
-        `id, queue_number, status, priority, called_at, room_id, skip_count, created_at,
+        `id, queue_number, status, priority, called_at, present_at, room_id, skip_count, created_at, waiting_since,
          checkins!inner(
            checkin_id, reference_number, reason, type_id,
            patients(first_name, last_name),
@@ -213,8 +214,10 @@ async function staffQueueHandler() {
       )
       .eq("clinic_date", today)
       .order("skip_count", { ascending: true })
+      .order("waiting_since", { ascending: true })
       .order("id", { ascending: true }),
     getAvgServiceTime(dayStart, dayEnd, supabase),
+    getNoShowGraceMinutes(),
   ]);
 
   if (queueRes.error) {
@@ -278,6 +281,9 @@ async function staffQueueHandler() {
         time: row.called_at ? format(new Date(row.called_at), "hh:mm a") : "",
         doctor: doctor ? `Dr. ${doctor.first_name} ${doctor.last_name}` : "",
         room: resolveRoomName(row.room_id, roomMap),
+        status: row.status,
+        called_at: row.called_at,
+        present_at: row.present_at ?? null,
       });
     } else if (row.status === "no_show") {
       noShow.push({
@@ -309,6 +315,7 @@ async function staffQueueHandler() {
       completed,
       noShow,
       avg_service_time: avgServiceTime,
+      no_show_grace_minutes: graceMinutes,
     },
   });
 }

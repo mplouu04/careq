@@ -63,6 +63,7 @@ export type StaffQueuePayload = {
     completed?: unknown[];
     noShow?: unknown[];
     avg_service_time?: number;
+    no_show_grace_minutes?: number;
   };
 };
 
@@ -97,6 +98,7 @@ export type PublicQueuePayload = {
     theme_color: string;
     show_wait_time: boolean;
     show_priority: boolean;
+    no_show_grace_minutes?: number;
   };
 };
 
@@ -137,8 +139,11 @@ export const catalogApi = {
 export const queueDataApi = {
   staff: () => api.get<StaffQueuePayload>("/api/queue"),
 
-  public: (screenId?: string) => {
-    const qs = screenId ? `?screenId=${encodeURIComponent(screenId)}` : "";
+  public: (screenId?: string, rooms?: string) => {
+    const params = new URLSearchParams();
+    if (screenId) params.set("screenId", screenId);
+    if (rooms) params.set("rooms", rooms);
+    const qs = params.toString() ? `?${params.toString()}` : "";
     return api.get<PublicQueuePayload>(`/api/queue/public${qs}`);
   },
 
@@ -172,7 +177,10 @@ export const queueDataApi = {
 
 export const adminApi = {
   staff: () => api.get<{ staff: unknown[] }>("/api/admin/staff"),
-  settings: () => api.get<{ screens: unknown[] }>("/api/admin/settings"),
+  settings: () =>
+    api.get<{ screens: unknown[]; no_show_grace_minutes?: number }>(
+      "/api/admin/settings"
+    ),
   doctors: () => api.get<{ doctors: unknown[] }>("/api/admin/doctors"),
   doctorSchedule: (doctorId: string) =>
     api.get<{ schedules: unknown[] }>(
@@ -269,6 +277,12 @@ export const queueApi = {
       `/api/queue/${queueId}/no-show`,
       {}
     ),
+
+  present: (queueId: number) =>
+    api.post<{ success: boolean }>(`/api/queue/${queueId}/present`, {}),
+
+  returnToQueue: (queueId: number) =>
+    api.post<{ success: boolean }>(`/api/queue/${queueId}/return`, {}),
 
   resetDaily: () =>
     api.post<{ success: boolean; cancelled: number }>("/api/queue/actions", {

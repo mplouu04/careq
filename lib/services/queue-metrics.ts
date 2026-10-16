@@ -26,17 +26,18 @@ async function getAvgServiceTimeFallback(
 ): Promise<number> {
   const { data: completed } = await supabase
     .from("queue")
-    .select("called_at, completed_at")
+    .select("called_at, present_at, completed_at")
     .eq("status", "completed")
     .gte("called_at", dayStart)
     .lte("called_at", dayEnd)
-    .not("completed_at", "is", null)
-    .not("called_at", "is", null);
+    .not("completed_at", "is", null);
 
   if (!completed?.length) return DEFAULT_AVG_MINUTES;
 
   const total = completed.reduce((sum, row) => {
-    const start = new Date(row.called_at!).getTime();
+    const startIso = row.present_at ?? row.called_at;
+    if (!startIso) return sum;
+    const start = new Date(startIso).getTime();
     const end = new Date(row.completed_at!).getTime();
     return sum + (end - start) / 60000;
   }, 0);

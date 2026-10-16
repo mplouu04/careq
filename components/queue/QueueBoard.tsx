@@ -16,6 +16,8 @@ import {
 } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 import { isCalledLikeStatus } from "@/lib/queue-status";
+import { roomNameWithoutPrefix } from "@/lib/room-label";
+import { themeColorMeetsAa } from "@/lib/contrast";
 
 type DisplayConfig = {
   display_name: string;
@@ -126,7 +128,7 @@ function LiveDot({
             : "bg-emerald-400 motion-safe:animate-pulse"
         )}
       />
-      <span className="text-[14px] font-semibold uppercase tracking-[0.08em] text-white/80">
+      <span className="text-[14px] font-semibold uppercase tracking-[0.08em] text-white">
         {label}
       </span>
     </span>
@@ -199,9 +201,6 @@ const RoomCard = memo(function RoomCard({ room }: { room: RoomPanel }) {
             <p className="mt-3 text-[14px] font-extrabold uppercase tracking-[0.08em] text-destructive">
               Please proceed
             </p>
-            <p className="mt-1 text-[15px] font-extrabold text-primary">
-              → {room.name}
-            </p>
           </>
         )}
       </div>
@@ -237,7 +236,7 @@ function CompactTableView({ rooms }: { rooms: RoomPanel[] }) {
                 )}
               >
                 <td className="h-14 px-4 py-3 text-[17px] font-bold text-on-surface">
-                  {room.name}
+                  {roomNameWithoutPrefix(room.name)}
                 </td>
                 <td className="h-14 px-4 py-3 font-mono-careq text-[19px] font-extrabold text-primary">
                   {room.current?.queue_number ?? "—"}
@@ -264,7 +263,7 @@ function CardGridView({ rooms }: { rooms: RoomPanel[] }) {
         <RoomCard key={room.id} room={room} />
       ))}
       {rooms.length === 0 && (
-        <p className="col-span-full py-8 text-center text-[16px] text-white/80">
+        <p className="col-span-full py-8 text-center text-[16px] text-white">
           No active rooms configured
         </p>
       )}
@@ -304,16 +303,17 @@ function CalledNotificationBanner({
 export function QueueBoard({ screenId }: { screenId?: string }) {
   const searchParams = useSearchParams();
   const tvMode = searchParams.get("theme") === "tv";
+  const roomsParam = searchParams.get("rooms") ?? undefined;
 
   const { data, isPending, isError, isFetching } = useQuery({
-    queryKey: queryKeys.queue.public(screenId),
-    queryFn: () => queueDataApi.public(screenId),
+    queryKey: queryKeys.queue.public(screenId, roomsParam),
+    queryFn: () => queueDataApi.public(screenId, roomsParam),
     staleTime: 3_000,
   });
 
   const { isLive } = useQueueSubscription({
-    channelName: `queue-board-${screenId ?? "default"}`,
-    queryKey: queryKeys.queue.public(screenId),
+    channelName: `queue-board-${screenId ?? "default"}-${roomsParam ?? "all"}`,
+    queryKey: queryKeys.queue.public(screenId, roomsParam),
     fallbackIntervalMs: 15_000,
   });
 
@@ -328,7 +328,8 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
   const rooms = (data?.rooms ?? []) as RoomPanel[];
   const waiting = ((data?.waiting ?? []) as WaitingItem[]).slice(0, UPCOMING_LIMIT);
   const avgServiceTime = data?.avg_service_time ?? 10;
-  const themeColor = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
+  const rawTheme = display.theme_color || CAREQ_DEFAULT_THEME_COLOR;
+  const themeColor = themeColorMeetsAa(rawTheme) ? rawTheme : CAREQ_DEFAULT_THEME_COLOR;
   const useCompactTable = rooms.length >= COMPACT_TABLE_THRESHOLD;
 
   // NEW ADDITION: called notification banner state
@@ -438,7 +439,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
             {display.location && (
               <p
                 className={cn(
-                  "truncate text-white/80",
+                  "truncate text-white",
                   tvMode ? "text-lg" : "text-body-sm"
                 )}
               >
@@ -533,8 +534,8 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
 
                   {tvMode ? (
                     display.show_wait_time ? (
-                      <span className="shrink-0 text-right text-[14px] font-medium tabular-nums text-on-surface-variant">
-                        ~{estWait} min
+                      <span className="shrink-0 text-right text-[14px] font-medium tabular-nums text-on-surface">
+                        Est. wait ~{estWait} min
                       </span>
                     ) : null
                   ) : (
@@ -542,7 +543,7 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                       <div className="appointment-time flex flex-wrap items-center gap-1">
                         <span className="position-badge">{ordinal(pos)} in line</span>
                         {display.show_wait_time && (
-                          <span className="est-wait-badge">~{estWait} min</span>
+                          <span className="est-wait-badge">Est. wait ~{estWait} min</span>
                         )}
                         {display.show_priority && pri && (
                           <span

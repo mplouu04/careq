@@ -4,6 +4,8 @@ import { STAFF_ROLES, type StaffRole } from "@/lib/constants";
 import { sanitize, isValidEmail } from "@/lib/utils";
 import { syncStaffMetadata } from "@/lib/staff-metadata";
 import { broadcastDoctorsChanged } from "@/lib/supabase/broadcast";
+import { themeColorMeetsAa } from "@/lib/contrast";
+import { setNoShowGraceMinutes } from "@/lib/clinic-settings";
 
 export async function listStaff() {
   const supabase = createAdminClient();
@@ -253,9 +255,23 @@ export async function listDisplayScreens() {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("display_settings")
-    .select("id, display_name, location, show_wait_time, show_priority, theme_color, is_active")
+    .select(
+      "id, display_name, location, show_wait_time, show_priority, theme_color, is_active, room_ids"
+    )
     .order("id");
   return data ?? [];
+}
+
+function validateThemeColor(theme_color: string | undefined): string | { error: string; status: 400 } {
+  const color = theme_color ?? "#004ac6";
+  if (!themeColorMeetsAa(color)) {
+    return {
+      error:
+        "Theme color does not meet WCAG AA contrast (4.5:1) with white text. Choose a darker color.",
+      status: 400 as const,
+    };
+  }
+  return color;
 }
 
 export async function addDisplayScreen(
@@ -265,10 +281,15 @@ export async function addDisplayScreen(
     show_wait_time?: boolean;
     show_priority?: boolean;
     theme_color?: string;
+    room_ids?: number[];
   },
   audit: { userId: string; ip: string }
 ) {
+  const theme = validateThemeColor(body.theme_color);
+  if (typeof theme === "object") return theme;
+
   const supabase = createAdminClient();
+  const roomIds = body.room_ids?.length ? body.room_ids : null;
   const { data, error } = await supabase
     .from("display_settings")
     .insert({
@@ -276,7 +297,8 @@ export async function addDisplayScreen(
       location: body.location,
       show_wait_time: body.show_wait_time ?? true,
       show_priority: body.show_priority ?? true,
-      theme_color: body.theme_color ?? "#004ac6",
+      theme_color: theme,
+      room_ids: roomIds,
       is_active: true,
     })
     .select("id")
@@ -326,20 +348,29 @@ export async function updateDisplayScreen(
     show_priority?: boolean;
     theme_color?: string;
     is_active?: boolean;
+    room_ids?: number[] | null;
   },
   audit: { userId: string; ip: string }
 ) {
+  const theme = validateThemeColor(body.theme_color);
+  if (typeof theme === "object") return theme;
+
   const supabase = createAdminClient();
+  const patch: Record<string, unknown> = {
+    display_name: body.display_name,
+    location: body.location,
+    show_wait_time: body.show_wait_time ?? true,
+    show_priority: body.show_priority ?? true,
+    theme_color: theme,
+    is_active: body.is_active ?? true,
+  };
+  if (body.room_ids !== undefined) {
+    patch.room_ids = body.room_ids?.length ? body.room_ids : null;
+  }
+
   const { error } = await supabase
     .from("display_settings")
-    .update({
-      display_name: body.display_name,
-      location: body.location,
-      show_wait_time: body.show_wait_time ?? true,
-      show_priority: body.show_priority ?? true,
-      theme_color: body.theme_color ?? "#004ac6",
-      is_active: body.is_active ?? true,
-    })
+    .update(patch)
     .eq("id", body.id);
   if (error) return { error: error.message, status: 500 as const };
   void logAudit({
@@ -351,6 +382,29 @@ export async function updateDisplayScreen(
     newValues: body,
   });
   return { success: true as const };
+}
+
+export async function updateClinicSettings(
+  body: { no_show_grace_minutes: number },
+  audit: { userId: string; ip: string }
+) {
+  try {
+    const minutes = await setNoShowGraceMinutes(body.no_show_grace_minutes);
+    void logAudit({
+      userId: audit.userId,
+      action: "clinic_settings_update",
+      tableName: "clinic_settings",
+      recordId: null,
+      ipAddress: audit.ip,
+      newValues: { no_show_grace_minutes: minutes },
+    });
+    return { success: true as const, no_show_grace_minutes: minutes };
+  } catch (err) {
+    return {
+      error: err instanceof Error ? err.message : "Failed to update clinic settings",
+      status: 500 as const,
+    };
+  }
 }
 
 export async function deleteDisplayScreen(

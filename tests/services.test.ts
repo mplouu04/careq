@@ -540,7 +540,7 @@ describe("queue.service markNoShow", () => {
     const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
 
     expect(result).toEqual({
-      error: "Only waiting or in-progress patients can be marked no-show",
+      error: "Only waiting, called, or in-progress patients can be marked no-show",
       status: 409,
     });
   });
@@ -554,7 +554,71 @@ describe("queue.service markNoShow", () => {
     const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
 
     expect(result).toEqual({
-      error: "Only waiting or in-progress patients can be marked no-show",
+      error: "Only waiting, called, or in-progress patients can be marked no-show",
+      status: 400,
+    });
+  });
+});
+
+describe("queue.service markPresent", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
+  });
+
+  it("moves called patient to in_progress", async () => {
+    mockFrom.mockReturnValueOnce(chain({ data: { id: 1 }, error: null }));
+
+    const { markPresent } = await import("../lib/services/queue.service");
+    const result = await markPresent({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns 400 when patient is not called", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: { status: "waiting" }, error: null }));
+
+    const { markPresent } = await import("../lib/services/queue.service");
+    const result = await markPresent({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({
+      error: "Only called patients can be marked present",
+      status: 400,
+    });
+  });
+});
+
+describe("queue.service returnToQueue", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFrom.mockReset();
+    mockRpc.mockReset();
+  });
+
+  it("restores no-show to waiting", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: { id: 1, checkin_id: 9 }, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }));
+
+    const { returnToQueue } = await import("../lib/services/queue.service");
+    const result = await returnToQueue({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({ success: true });
+  });
+
+  it("returns 400 when not no_show", async () => {
+    mockFrom
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: { status: "waiting" }, error: null }));
+
+    const { returnToQueue } = await import("../lib/services/queue.service");
+    const result = await returnToQueue({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
+
+    expect(result).toEqual({
+      error: "Only no-show patients can be returned to the queue",
       status: 400,
     });
   });

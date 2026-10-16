@@ -4,6 +4,7 @@ import { getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { getQueueReport } from "@/lib/services/queue-metrics";
 import { isCalledLikeStatus } from "@/lib/queue-status";
 import { notifyPatientCalled } from "@/lib/services/queue-notify.service";
+import { getNoShowGraceMinutes } from "@/lib/clinic-settings";
 
 async function getQueueStatus(queueId: number): Promise<string | null> {
   const supabase = createAdminClient();
@@ -26,13 +27,15 @@ async function callOrRecallPatient(
   auditAction: "queue_call" | "queue_recall"
 ) {
   const supabase = createAdminClient();
+  const now = new Date().toISOString();
   const { data, error } = await supabase
     .from("queue")
     .update({
       called_by: params.doctorId,
       room_id: params.roomNumber,
-      status: "in_progress",
-      called_at: new Date().toISOString(),
+      status: "called",
+      called_at: now,
+      present_at: null,
     })
     .eq("id", params.queueId)
     .eq("status", "waiting")
@@ -79,6 +82,50 @@ export async function callNextPatient(params: {
   return callOrRecallPatient(params, "queue_call");
 }
 
+export async function markPresent(params: {
+  queueId: number;
+  userId: string;
+  ip: string;
+}) {
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("queue")
+    .update({
+      status: "in_progress",
+      present_at: now,
+    })
+    .eq("id", params.queueId)
+    .eq("status", "called")
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: "Failed to mark present", status: 500 as const };
+  }
+
+  if (!data) {
+    const currentStatus = await getQueueStatus(params.queueId);
+    if (currentStatus === "in_progress") {
+      return { error: "Patient already marked present", status: 409 as const };
+    }
+    return {
+      error: "Only called patients can be marked present",
+      status: 400 as const,
+    };
+  }
+
+  void logAudit({
+    userId: params.userId,
+    action: "queue_present",
+    tableName: "queue",
+    recordId: params.queueId,
+    ipAddress: params.ip,
+  });
+
+  return { success: true as const };
+}
+
 export async function skipPatient(params: {
   queueId: number;
   userId: string;
@@ -96,6 +143,7 @@ export async function skipPatient(params: {
     return { error: "Queue entry not in_progress", status: 400 as const };
   }
 
+  const now = new Date().toISOString();
   const { error } = await supabase
     .from("queue")
     .update({
@@ -103,6 +151,8 @@ export async function skipPatient(params: {
       called_by: null,
       room_id: null,
       called_at: null,
+      present_at: null,
+      waiting_since: now,
       skip_count: (current.skip_count ?? 0) + 1,
     })
     .eq("id", params.queueId)
@@ -133,10 +183,13 @@ export async function recallPatient(params: {
   return callOrRecallPatient(params, "queue_recall");
 }
 
+const NO_SHOW_ELIGIBLE = ["waiting", "called", "in_progress"] as const;
+
 export async function markNoShow(params: {
   queueId: number;
   userId: string;
   ip: string;
+  reason?: string;
 }) {
   const supabase = createAdminClient();
   const { data: row } = await supabase
@@ -149,9 +202,9 @@ export async function markNoShow(params: {
     return { error: "Queue entry not found", status: 404 as const };
   }
 
-  if (!["waiting", "in_progress"].includes(row.status ?? "")) {
+  if (!NO_SHOW_ELIGIBLE.includes(row.status as (typeof NO_SHOW_ELIGIBLE)[number])) {
     return {
-      error: "Only waiting or in-progress patients can be marked no-show",
+      error: "Only waiting, called, or in-progress patients can be marked no-show",
       status: 400 as const,
     };
   }
@@ -163,9 +216,10 @@ export async function markNoShow(params: {
       called_by: null,
       room_id: null,
       called_at: null,
+      present_at: null,
     })
     .eq("id", params.queueId)
-    .in("status", ["waiting", "in_progress"])
+    .in("status", [...NO_SHOW_ELIGIBLE])
     .select("id")
     .maybeSingle();
 
@@ -175,7 +229,7 @@ export async function markNoShow(params: {
 
   if (!updated) {
     return {
-      error: "Only waiting or in-progress patients can be marked no-show",
+      error: "Only waiting, called, or in-progress patients can be marked no-show",
       status: 409 as const,
     };
   }
@@ -190,10 +244,11 @@ export async function markNoShow(params: {
 
   void logAudit({
     userId: params.userId,
-    action: "queue_no_show",
+    action: params.reason === "auto_grace" ? "queue_auto_no_show" : "queue_no_show",
     tableName: "queue",
     recordId: params.queueId,
     ipAddress: params.ip,
+    newValues: params.reason ? { reason: params.reason } : undefined,
   });
 
   return {
@@ -201,6 +256,65 @@ export async function markNoShow(params: {
     message:
       "Patient marked as no-show. Room is available — call the next patient when ready.",
   };
+}
+
+/** Restore a no-show patient to the end of the waiting queue (FIFO). */
+export async function returnToQueue(params: {
+  queueId: number;
+  userId: string;
+  ip: string;
+}) {
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("queue")
+    .update({
+      status: "waiting",
+      called_by: null,
+      room_id: null,
+      called_at: null,
+      present_at: null,
+      completed_at: null,
+      waiting_since: now,
+    })
+    .eq("id", params.queueId)
+    .eq("status", "no_show")
+    .select("id, checkin_id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: "Failed to return patient to queue", status: 500 as const };
+  }
+
+  if (!data) {
+    const currentStatus = await getQueueStatus(params.queueId);
+    if (!currentStatus) {
+      return { error: "Queue entry not found", status: 404 as const };
+    }
+    return {
+      error: "Only no-show patients can be returned to the queue",
+      status: 400 as const,
+    };
+  }
+
+  if (data.checkin_id) {
+    await supabase
+      .from("checkins")
+      .update({ status: "checked_in" })
+      .eq("checkin_id", data.checkin_id)
+      .eq("status", "no_show");
+  }
+
+  void logAudit({
+    userId: params.userId,
+    action: "queue_return_to_queue",
+    tableName: "queue",
+    recordId: params.queueId,
+    ipAddress: params.ip,
+  });
+
+  return { success: true as const };
 }
 
 export async function markDone(params: {
@@ -280,6 +394,69 @@ export async function completeQueueEntries(ids: number[]): Promise<number> {
   }
 
   return data?.length ?? 0;
+}
+
+/** Auto-mark called patients past grace as no-show. Returns count updated. */
+export async function autoNoShowExpiredCalled(params: {
+  userId: string;
+  ip: string;
+}): Promise<number> {
+  const supabase = createAdminClient();
+  const today = getClinicTodayYmd();
+  const graceMinutes = await getNoShowGraceMinutes();
+  const cutoff = new Date(Date.now() - graceMinutes * 60_000).toISOString();
+
+  const { data: expired } = await supabase
+    .from("queue")
+    .select("id, checkin_id")
+    .eq("clinic_date", today)
+    .eq("status", "called")
+    .not("called_at", "is", null)
+    .lt("called_at", cutoff);
+
+  if (!expired?.length) return 0;
+
+  const ids = expired.map((r) => r.id);
+  const { data: updated } = await supabase
+    .from("queue")
+    .update({
+      status: "no_show",
+      called_by: null,
+      room_id: null,
+      called_at: null,
+      present_at: null,
+    })
+    .in("id", ids)
+    .eq("status", "called")
+    .select("id");
+
+  const updatedIds = new Set((updated ?? []).map((r) => r.id));
+  const checkinIds = expired
+    .filter((r) => updatedIds.has(r.id) && r.checkin_id != null)
+    .map((r) => r.checkin_id as number);
+
+  if (checkinIds.length) {
+    await supabase
+      .from("checkins")
+      .update({ status: "no_show" })
+      .in("checkin_id", checkinIds)
+      .not("status", "in", '("cancelled","completed","no_show")');
+  }
+
+  await Promise.all(
+    Array.from(updatedIds).map((id) =>
+      logAudit({
+        userId: params.userId,
+        action: "queue_auto_no_show",
+        tableName: "queue",
+        recordId: id,
+        newValues: { status: "no_show", reason: "auto_grace", grace_minutes: graceMinutes },
+        ipAddress: params.ip,
+      })
+    )
+  );
+
+  return updatedIds.size;
 }
 
 export async function getAnalyticsReport(days = 7) {

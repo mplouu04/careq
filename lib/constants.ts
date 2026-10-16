@@ -22,3 +22,6 @@ export const STAFF_ROLES = [
 ] as const;
 
 export type StaffRole = (typeof STAFF_ROLES)[number];
+
+/** Default minutes after Call before auto no-show (overridable via clinic_settings). */
+export const DEFAULT_NO_SHOW_GRACE_MINUTES = 5;

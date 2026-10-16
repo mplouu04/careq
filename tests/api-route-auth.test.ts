@@ -45,6 +45,8 @@ const ROUTE_AUTH: Record<string, { kind: AuthKind; notes?: string }> = {
   "queue/[id]/skip/route.ts": { kind: "staff" },
   "queue/[id]/recall/route.ts": { kind: "staff" },
   "queue/[id]/no-show/route.ts": { kind: "staff" },
+  "queue/[id]/present/route.ts": { kind: "staff" },
+  "queue/[id]/return/route.ts": { kind: "staff" },
   "admin/doctors/route.ts": { kind: "staff", notes: "admin role required" },
   "admin/staff/route.ts": { kind: "staff", notes: "admin role required" },
   "admin/settings/route.ts": { kind: "staff", notes: "admin role required" },

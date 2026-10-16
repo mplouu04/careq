@@ -8,9 +8,11 @@ import {
   getAnalyticsReport,
   markDone,
   markNoShow,
+  markPresent,
   purgeQueueHistory,
   recallPatient,
   resetDailyQueue,
+  returnToQueue,
   skipPatient,
 } from "@/lib/services/queue.service";
 
@@ -91,6 +93,30 @@ export const POST = withStaffAuth(async (request: Request) => {
 
     case "mark_done": {
       const result = await markDone({
+        queueId: body.queueId,
+        userId: ctx.userId,
+        ip: ctx.ip,
+      });
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    case "mark_present": {
+      const result = await markPresent({
+        queueId: body.queueId,
+        userId: ctx.userId,
+        ip: ctx.ip,
+      });
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    case "return_to_queue": {
+      const result = await returnToQueue({
         queueId: body.queueId,
         userId: ctx.userId,
         ip: ctx.ip,

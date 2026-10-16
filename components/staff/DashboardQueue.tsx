@@ -75,6 +75,9 @@ type QueueInProgress = {
   doctor: string;
   room: string;
   skip_count?: number;
+  status?: string;
+  called_at?: string | null;
+  present_at?: string | null;
 };
 
 type QueueCompleted = {
@@ -105,6 +108,7 @@ type ParsedQueue = {
   completed: QueueCompleted[];
   noShow: QueueCompleted[];
   avg: number;
+  graceMinutes: number;
 };
 
 const QUEUE_COLUMNS: ColumnConfig[] = [
@@ -148,11 +152,12 @@ function parseStaffQueue(data: StaffQueuePayload): ParsedQueue {
     completed: (appointment?.completed ?? []) as QueueCompleted[],
     noShow: (appointment?.noShow ?? []) as QueueCompleted[],
     avg: appointment?.avg_service_time ?? 10,
+    graceMinutes: appointment?.no_show_grace_minutes ?? 5,
   };
 }
 
 function emptyQueue(): ParsedQueue {
-  return { waiting: [], inProgress: [], completed: [], noShow: [], avg: 10 };
+  return { waiting: [], inProgress: [], completed: [], noShow: [], avg: 10, graceMinutes: 5 };
 }
 
 type QueueAction =
@@ -160,6 +165,8 @@ type QueueAction =
   | { type: "skip"; queueId: number }
   | { type: "mark_done"; queueId: number }
   | { type: "mark_no_show"; queueId: number }
+  | { type: "mark_present"; queueId: number }
+  | { type: "return_to_queue"; queueId: number }
   | { type: "recall"; queueId: number; doctorId: string; roomId: string; doctorLabel: string; roomLabel: string };
 
 function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
@@ -169,6 +176,7 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
     completed: [...prev.completed],
     noShow: [...prev.noShow],
     avg: prev.avg,
+    graceMinutes: prev.graceMinutes,
   };
 
   if (action.type === "call_next" || action.type === "recall") {
@@ -185,9 +193,23 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
         doctor: action.doctorLabel,
         room: action.roomLabel,
         skip_count: item.skip_count ?? 0,
+        status: "called",
+        called_at: new Date().toISOString(),
+        present_at: null,
       },
       ...next.inProgress,
     ];
+    return next;
+  }
+
+  if (action.type === "mark_present") {
+    const idx = next.inProgress.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    next.inProgress[idx] = {
+      ...next.inProgress[idx],
+      status: "in_progress",
+      present_at: new Date().toISOString(),
+    };
     return next;
   }
 
@@ -196,6 +218,7 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
     if (idx === -1) return prev;
     const [item] = next.inProgress.splice(idx, 1);
     next.waiting = [
+      ...next.waiting,
       {
         id: item.id,
         queueId: item.queueId,
@@ -208,7 +231,6 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
         est_wait_minutes: next.avg,
         skip_count: (item.skip_count ?? 0) + 1,
       },
-      ...next.waiting,
     ];
     return next;
   }
@@ -243,6 +265,28 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
         time: item.time,
       },
       ...next.noShow,
+    ];
+    return next;
+  }
+
+  if (action.type === "return_to_queue") {
+    const idx = next.noShow.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    const [item] = next.noShow.splice(idx, 1);
+    next.waiting = [
+      ...next.waiting,
+      {
+        id: typeof item.id === "number" ? item.id : 0,
+        queueId: item.queueId!,
+        queue_number: item.queue_number,
+        name: item.name,
+        time: item.time,
+        visitType: "",
+        reason: "",
+        position: next.waiting.length + 1,
+        est_wait_minutes: next.avg,
+        skip_count: 0,
+      },
     ];
     return next;
   }
@@ -434,6 +478,10 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           return queueApi.done(action.queueId);
         case "mark_no_show":
           return queueApi.noShow(action.queueId);
+        case "mark_present":
+          return queueApi.present(action.queueId);
+        case "return_to_queue":
+          return queueApi.returnToQueue(action.queueId);
         case "recall":
           return queueApi.recall(action.queueId, action.doctorId, action.roomId);
       }
@@ -460,9 +508,13 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             ? "Marked as done"
             : action.type === "mark_no_show"
               ? (data as { message?: string }).message ?? "Marked as no-show"
-              : action.type === "skip"
-                ? "Patient skipped"
-                : "Updated"
+              : action.type === "mark_present"
+                ? "Patient marked present"
+                : action.type === "return_to_queue"
+                  ? "Patient returned to end of queue"
+                  : action.type === "skip"
+                    ? "Patient skipped"
+                    : "Updated"
       );
     },
     onSettled: () => {
@@ -504,6 +556,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         break;
       case "mark_no_show":
         action = { type: "mark_no_show", queueId };
+        break;
+      case "mark_present":
+        action = { type: "mark_present", queueId };
+        break;
+      case "return_to_queue":
+        action = { type: "return_to_queue", queueId };
         break;
       case "recall":
         action = {
@@ -638,6 +696,8 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           <InProgressRow
             key={q.queueId}
             q={q}
+            graceMinutes={queue.graceMinutes}
+            onPresent={() => performAction("mark_present", q.queueId)}
             onSkip={() => performAction("skip", q.queueId)}
             onNoShow={() => performAction("mark_no_show", q.queueId)}
             onDone={() => performAction("mark_done", q.queueId)}
@@ -658,6 +718,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             queueNumber={String(q.queue_number ?? q.id)}
             name={q.name}
             highlightId
+            actionLabel="Return to queue"
+            onAction={
+              q.queueId != null
+                ? () => performAction("return_to_queue", q.queueId!)
+                : undefined
+            }
           />
         ));
     }
@@ -718,7 +784,13 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           )}
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <StatCard label="Avg service" value={`${stats.avg} min`} icon={Clock} />
+          <StatCard
+            label="Avg service (today)"
+            value={`${stats.avg} min`}
+            subtext="Present → done · today"
+            icon={Clock}
+            title="Average consult length from when staff taps Present until Done. Used to estimate wait times."
+          />
           <StatCard label="Served" value={String(stats.served)} icon={UserCheck} />
           <StatCard label="Waiting" value={String(stats.waiting)} icon={Users} />
           <StatCard label="No show" value={String(noShow.length)} icon={AlertCircle} />
@@ -922,18 +994,52 @@ function WaitingRow({
   );
 }
 
+function formatCountdown(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return `${m}:${String(rem).padStart(2, "0")}`;
+}
+
+function useNoShowCountdown(calledAt: string | null | undefined, graceMinutes: number) {
+  const [remainingSec, setRemainingSec] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!calledAt) {
+      setRemainingSec(null);
+      return;
+    }
+    const deadline = new Date(calledAt).getTime() + graceMinutes * 60_000;
+    const tick = () => {
+      setRemainingSec(Math.max(0, Math.round((deadline - Date.now()) / 1000)));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [calledAt, graceMinutes]);
+
+  return remainingSec;
+}
+
 function InProgressRow({
   q,
+  graceMinutes,
+  onPresent,
   onSkip,
   onNoShow,
   onDone,
 }: {
   q: QueueInProgress;
+  graceMinutes: number;
+  onPresent: () => void;
   onSkip: () => void;
   onNoShow: () => void;
   onDone: () => void;
 }) {
+  const showCountdown = q.status === "called";
+  const remainingSec = useNoShowCountdown(showCountdown ? q.called_at : null, graceMinutes);
   const location = `${q.doctor} · ${q.room}`;
+
   return (
     <li className="px-3 py-2 animate-in fade-in duration-200">
       <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
@@ -949,28 +1055,55 @@ function InProgressRow({
         >
           {location}
         </span>
+        {showCountdown && remainingSec != null && (
+          <span
+            className="text-label-sm font-semibold text-status-no-show tabular-nums shrink-0"
+            aria-live="polite"
+          >
+            No-show in {formatCountdown(remainingSec)}
+          </span>
+        )}
         <div className="flex gap-1.5 shrink-0 ml-auto">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onSkip}
-            className="cursor-pointer"
-          >
-            Skip
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="border-status-no-show text-status-no-show hover:bg-status-no-show/10 cursor-pointer"
-            onClick={onNoShow}
-          >
-            No Show
-          </Button>
-          <CareqButton size="sm" onClick={onDone} className="cursor-pointer">
-            Done
-          </CareqButton>
+          {showCountdown ? (
+            <>
+              <CareqButton size="sm" onClick={onPresent} className="cursor-pointer">
+                Present
+              </CareqButton>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-status-no-show text-status-no-show hover:bg-status-no-show/10 cursor-pointer"
+                onClick={onNoShow}
+              >
+                No Show
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onSkip}
+                className="cursor-pointer"
+              >
+                Skip
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="border-status-no-show text-status-no-show hover:bg-status-no-show/10 cursor-pointer"
+                onClick={onNoShow}
+              >
+                No Show
+              </Button>
+              <CareqButton size="sm" onClick={onDone} className="cursor-pointer">
+                Done
+              </CareqButton>
+            </>
+          )}
         </div>
       </div>
     </li>
@@ -981,10 +1114,14 @@ function QueueListRow({
   queueNumber,
   name,
   highlightId = false,
+  actionLabel,
+  onAction,
 }: {
   queueNumber: string;
   name: string;
   highlightId?: boolean;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
     <li className="px-3 py-2 flex items-center justify-between gap-2 min-h-[44px] animate-in fade-in duration-200">
@@ -996,7 +1133,18 @@ function QueueListRow({
       >
         {queueNumber}
       </span>
-      <span className="text-body-sm text-on-surface truncate">{name}</span>
+      <span className="text-body-sm text-on-surface truncate flex-1">{name}</span>
+      {actionLabel && onAction && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onAction}
+          className="shrink-0 text-label-sm cursor-pointer"
+        >
+          {actionLabel}
+        </Button>
+      )}
     </li>
   );
 }

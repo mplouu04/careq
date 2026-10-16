@@ -6,7 +6,7 @@ export function doctorLabel(d: DoctorOption): string {
 }
 
 export function roomLabel(r: RoomOption): string {
-  return r.name;
+  return (r.name ?? "").trim();
 }
 
 export function doctorSelectItems(doctors: DoctorOption[]) {

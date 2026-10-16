@@ -26,6 +26,14 @@ export const QueueActionSchema = z.discriminatedUnion("action", [
     queueId: z.number().int().positive(),
   }),
   z.object({
+    action: z.literal("mark_present"),
+    queueId: z.number().int().positive(),
+  }),
+  z.object({
+    action: z.literal("return_to_queue"),
+    queueId: z.number().int().positive(),
+  }),
+  z.object({
     action: z.literal("get_analytics"),
   }),
   z.object({

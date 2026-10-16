@@ -111,6 +111,8 @@ export type Database = {
           called_by: string | null;
           room_id: number | null;
           completed_at: string | null;
+          present_at: string | null;
+          waiting_since: string | null;
           skip_count: number;
           clinic_date: string;
           created_at: string;
@@ -124,6 +126,8 @@ export type Database = {
           clinic_date?: string;
           created_at?: string;
           updated_at?: string;
+          present_at?: string | null;
+          waiting_since?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["queue"]["Insert"]>;
       };
@@ -142,9 +146,26 @@ export type Database = {
           theme_color: string;
           is_active: boolean;
           last_ping: string | null;
+          room_ids: number[] | null;
         };
-        Insert: Omit<Database["public"]["Tables"]["display_settings"]["Row"], "id"> & { id?: number };
+        Insert: Omit<Database["public"]["Tables"]["display_settings"]["Row"], "id"> & {
+          id?: number;
+          room_ids?: number[] | null;
+        };
         Update: Partial<Database["public"]["Tables"]["display_settings"]["Insert"]>;
+      };
+      clinic_settings: {
+        Row: {
+          setting_key: string;
+          value: string;
+          updated_at: string;
+        };
+        Insert: {
+          setting_key: string;
+          value: string;
+          updated_at?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["clinic_settings"]["Insert"]>;
       };
       audit_log: {
         Row: {

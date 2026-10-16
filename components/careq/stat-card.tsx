@@ -7,11 +7,13 @@ type StatCardProps = {
   subtext?: string;
   icon?: LucideIcon;
   className?: string;
+  title?: string;
 };
 
-export function StatCard({ label, value, subtext, icon: Icon, className }: StatCardProps) {
+export function StatCard({ label, value, subtext, icon: Icon, className, title }: StatCardProps) {
   return (
     <div
+      title={title}
       className={cn(
         "rounded-xl border border-outline-variant bg-surface-container-lowest p-4 min-h-[7rem] flex flex-col",
         className

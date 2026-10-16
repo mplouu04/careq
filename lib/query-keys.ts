@@ -19,8 +19,8 @@ export const queryKeys = {
     all: ["queue"] as const,
     staff: () => [...queryKeys.queue.all, "staff"] as const,
     analytics: () => [...queryKeys.queue.all, "analytics"] as const,
-    public: (screenId?: string) =>
-      [...queryKeys.queue.all, "public", screenId ?? "default"] as const,
+    public: (screenId?: string, rooms?: string) =>
+      [...queryKeys.queue.all, "public", screenId ?? "default", rooms ?? "all"] as const,
     byRef: (ref: string) => [...queryKeys.queue.all, "ref", ref] as const,
   },
   admin: {
