@@ -49,18 +49,19 @@ export function EnablePushAlerts({ queueNumber, className }: EnablePushAlertsPro
       <CareqButton
         type="button"
         variant="outline"
-        size="sm"
-        className="cursor-pointer mb-1"
+        className="cursor-pointer mb-2 min-h-12 w-full sm:w-auto"
         disabled={state === "subscribing"}
         onClick={() => void subscribe()}
       >
-        {state === "subscribing" ? "Enabling…" : "Enable turn notifications"}
+        {state === "subscribing" ? "Enabling…" : "Allow queue alerts (optional)"}
       </CareqButton>
-      <p className="text-label-sm text-on-surface-variant">
-        On iPhone, tap Share → Add to Home Screen for background alerts.
+      <p className="text-body-sm text-on-surface-variant">
+        Never required. On iPhone, tap Share → Add to Home Screen for background alerts.
       </p>
       {state === "error" && error && (
-        <p className="text-label-sm text-destructive mt-1">{error}</p>
+        <p className="text-body-sm text-destructive mt-1" role="alert">
+          {error}
+        </p>
       )}
     </div>
   );

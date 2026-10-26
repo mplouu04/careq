@@ -50,6 +50,7 @@ import { TimeSlotPicker } from "@/components/patient/TimeSlotPicker";
 import {
   BOOKING_INITIAL_STATE,
   BOOKING_STEPS,
+  VERIFIED_BOOKING_STEPS,
   type BookingDoctor,
   type BookingState,
   useAppointmentBookingCatalog,
@@ -57,6 +58,7 @@ import {
 } from "@/components/patient/useAppointmentBookingCatalog";
 import { EmailVerifyField } from "@/components/patient/EmailVerifyField";
 import { ConsentLegalLinks } from "@/components/legal/ConsentLegalLinks";
+import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
 import { readVerifyToken } from "@/lib/verify-session";
 
 const AVATAR_COLORS = [CAREQ_PRIMARY, "#1a5fb4", "#003d99", "#2563c4"];
@@ -208,6 +210,10 @@ export function AppointmentBooking() {
       toast.error("Agree to the Terms of Use to continue.");
       return;
     }
+    if (returningPatient) {
+      void handleConfirm();
+      return;
+    }
     goStep(4);
   };
 
@@ -290,17 +296,18 @@ export function AppointmentBooking() {
           <Check className="h-8 w-8 text-primary" strokeWidth={2.5} aria-hidden />
         </div>
         <h2 className="text-headline-md text-on-surface mb-3">
-          You&apos;re all booked!
+          You&apos;re booked
         </h2>
-        <p className="text-body-sm text-on-surface-variant mb-6">
-          Save your reference code to track or manage your appointment.
+        <p className="text-body-md text-on-surface-variant mb-6">
+          Save this code. Email reminders are on when we have your email. After check-in,
+          you can allow queue alerts on the status screen.
         </p>
-        <div className="inline-block rounded-xl border-2 border-dashed border-primary bg-primary/10 px-6 py-3 mb-8">
+        <div className="inline-block rounded-xl border-2 border-dashed border-primary bg-primary/10 px-6 py-3 mb-6">
           <span className="font-mono text-headline-sm font-bold tracking-wider text-primary">
             {state.reference}
           </span>
         </div>
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
+        <div className="flex flex-wrap justify-center gap-2 mb-6">
           {dateLabel && (
             <span className="rounded-full bg-primary/10 px-4 py-1.5 text-body-sm font-medium text-primary">
               {dateLabel}
@@ -317,22 +324,28 @@ export function AppointmentBooking() {
             </span>
           )}
         </div>
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 text-left text-body-md text-on-surface-variant mb-6 space-y-3">
+          <p>
+            <strong className="text-on-surface">Email reminder (on by default):</strong> Sent
+            the day before when email is on file.
+          </p>
+          <p>
+            <strong className="text-on-surface">Queue alerts (optional):</strong> You can allow
+            phone alerts after you check in on visit day. Never required.
+          </p>
+          <EnablePushAlerts queueNumber={state.reference} />
+        </div>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <CareqButton asChild className="min-h-12">
+            <Link href="/my-appointments">My visits</Link>
+          </CareqButton>
           <Button
             type="button"
-            variant="ghost"
-            className="min-h-11 rounded-xl text-primary hover:bg-primary/10"
-            asChild
-          >
-            <Link href="/my-appointments">Track appointment</Link>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            className="min-h-11 rounded-xl text-primary hover:bg-primary/10"
+            variant="outline"
+            className="min-h-12 rounded-xl"
             onClick={resetFlow}
           >
-            Book another appointment
+            Book another
           </Button>
         </div>
       </div>
@@ -342,29 +355,29 @@ export function AppointmentBooking() {
   return (
     <div className="max-w-3xl mx-auto">
       <Link
-        href="/"
-        className="inline-flex items-center gap-1.5 text-body-sm text-on-surface-variant hover:text-primary transition-colors mb-6"
+        href={returningPatient ? "/" : "/patient-search?intent=book"}
+        className="inline-flex items-center gap-1.5 text-body-sm text-on-surface-variant hover:text-primary transition-colors mb-6 min-h-[44px]"
       >
         <ArrowLeft className="h-4 w-4" aria-hidden />
         Back
       </Link>
 
       <header className="mb-8">
-        <h1 className="text-headline-md text-on-surface">
-          Book an appointment
-        </h1>
+        <h1 className="text-headline-md text-on-surface">Book a visit</h1>
         <p className="text-body-md text-on-surface-variant mt-2">
-          Choose your doctor, pick a time, and confirm your details in a few steps.
+          {returningPatient
+            ? "Pick your doctor, choose a time, then confirm — three steps."
+            : "Choose your doctor, pick a time, and enter your details."}
         </p>
         {returningPatient && (
-          <p className="text-body-sm text-primary mt-2">
-            Booking as a verified returning patient.
+          <p className="text-body-sm text-primary mt-2 font-medium">
+            Verified patient — we won&apos;t ask for your details again.
           </p>
         )}
         {legacyPublicId && !returningPatient && (
           <p className="text-body-sm text-destructive mt-2" role="alert">
             For your privacy, booking links with a patient id are no longer accepted.{" "}
-            <Link href="/patient-search" className="underline">
+            <Link href="/patient-search?intent=book" className="underline">
               Verify your identity
             </Link>{" "}
             first, then book.
@@ -373,8 +386,8 @@ export function AppointmentBooking() {
       </header>
 
       <StepIndicator
-        steps={BOOKING_STEPS}
-        currentStep={String(state.step)}
+        steps={returningPatient ? VERIFIED_BOOKING_STEPS : BOOKING_STEPS}
+        currentStep={String(Math.min(state.step, returningPatient ? 3 : 4))}
         className="mb-10"
       />
 
@@ -619,14 +632,39 @@ export function AppointmentBooking() {
         </section>
       )}
 
-      {/* Step 3: Patient Details */}
+      {/* Step 3: Details (guest) or Confirm (verified) */}
       {state.step === 3 && (
         <section aria-labelledby="step-details">
           <h2 id="step-details" className="sr-only">
-            Patient details
+            {returningPatient ? "Confirm booking" : "Patient details"}
           </h2>
 
           <div className="space-y-6">
+            {returningPatient && selectedDoctor && (
+              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest divide-y divide-outline-variant">
+                <ReviewRow
+                  icon={<Stethoscope className="h-4 w-4" />}
+                  label="Doctor"
+                  value={doctorName(selectedDoctor)}
+                />
+                {selectedType && (
+                  <ReviewRow
+                    icon={<ClipboardList className="h-4 w-4" />}
+                    label="Visit type"
+                    value={`${selectedType.name} (${selectedType.duration} min)`}
+                  />
+                )}
+                <ReviewRow
+                  icon={<Calendar className="h-4 w-4" />}
+                  label="Date & time"
+                  value={
+                    state.date && state.time
+                      ? `${format(parseYmd(state.date), "EEEE, MMMM d, yyyy")} at ${formatTime12h(state.time)}`
+                      : ""
+                  }
+                />
+              </div>
+            )}
             <div>
               <FormLabel htmlFor="reason">
                 Reason for visit{" "}
@@ -890,18 +928,22 @@ export function AppointmentBooking() {
             </Button>
             <CareqButton
               type="button"
-              disabled={!state.termsAgreed}
-              className="px-8"
+              disabled={!state.termsAgreed || (returningPatient && confirming)}
+              className="px-8 min-h-12"
               onClick={handleStep3Continue}
             >
-              Continue
+              {returningPatient
+                ? confirming
+                  ? "Confirming…"
+                  : "Confirm booking"
+                : "Continue"}
             </CareqButton>
           </div>
         </section>
       )}
 
-      {/* Step 4: Review & Confirm */}
-      {state.step === 4 && selectedDoctor && (
+      {/* Step 4: Review & Confirm (guest path only) */}
+      {state.step === 4 && !returningPatient && selectedDoctor && (
         <section aria-labelledby="step-review">
           <h2 id="step-review" className="sr-only">
             Review and confirm

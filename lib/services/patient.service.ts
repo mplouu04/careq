@@ -203,10 +203,12 @@ async function createPatientSession(
   ip?: string | null
 ): Promise<string> {
   const supabase = createAdminClient();
+  const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
   const { data: session, error } = await supabase
     .from("patient_sessions")
     .insert({
       patient_id: patientId,
+      expires_at: expiresAt,
       ...(ip ? { ip } : {}),
     })
     .select("token")

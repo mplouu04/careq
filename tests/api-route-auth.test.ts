@@ -47,6 +47,8 @@ const ROUTE_AUTH: Record<string, { kind: AuthKind; notes?: string }> = {
   "queue/[id]/no-show/route.ts": { kind: "staff" },
   "queue/[id]/present/route.ts": { kind: "staff" },
   "queue/[id]/return/route.ts": { kind: "staff" },
+  "queue/[id]/pull-nurse/route.ts": { kind: "staff" },
+  "queue/[id]/complete-triage/route.ts": { kind: "staff" },
   "admin/doctors/route.ts": { kind: "staff", notes: "admin role required" },
   "admin/staff/route.ts": { kind: "staff", notes: "admin role required" },
   "admin/settings/route.ts": { kind: "staff", notes: "admin role required" },
@@ -151,7 +153,9 @@ describe("public queue endpoint safety", () => {
     expect(src).toMatch(/WAITING_BOARD_LIMIT/);
     expect(src).toMatch(/\.limit\(WAITING_BOARD_LIMIT\)/);
     expect(src).toMatch(/\.in\("status", \["in_progress", "called"\]\)/);
-    expect(src).toMatch(/\.eq\("status", "waiting"\)/);
+    expect(src).toMatch(
+      /\.in\("status", \["waiting", "with_nurse", "ready_for_doctor"\]\)/
+    );
   });
 
   it("POST /api/queue/public requires staff session", () => {

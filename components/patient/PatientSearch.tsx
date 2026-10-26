@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useId } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { UserPlus, LogIn, User, ArrowLeft } from "lucide-react";
+import { UserPlus, LogIn, User, ArrowLeft, CalendarPlus } from "lucide-react";
 import {
   CareqCard,
   CareqButton,
@@ -22,11 +22,21 @@ type VerifyMatch = {
   verifyToken: string;
 };
 
+type PatientIntent = "book" | "checkin" | null;
+
 const NO_MATCH_MESSAGE =
   "We could not find a record matching those details. Please check your information or register as a new patient.";
 
+function resolveIntent(raw: string | null): PatientIntent {
+  if (raw === "book" || raw === "appointment") return "book";
+  if (raw === "checkin" || raw === "walk-in" || raw === "walkin") return "checkin";
+  return null;
+}
+
 export function PatientSearch() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const intent = resolveIntent(searchParams.get("intent"));
   const formId = useId();
   const dobHintId = `${formId}-dob-hint`;
   const phoneHintId = `${formId}-phone-hint`;
@@ -130,9 +140,13 @@ export function PatientSearch() {
     setPhoneInput("");
   }
 
-  function confirmIdentity() {
+  function continueWithIntent(next: "book" | "checkin") {
     if (!match) return;
     storeVerifyToken(match.verifyToken);
+    if (next === "book") {
+      router.push("/appointments");
+      return;
+    }
     router.push("/checkin?tab=walk-in");
   }
 
@@ -146,35 +160,80 @@ export function PatientSearch() {
             </div>
             <div className="space-y-2">
               <h2 className="text-headline-sm text-on-surface">
-                Welcome, {match.firstName}
+                Is this {match.firstName}?
               </h2>
-              <p className="text-body-md text-on-surface-variant">Is this you?</p>
+              <p className="text-body-md text-on-surface-variant">
+                {intent === "book"
+                  ? `Booking for ${match.firstName}. Continue if this is correct.`
+                  : intent === "checkin"
+                    ? `Checking in ${match.firstName}. Continue if this is correct.`
+                    : "Choose what you need next."}
+              </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              <CareqButton
-                type="button"
-                className="min-h-11 cursor-pointer"
-                onClick={confirmIdentity}
-              >
-                <LogIn className="h-4 w-4" />
-                Yes, continue to check-in
-              </CareqButton>
+              {intent === "book" && (
+                <>
+                  <CareqButton
+                    type="button"
+                    className="min-h-12 cursor-pointer"
+                    onClick={() => continueWithIntent("book")}
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Yes — continue to book
+                  </CareqButton>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-12 rounded-xl cursor-pointer"
+                    onClick={() => continueWithIntent("checkin")}
+                  >
+                    I&apos;m here instead
+                  </Button>
+                </>
+              )}
+              {intent === "checkin" && (
+                <>
+                  <CareqButton
+                    type="button"
+                    className="min-h-12 cursor-pointer"
+                    onClick={() => continueWithIntent("checkin")}
+                  >
+                    <LogIn className="h-4 w-4" />
+                    Yes — continue to check-in
+                  </CareqButton>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-12 rounded-xl cursor-pointer"
+                    onClick={() => continueWithIntent("book")}
+                  >
+                    Book instead
+                  </Button>
+                </>
+              )}
+              {!intent && (
+                <>
+                  <CareqButton
+                    type="button"
+                    className="min-h-12 cursor-pointer"
+                    onClick={() => continueWithIntent("book")}
+                  >
+                    <CalendarPlus className="h-4 w-4" />
+                    Book a visit
+                  </CareqButton>
+                  <CareqButton
+                    type="button"
+                    className="min-h-12 cursor-pointer"
+                    onClick={() => continueWithIntent("checkin")}
+                  >
+                    I&apos;m here
+                  </CareqButton>
+                </>
+              )}
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11 rounded-xl cursor-pointer"
-                onClick={() => {
-                  if (!match) return;
-                  storeVerifyToken(match.verifyToken);
-                  router.push("/appointments");
-                }}
-              >
-                Book appointment
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 rounded-xl cursor-pointer"
+                className="min-h-12 rounded-xl cursor-pointer"
                 onClick={resetForm}
               >
                 <ArrowLeft className="h-4 w-4" />
@@ -295,11 +354,15 @@ export function PatientSearch() {
           <p className="text-body-sm text-on-surface-variant text-center pt-2 border-t border-outline-variant">
             New patient?{" "}
             <Link
-              href="/registration"
+              href={
+                intent
+                  ? `/registration?intent=${intent}`
+                  : "/registration?intent=book"
+              }
               className="inline-flex items-center gap-1 text-primary font-medium hover:underline cursor-pointer"
             >
               <UserPlus className="h-3.5 w-3.5" aria-hidden />
-              Register
+              Register once
             </Link>
           </p>
         </form>

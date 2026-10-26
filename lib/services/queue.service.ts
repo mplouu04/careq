@@ -2,9 +2,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { logAudit } from "@/lib/audit";
 import { getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { getQueueReport } from "@/lib/services/queue-metrics";
-import { isCalledLikeStatus } from "@/lib/queue-status";
+import { isCalledLikeStatus, isCallableStatus } from "@/lib/queue-status";
 import { notifyPatientCalled } from "@/lib/services/queue-notify.service";
 import { getNoShowGraceMinutes } from "@/lib/clinic-settings";
+
+const CALLABLE_STATUSES = ["ready_for_doctor", "waiting"] as const;
 
 async function getQueueStatus(queueId: number): Promise<string | null> {
   const supabase = createAdminClient();
@@ -28,28 +30,47 @@ async function callOrRecallPatient(
 ) {
   const supabase = createAdminClient();
   const now = new Date().toISOString();
-  const { data, error } = await supabase
-    .from("queue")
-    .update({
-      called_by: params.doctorId,
-      room_id: params.roomNumber,
-      status: "called",
-      called_at: now,
-      present_at: null,
-    })
-    .eq("id", params.queueId)
-    .eq("status", "waiting")
-    .select("id")
-    .maybeSingle();
+
+  // Prefer ready_for_doctor; waiting allowed as desk override when nurse is out
+  let data: { id: number } | null = null;
+  let error: { message: string } | null = null;
+
+  for (const fromStatus of CALLABLE_STATUSES) {
+    const res = await supabase
+      .from("queue")
+      .update({
+        called_by: params.doctorId,
+        room_id: params.roomNumber,
+        status: "called",
+        called_at: now,
+        present_at: null,
+        assigned_doctor_id: params.doctorId,
+      })
+      .eq("id", params.queueId)
+      .eq("status", fromStatus)
+      .select("id")
+      .maybeSingle();
+    error = res.error;
+    if (res.data) {
+      data = res.data;
+      break;
+    }
+  }
 
   if (error || !data) {
     const currentStatus = await getQueueStatus(params.queueId);
     if (isCalledLikeStatus(currentStatus)) {
       return { error: "Already called", status: 409 as const };
     }
-    if (currentStatus && currentStatus !== "waiting") {
+    if (currentStatus === "with_nurse") {
       return {
-        error: `Queue entry is already ${String(currentStatus).replace("_", " ")}`,
+        error: "Patient is with the nurse — finish triage first, or wait",
+        status: 409 as const,
+      };
+    }
+    if (currentStatus && !isCallableStatus(currentStatus)) {
+      return {
+        error: `Queue entry is already ${String(currentStatus).replace(/_/g, " ")}`,
         status: 409 as const,
       };
     }
@@ -68,6 +89,120 @@ async function callOrRecallPatient(
   });
 
   void notifyPatientCalled(params.queueId);
+
+  return { success: true as const };
+}
+
+/** Pull a waiting patient to the nurse station for vitals / interview. */
+export async function pullForNurse(params: {
+  queueId: number;
+  userId: string;
+  ip: string;
+}) {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("queue")
+    .update({ status: "with_nurse" })
+    .eq("id", params.queueId)
+    .eq("status", "waiting")
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { error: "Failed to pull patient for nurse", status: 500 as const };
+  }
+
+  if (!data) {
+    const currentStatus = await getQueueStatus(params.queueId);
+    if (currentStatus === "with_nurse") {
+      return { error: "Patient already with nurse", status: 409 as const };
+    }
+    return {
+      error: "Only waiting patients can be pulled for nurse triage",
+      status: 400 as const,
+    };
+  }
+
+  void logAudit({
+    userId: params.userId,
+    action: "queue_pull_nurse",
+    tableName: "queue",
+    recordId: params.queueId,
+    ipAddress: params.ip,
+  });
+
+  return { success: true as const };
+}
+
+export type CompleteTriageInput = {
+  queueId: number;
+  userId: string;
+  ip: string;
+  assignedDoctorId: string;
+  bpSystolic?: number | null;
+  bpDiastolic?: number | null;
+  temperatureC?: number | null;
+  triageNotes?: string | null;
+};
+
+/** Finish nurse triage: store vitals, assign doctor, mark ready for Call. */
+export async function completeTriage(params: CompleteTriageInput) {
+  const supabase = createAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: row } = await supabase
+    .from("queue")
+    .select("id, checkin_id, status")
+    .eq("id", params.queueId)
+    .maybeSingle();
+
+  if (!row) {
+    return { error: "Queue entry not found", status: 404 as const };
+  }
+  if (row.status !== "with_nurse") {
+    return {
+      error: "Only patients with the nurse can complete triage",
+      status: 400 as const,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("queue")
+    .update({
+      status: "ready_for_doctor",
+      bp_systolic: params.bpSystolic ?? null,
+      bp_diastolic: params.bpDiastolic ?? null,
+      temperature_c: params.temperatureC ?? null,
+      triage_notes: params.triageNotes?.trim() || null,
+      triaged_at: now,
+      triaged_by: params.userId,
+      assigned_doctor_id: params.assignedDoctorId,
+      waiting_since: now,
+    })
+    .eq("id", params.queueId)
+    .eq("status", "with_nurse")
+    .select("id, checkin_id")
+    .maybeSingle();
+
+  if (error || !data) {
+    return { error: "Failed to complete triage", status: 500 as const };
+  }
+
+  if (data.checkin_id) {
+    await supabase
+      .from("checkins")
+      .update({ doctor_id: params.assignedDoctorId })
+      .eq("checkin_id", data.checkin_id);
+  }
+
+  void logAudit({
+    userId: params.userId,
+    action: "queue_complete_triage",
+    tableName: "queue",
+    recordId: params.queueId,
+    newValues: { assigned_doctor_id: params.assignedDoctorId },
+    ipAddress: params.ip,
+  });
 
   return { success: true as const };
 }
@@ -183,7 +318,13 @@ export async function recallPatient(params: {
   return callOrRecallPatient(params, "queue_recall");
 }
 
-const NO_SHOW_ELIGIBLE = ["waiting", "called", "in_progress"] as const;
+const NO_SHOW_ELIGIBLE = [
+  "waiting",
+  "with_nurse",
+  "ready_for_doctor",
+  "called",
+  "in_progress",
+] as const;
 
 export async function markNoShow(params: {
   queueId: number;
@@ -204,7 +345,8 @@ export async function markNoShow(params: {
 
   if (!NO_SHOW_ELIGIBLE.includes(row.status as (typeof NO_SHOW_ELIGIBLE)[number])) {
     return {
-      error: "Only waiting, called, or in-progress patients can be marked no-show",
+      error:
+        "Only waiting, nurse, ready, called, or in-progress patients can be marked no-show",
       status: 400 as const,
     };
   }
@@ -229,7 +371,8 @@ export async function markNoShow(params: {
 
   if (!updated) {
     return {
-      error: "Only waiting, called, or in-progress patients can be marked no-show",
+      error:
+        "Only waiting, nurse, ready, called, or in-progress patients can be marked no-show",
       status: 409 as const,
     };
   }
@@ -472,7 +615,7 @@ export async function resetDailyQueue(params: { userId: string; ip: string }) {
   const { data } = await supabase
     .from("queue")
     .update({ status: "cancelled" })
-    .eq("status", "waiting")
+    .in("status", ["waiting", "with_nurse", "ready_for_doctor"])
     .eq("clinic_date", today)
     .select("id");
 

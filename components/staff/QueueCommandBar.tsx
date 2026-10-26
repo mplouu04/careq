@@ -29,6 +29,7 @@ type QueueCommandBarProps = {
   onRoomChange: (id: string) => void;
   onCallNext: () => void;
   canCall: boolean;
+  callHint?: string;
   isLive?: boolean;
   className?: string;
 };
@@ -42,6 +43,7 @@ export function QueueCommandBar({
   onRoomChange,
   onCallNext,
   canCall,
+  callHint,
   isLive = true,
   className,
 }: QueueCommandBarProps) {
@@ -55,8 +57,8 @@ export function QueueCommandBar({
         ? "Select doctor"
         : !roomId
           ? "Select room"
-          : "No patients waiting"
-    : undefined;
+          : "No patients ready or waiting"
+    : callHint;
 
   return (
     <div

@@ -128,6 +128,7 @@ export async function checkinWalkIn(body: {
   appointmentType: string | number;
   additionalinfo: string;
   termsAgreement: boolean | string;
+  preferredDoctorId?: string | null;
 }) {
   // Validate without consuming so a later queue failure can retry with the same token.
   const patientId = await validatePatientVerifyToken(body.verifyToken);
@@ -137,12 +138,14 @@ export async function checkinWalkIn(body: {
   const ref = `WALK${formatInTimeZone(new Date(), TIMEZONE, "yyyyMMdd")}${counter}`;
   const consent = body.termsAgreement === "on" || Boolean(body.termsAgreement);
   const additionalInfo = sanitize(body.additionalinfo, 500);
+  const preferredDoctorId = body.preferredDoctorId?.trim() || null;
 
   const { data: checkin, error: cErr } = await supabase
     .from("checkins")
     .insert({
       patient_id: patientId,
       app_type_id: body.appointmentType,
+      doctor_id: preferredDoctorId,
       reason: additionalInfo,
       consent,
       reference_number: ref,

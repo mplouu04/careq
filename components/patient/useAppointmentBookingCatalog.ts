@@ -70,6 +70,13 @@ export const BOOKING_STEPS = [
   { id: "4", label: "Review" },
 ];
 
+/** Verified returning patients: 3 steps only */
+export const VERIFIED_BOOKING_STEPS = [
+  { id: "1", label: "Doctor" },
+  { id: "2", label: "Date & time" },
+  { id: "3", label: "Confirm" },
+];
+
 export function useAppointmentBookingCatalog(state: BookingState) {
   const queryClient = useQueryClient();
   const catalogErrorToasted = useRef(false);

@@ -27,6 +27,7 @@ const CHECKIN_TABS = ["appointment", "walk-in"] as const;
 type CheckinTab = (typeof CHECKIN_TABS)[number];
 
 type ApptType = { id: string; name: string };
+type DoctorOption = { id: string; first_name: string; last_name: string };
 
 type AppointmentPreview = {
   fullname: string;
@@ -62,6 +63,7 @@ export function CheckinForm() {
   }, [urlToken]);
 
   const [apptType, setApptType] = useState("");
+  const [preferredDoctorId, setPreferredDoctorId] = useState("");
   const [reason, setReason] = useState("");
   const [termsAgreed, setTermsAgreed] = useState(false);
   const [ref, setRef] = useState("");
@@ -95,7 +97,17 @@ export function CheckinForm() {
     staleTime: 30_000,
   });
 
+  const doctorsQuery = useQuery({
+    queryKey: queryKeys.doctors.list(),
+    queryFn: async () => {
+      const d = await catalogApi.doctors();
+      return (d.doctors ?? []) as DoctorOption[];
+    },
+    staleTime: 30_000,
+  });
+
   const types = typesQuery.data ?? [];
+  const doctors = doctorsQuery.data ?? [];
 
   useEffect(() => {
     if (typesQuery.isError) {
@@ -182,6 +194,7 @@ export function CheckinForm() {
           appointmentType: apptType,
           additionalinfo: reason,
           termsAgreement: "on",
+          preferredDoctorId: preferredDoctorId || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -252,12 +265,19 @@ export function CheckinForm() {
     return (
       <SuccessCard
         reference={successRef}
-        message="You are checked in."
+        message="You're in line. Track your place below or allow alerts."
         primaryCta={{
-          label: "Track your status",
+          label: "See my place in line",
           href: `/status/${encodeURIComponent(successRef)}`,
         }}
-        footer={<EnablePushAlerts queueNumber={successRef} />}
+        footer={
+          <div className="space-y-3 text-left">
+            <p className="text-body-sm text-on-surface-variant">
+              Optional: turn on queue alerts so your phone can notify you when you are called.
+            </p>
+            <EnablePushAlerts queueNumber={successRef} />
+          </div>
+        }
       />
     );
   }
@@ -265,9 +285,9 @@ export function CheckinForm() {
   return (
     <CareqCard className="overflow-hidden max-w-lg">
       <div className="px-6 py-4 border-b border-border text-center">
-        <h3 className="text-headline-sm text-foreground">Check in</h3>
+        <h3 className="text-headline-sm text-foreground">I&apos;m here</h3>
         <p className="text-body-sm text-on-surface-variant mt-0.5">
-          Appointment or walk-in.
+          I have a booking code, or I&apos;m walking in today.
         </p>
       </div>
 
@@ -283,7 +303,7 @@ export function CheckinForm() {
           onClick={() => setCheckinTab("appointment")}
           className={tabClass("appointment")}
         >
-          Appointment
+          I have a booking
         </button>
         <button
           type="button"
@@ -296,7 +316,7 @@ export function CheckinForm() {
             !verifyToken && "text-on-surface-variant/50 cursor-not-allowed"
           )}
         >
-          Walk-in
+          Walk-in today
         </button>
       </div>
       {!verifyToken && (
@@ -366,7 +386,7 @@ export function CheckinForm() {
 
             <CareqButton
               type="button"
-              className="w-full cursor-pointer"
+              className="w-full cursor-pointer min-h-12"
               disabled={loading || !refLookup || phone.trim().length < 7}
               onClick={appointmentCheckin}
             >
@@ -384,12 +404,18 @@ export function CheckinForm() {
           >
             {!verifyToken && (
               <FormWarning>
-                <Link href="/patient-search" className="text-primary hover:underline">
-                  Verify your identity
+                <Link
+                  href="/patient-search?intent=checkin"
+                  className="text-primary hover:underline font-medium"
+                >
+                  Verify with phone & date of birth
                 </Link>{" "}
                 or{" "}
-                <Link href="/registration" className="text-primary hover:underline">
-                  register
+                <Link
+                  href="/registration?intent=checkin"
+                  className="text-primary hover:underline font-medium"
+                >
+                  register once
                 </Link>{" "}
                 first.
               </FormWarning>
@@ -416,8 +442,30 @@ export function CheckinForm() {
             </div>
 
             <div>
+              <FormLabel htmlFor="checkin-preferred-doctor">
+                Preferred doctor{" "}
+                <span className="text-on-surface-variant font-normal">(optional)</span>
+              </FormLabel>
+              <FormSelect
+                id="checkin-preferred-doctor"
+                value={preferredDoctorId}
+                onChange={(e) => setPreferredDoctorId(e.target.value)}
+              >
+                <option value="">First available — desk will assign</option>
+                {doctors.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    Dr. {d.first_name} {d.last_name}
+                  </option>
+                ))}
+              </FormSelect>
+              <p className="text-body-sm text-on-surface-variant mt-1">
+                Staff still choose the room when they call you.
+              </p>
+            </div>
+
+            <div>
               <FormLabel htmlFor="checkin-reason" required>
-                Reason
+                Reason for visit
               </FormLabel>
               <textarea
                 id="checkin-reason"
@@ -452,11 +500,11 @@ export function CheckinForm() {
 
             <CareqButton
               type="button"
-              className="w-full cursor-pointer"
+              className="w-full cursor-pointer min-h-12"
               disabled={loading || !verifyToken || !apptType}
               onClick={walkInCheckin}
             >
-              {loading ? "Checking in…" : "Check in"}
+              {loading ? "Checking in…" : "Join the line"}
             </CareqButton>
           </div>
         )}

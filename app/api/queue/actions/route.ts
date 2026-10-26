@@ -5,16 +5,20 @@ import { getClientIp } from "@/lib/rate-limit";
 import { QueueActionSchema } from "@/lib/schemas/queue";
 import {
   callNextPatient,
+  completeTriage,
   getAnalyticsReport,
   markDone,
   markNoShow,
   markPresent,
+  pullForNurse,
   purgeQueueHistory,
   recallPatient,
   resetDailyQueue,
   returnToQueue,
   skipPatient,
 } from "@/lib/services/queue.service";
+
+const TRIAGE_ROLES = new Set(["nurse", "admin", "receptionist"]);
 
 export const dynamic = "force-dynamic";
 
@@ -120,6 +124,47 @@ export const POST = withStaffAuth(async (request: Request) => {
         queueId: body.queueId,
         userId: ctx.userId,
         ip: ctx.ip,
+      });
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    case "pull_for_nurse": {
+      if (!TRIAGE_ROLES.has(ctx.role)) {
+        return NextResponse.json(
+          { error: "Only nurse, receptionist, or admin can pull for triage" },
+          { status: 403 }
+        );
+      }
+      const result = await pullForNurse({
+        queueId: body.queueId,
+        userId: ctx.userId,
+        ip: ctx.ip,
+      });
+      if ("error" in result) {
+        return NextResponse.json({ error: result.error }, { status: result.status });
+      }
+      return NextResponse.json({ success: true });
+    }
+
+    case "complete_triage": {
+      if (!TRIAGE_ROLES.has(ctx.role)) {
+        return NextResponse.json(
+          { error: "Only nurse, receptionist, or admin can complete triage" },
+          { status: 403 }
+        );
+      }
+      const result = await completeTriage({
+        queueId: body.queueId,
+        userId: ctx.userId,
+        ip: ctx.ip,
+        assignedDoctorId: body.assignedDoctorId,
+        bpSystolic: body.bpSystolic,
+        bpDiastolic: body.bpDiastolic,
+        temperatureC: body.temperatureC,
+        triageNotes: body.triageNotes,
       });
       if ("error" in result) {
         return NextResponse.json({ error: result.error }, { status: result.status });

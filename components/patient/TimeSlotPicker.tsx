@@ -186,8 +186,8 @@ export function TimeSlotPicker({
       {loading ? (
         <LoadingAccordion />
       ) : slots.length === 0 ? (
-        <p className="text-body-sm text-on-surface-variant">
-          No slots available for this date.
+        <p className="text-body-md text-on-surface-variant py-4" role="status">
+          No times this day — try another date.
         </p>
       ) : (
         <>

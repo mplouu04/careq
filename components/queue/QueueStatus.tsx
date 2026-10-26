@@ -35,6 +35,8 @@ type QueueEntry = {
 
 const HEADER_BG: Record<string, string> = {
   waiting: "bg-primary",
+  with_nurse: "bg-teal-700",
+  ready_for_doctor: "bg-amber-700",
   called: "bg-status-called",
   in_progress: "bg-status-called",
   completed: "bg-muted-foreground",
@@ -45,7 +47,9 @@ const HEADER_BG: Record<string, string> = {
 function statusBadgeVariant(
   status: string
 ): "waiting" | "called" | "completed" | "error" | "no_show" {
-  if (status === "waiting") return "waiting";
+  if (status === "waiting" || status === "with_nurse" || status === "ready_for_doctor") {
+    return "waiting";
+  }
   if (isCalledLikeStatus(status)) return "called";
   if (status === "completed") return "completed";
   if (status === "no_show") return "no_show";
@@ -290,10 +294,13 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
       <div className="max-w-md mx-auto">
         <CareqCard className="p-6 text-center">
           <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
-          <p className="text-headline-sm text-on-surface mb-1">Queue entry not found</p>
-          <p className="text-body-sm text-on-surface-variant mb-4 font-mono-careq">{refNumber}</p>
-          <Link href="/status" className="text-primary hover:underline text-body-sm">
-            Check another number
+          <p className="text-headline-sm text-on-surface mb-1">We couldn&apos;t find that code</p>
+          <p className="text-body-md text-on-surface-variant mb-4 font-mono-careq">{refNumber}</p>
+          <Link
+            href="/status"
+            className="inline-flex items-center justify-center min-h-[44px] text-primary hover:underline text-body-md"
+          >
+            Try another code
           </Link>
         </CareqCard>
       </div>
@@ -311,14 +318,18 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const headerBg = HEADER_BG[queue.status] ?? "bg-muted-foreground";
   const statusLabel =
     queue.status === "waiting"
-      ? "Waiting"
-      : isCalledLikeStatus(queue.status)
-        ? "Called"
-        : queue.status === "completed"
-          ? "Done"
-          : queue.status === "no_show"
-            ? "No show"
-            : "Cancelled";
+      ? "In line"
+      : queue.status === "with_nurse"
+        ? "With nurse"
+        : queue.status === "ready_for_doctor"
+          ? "Almost your turn"
+          : isCalledLikeStatus(queue.status)
+            ? "You're called"
+            : queue.status === "completed"
+              ? "Done"
+              : queue.status === "no_show"
+                ? "No show"
+                : "Cancelled";
 
   return (
     <div className="max-w-lg mx-auto">
@@ -327,7 +338,15 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
           <StatusBadge
             status={statusBadgeVariant(queue.status)}
             label={statusLabel}
-            icon={queue.status === "waiting" ? Hourglass : isCalledLikeStatus(queue.status) ? Megaphone : undefined}
+            icon={
+              queue.status === "waiting" ||
+              queue.status === "with_nurse" ||
+              queue.status === "ready_for_doctor"
+                ? Hourglass
+                : isCalledLikeStatus(queue.status)
+                  ? Megaphone
+                  : undefined
+            }
             className="bg-white/20 text-white border-0 mb-3"
           />
           <p
@@ -343,14 +362,44 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
           {queue.status === "waiting" && (
             <>
               {position !== null && (
-                <p className="text-body-md text-on-surface mb-1" aria-live="polite">
-                  Position <strong>{position}</strong>
+                <p className="text-body-lg text-on-surface mb-1" aria-live="polite">
+                  Place in line: <strong>{position}</strong>
                 </p>
               )}
               {estWait !== null && (
-                <p className="text-body-sm text-on-surface-variant">~{estWait} min wait</p>
+                <p className="text-body-md text-on-surface-variant">
+                  Est. wait ~{estWait} min
+                </p>
               )}
+              <p className="text-body-sm text-on-surface-variant mt-3">
+                Next: nurse station for vital signs, then your doctor.
+              </p>
             </>
+          )}
+
+          {queue.status === "with_nurse" && (
+            <div className="space-y-2">
+              <p className="text-body-lg text-on-surface font-medium">
+                Nurse is preparing you
+              </p>
+              <p className="text-body-md text-on-surface-variant">
+                Vital signs and a short interview. Please stay at the nurse station.
+              </p>
+            </div>
+          )}
+
+          {queue.status === "ready_for_doctor" && (
+            <div className="space-y-2">
+              <p className="text-body-lg text-on-surface font-medium">
+                Almost your turn with the doctor
+              </p>
+              <p className="text-body-md text-on-surface-variant">
+                Please wait in the lounge. We&apos;ll call your number when a room is ready.
+              </p>
+              {doctor ? (
+                <p className="text-body-sm text-on-surface-variant mt-2">{doctor}</p>
+              ) : null}
+            </div>
           )}
 
           {isCalledLikeStatus(queue.status) && (
@@ -390,49 +439,56 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
               <XCircle className="w-12 h-12 text-status-no-show mx-auto mb-3" />
               <p className="text-headline-sm text-on-surface mb-1">Marked no show</p>
               <p className="text-body-sm text-on-surface-variant mb-4">See the front desk to rejoin.</p>
-              <CareqButton asChild className="cursor-pointer">
-                <Link href="/visit">Check in again</Link>
+              <CareqButton asChild className="cursor-pointer min-h-12">
+                <Link href="/checkin">I&apos;m here — check in again</Link>
               </CareqButton>
             </>
           )}
         </div>
       </CareqCard>
 
-      <div className="text-center mt-3">
+      <div className="text-center mt-4 space-y-3">
         {!alertsEnabled && typeof window !== "undefined" && "Notification" in window && (
           <CareqButton
             type="button"
             variant="outline"
-            size="sm"
-            className="cursor-pointer mb-2"
+            className="cursor-pointer min-h-12"
             onClick={() => void enableAlerts()}
           >
             Enable sound &amp; alerts
           </CareqButton>
         )}
         {alertsEnabled && (
-          <p className="text-label-sm text-on-surface-variant mb-2">Alerts enabled</p>
+          <p className="text-body-sm text-on-surface-variant">Sound alerts on</p>
         )}
-        <EnablePushAlerts queueNumber={queue.queue_number} className="mt-2" />
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-4 text-left">
+          <p className="text-body-md text-on-surface mb-2">
+            Optional: get a phone alert when it&apos;s your turn
+          </p>
+          <EnablePushAlerts queueNumber={queue.queue_number} />
+        </div>
       </div>
 
-      <div className="text-center mt-3">
+      <div className="text-center mt-4">
         <span
           className={cn(
-            "inline-flex items-center gap-1 text-label-sm px-2 py-1 rounded-full",
-            isLive ? "text-green-700 bg-green-50" : "text-amber-700 bg-amber-50"
+            "inline-flex items-center gap-1 text-body-sm px-3 py-1.5 rounded-full min-h-[44px]",
+            isLive ? "text-green-800 bg-green-50" : "text-amber-800 bg-amber-50"
           )}
         >
           <span
-            className={cn("w-1.5 h-1.5 rounded-full", isLive ? "bg-green-500" : "bg-amber-500")}
+            className={cn("w-2 h-2 rounded-full", isLive ? "bg-green-600" : "bg-amber-600")}
           />
-          {isLive ? "Live updates" : "Connecting..."}
+          {isLive ? "Live updates" : "Connecting…"}
         </span>
       </div>
 
-      <div className="text-center mt-3">
-        <Link href="/status" className="text-body-sm text-primary hover:underline">
-          Check another number
+      <div className="text-center mt-4">
+        <Link
+          href="/status"
+          className="inline-flex items-center justify-center min-h-[44px] text-body-md text-primary hover:underline"
+        >
+          Track another code
         </Link>
       </div>
     </div>

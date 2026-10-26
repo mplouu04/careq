@@ -11,6 +11,8 @@ export const WalkInCheckinSchema = z.object({
   appointmentType: z.union([z.string(), z.number()]),
   additionalinfo: z.string().min(1),
   termsAgreement: z.union([z.boolean(), z.string(), z.literal("on")]),
+  /** Preferred doctor; omit or empty = first available (staff assigns at Call). */
+  preferredDoctorId: z.string().uuid().optional().nullable(),
 });
 
 export const CheckinBodySchema = z.union([

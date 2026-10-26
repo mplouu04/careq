@@ -1,4 +1,5 @@
 import { QueueStatus } from "@/components/queue/QueueStatus";
+import { ClinicHelpStrip } from "@/components/patient/ClinicHelpStrip";
 import { CareqPage } from "@/components/careq";
 
 export default function StatusRefPage({
@@ -8,8 +9,9 @@ export default function StatusRefPage({
 }) {
   const ref = decodeURIComponent(params.ref);
   return (
-    <CareqPage narrow className="py-10">
+    <CareqPage narrow className="py-10 space-y-6">
       <QueueStatus refNumber={ref} />
+      <ClinicHelpStrip compact />
     </CareqPage>
   );
 }

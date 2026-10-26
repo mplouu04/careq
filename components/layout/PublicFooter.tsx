@@ -47,13 +47,13 @@ export function PublicFooter() {
               href="/status"
               className="text-body-sm text-on-surface-variant hover:text-primary transition-colors"
             >
-              Live Updates
+              Track my line
             </Link>
             <Link
-              href="/visit"
+              href="/checkin"
               className="text-body-sm text-on-surface-variant hover:text-primary transition-colors"
             >
-              Check in
+              I&apos;m here
             </Link>
           </div>
         </div>

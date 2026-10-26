@@ -114,7 +114,7 @@ export const GET = withRateLimit(
       .from("queue")
       .select(queueSelect)
       .eq("clinic_date", today)
-      .eq("status", "waiting")
+      .in("status", ["waiting", "with_nurse", "ready_for_doctor"])
       .order("skip_count", { ascending: true })
       .order("waiting_since", { ascending: true })
       .order("id", { ascending: true })
@@ -173,6 +173,13 @@ export const GET = withRateLimit(
     queueId: q.id,
     queue_number: q.queue_number,
     priority: q.priority ?? "normal",
+    status: q.status,
+    stage:
+      q.status === "with_nurse"
+        ? "with_nurse"
+        : q.status === "ready_for_doctor"
+          ? "ready"
+          : "waiting",
     position: i + 1,
     est_wait_minutes: (i + 1) * avgServiceTime,
   }));

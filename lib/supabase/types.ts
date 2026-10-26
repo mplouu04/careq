@@ -117,6 +117,13 @@ export type Database = {
           clinic_date: string;
           created_at: string;
           updated_at: string;
+          bp_systolic: number | null;
+          bp_diastolic: number | null;
+          temperature_c: number | null;
+          triage_notes: string | null;
+          triaged_at: string | null;
+          triaged_by: string | null;
+          assigned_doctor_id: string | null;
         };
         Insert: Omit<
           Database["public"]["Tables"]["queue"]["Row"],

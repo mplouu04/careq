@@ -1,11 +1,6 @@
-import { VisitChoice } from "@/components/patient/VisitChoice";
-import { ClinicStatusBar } from "@/components/patient/ClinicStatusBar";
+import { redirect } from "next/navigation";
 
+/** Legacy /visit entry — send parents to the Patient Hub. */
 export default function VisitPage() {
-  return (
-    <div className="space-y-8">
-      <ClinicStatusBar />
-      <VisitChoice />
-    </div>
-  );
+  redirect("/");
 }

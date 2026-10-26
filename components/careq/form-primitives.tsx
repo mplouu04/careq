@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Info } from "lucide-react";
 
 export const formInputClass =
-  "h-11 min-h-11 px-4 text-body-md rounded-lg bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
+  "h-12 min-h-12 px-4 text-body-md rounded-lg bg-background focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2";
 
 export function FormLabel({
   htmlFor,
@@ -32,7 +32,7 @@ export function FormInput({
 }
 
 const selectClass =
-  "flex h-11 min-h-11 w-full rounded-lg border border-input bg-background px-4 py-2 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex h-12 min-h-12 w-full rounded-lg border border-input bg-background px-4 py-2 text-body-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export function FormSelect({
   className,

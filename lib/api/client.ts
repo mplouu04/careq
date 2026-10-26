@@ -59,6 +59,8 @@ export type RoomRow = {
 export type StaffQueuePayload = {
   appointment?: {
     waiting?: unknown[];
+    withNurse?: unknown[];
+    readyForDoctor?: unknown[];
     inProgress?: unknown[];
     completed?: unknown[];
     noShow?: unknown[];
@@ -85,6 +87,8 @@ export type PublicWaitingItem = {
   position: number;
   est_wait_minutes: number;
   priority?: string;
+  status?: string;
+  stage?: "waiting" | "with_nurse" | "ready" | string;
 };
 
 export type PublicQueuePayload = {
@@ -283,6 +287,21 @@ export const queueApi = {
 
   returnToQueue: (queueId: number) =>
     api.post<{ success: boolean }>(`/api/queue/${queueId}/return`, {}),
+
+  pullForNurse: (queueId: number) =>
+    api.post<{ success: boolean }>(`/api/queue/${queueId}/pull-nurse`, {}),
+
+  completeTriage: (
+    queueId: number,
+    body: {
+      assignedDoctorId: string;
+      bpSystolic?: number | null;
+      bpDiastolic?: number | null;
+      temperatureC?: number | null;
+      triageNotes?: string | null;
+    }
+  ) =>
+    api.post<{ success: boolean }>(`/api/queue/${queueId}/complete-triage`, body),
 
   resetDaily: () =>
     api.post<{ success: boolean; cancelled: number }>("/api/queue/actions", {

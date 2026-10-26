@@ -176,13 +176,29 @@ async function publicQueueRefHandler(request: Request) {
     | null
     | undefined;
 
+  const checkinRaw = (entry as Record<string, unknown>).checkins;
+  const checkin = (Array.isArray(checkinRaw) ? checkinRaw[0] : checkinRaw) as
+    | { staff?: { first_name: string; last_name: string } | { first_name: string; last_name: string }[] | null }
+    | null
+    | undefined;
+  const assignedStaffRaw = checkin?.staff;
+  const assignedStaff = (Array.isArray(assignedStaffRaw)
+    ? assignedStaffRaw[0]
+    : assignedStaffRaw) as { first_name: string; last_name: string } | null | undefined;
+
+  const doctorName = calledBy
+    ? `Dr. ${calledBy.first_name} ${calledBy.last_name}`
+    : assignedStaff
+      ? `Dr. ${assignedStaff.first_name} ${assignedStaff.last_name}`
+      : "";
+
   return NextResponse.json({
     success: true,
     queue: sanitizeQueueEntryForPublic(entry as Record<string, unknown>),
     position,
     patients_ahead: patientsAhead,
     est_wait_minutes: estWaitMinutes,
-    doctor: calledBy ? `Dr. ${calledBy.first_name} ${calledBy.last_name}` : "",
+    doctor: doctorName,
     room: resolveRoomName(entry.room_id, roomMap),
   });
 }
@@ -205,8 +221,9 @@ async function staffQueueHandler() {
       .from("queue")
       .select(
         `id, queue_number, status, priority, called_at, present_at, room_id, skip_count, created_at, waiting_since,
+         bp_systolic, bp_diastolic, temperature_c, triage_notes, assigned_doctor_id,
          checkins!inner(
-           checkin_id, reference_number, reason, type_id,
+           checkin_id, reference_number, reason, type_id, doctor_id,
            patients(first_name, last_name),
            appointment_types(name),
            staff:doctor_id(first_name, last_name)
@@ -228,7 +245,10 @@ async function staffQueueHandler() {
   const rows = queueRes.data ?? [];
 
   let waitingPosition = 0;
+  let readyPosition = 0;
   const waiting = [];
+  const withNurse = [];
+  const readyForDoctor = [];
   const inProgress = [];
   const completed = [];
   const noShow = [];
@@ -254,23 +274,47 @@ async function staffQueueHandler() {
     const name = patient ? `${patient.first_name} ${patient.last_name}` : "";
     const visitType = apptType?.name ?? "";
     const reason = (checkinRaw?.reason as string | null | undefined) ?? "";
+    const assignedDoctorId =
+      (row.assigned_doctor_id as string | null | undefined) ??
+      (checkinRaw?.doctor_id as string | null | undefined) ??
+      null;
+    const assignedDoctorLabel = doctor
+      ? `Dr. ${doctor.first_name} ${doctor.last_name}`
+      : "";
+
+    const baseLounge = {
+      id: row.queue_number,
+      queueId: row.id,
+      queue_number: row.queue_number,
+      name,
+      time: row.created_at ? format(new Date(row.created_at), "hh:mm a") : "",
+      priority: row.priority,
+      visitType,
+      reason,
+      skip_count: row.skip_count ?? 0,
+      assignedDoctorId,
+      assignedDoctorLabel,
+      bp_systolic: row.bp_systolic ?? null,
+      bp_diastolic: row.bp_diastolic ?? null,
+      temperature_c: row.temperature_c ?? null,
+      triage_notes: row.triage_notes ?? null,
+    };
 
     if (row.status === "waiting") {
       waitingPosition++;
       waiting.push({
-        id: row.queue_number,
-        queueId: row.id,
-        queue_number: row.queue_number,
-        name,
-        time: row.created_at
-          ? format(new Date(row.created_at), "hh:mm a")
-          : "",
-        priority: row.priority,
-        visitType,
-        reason,
+        ...baseLounge,
         position: waitingPosition,
         est_wait_minutes: waitingPosition * avgServiceTime,
-        skip_count: row.skip_count ?? 0,
+      });
+    } else if (row.status === "with_nurse") {
+      withNurse.push(baseLounge);
+    } else if (row.status === "ready_for_doctor") {
+      readyPosition++;
+      readyForDoctor.push({
+        ...baseLounge,
+        position: readyPosition,
+        est_wait_minutes: readyPosition * avgServiceTime,
       });
     } else if (isCalledLikeStatus(row.status)) {
       inProgress.push({
@@ -311,6 +355,8 @@ async function staffQueueHandler() {
     success: true,
     appointment: {
       waiting,
+      withNurse,
+      readyForDoctor,
       inProgress,
       completed,
       noShow,

@@ -15,6 +15,8 @@ import {
   Activity,
   CheckCircle2,
   UserX,
+  Stethoscope,
+  HeartPulse,
 } from "lucide-react";
 import {
   Select,
@@ -33,6 +35,7 @@ import {
   ConfirmDialog,
   DashboardSkeleton,
   EmptyState,
+  FormInput,
   FormLabel,
   StatCard,
 } from "@/components/careq";
@@ -54,16 +57,22 @@ import {
 import { logRealtimeStatus } from "@/lib/observability-client";
 
 type QueueWaiting = {
-  id: number;
+  id: number | string;
   queueId: number;
   queue_number?: string;
   name: string;
   time: string;
   visitType: string;
   reason: string;
-  position: number;
-  est_wait_minutes: number;
+  position?: number;
+  est_wait_minutes?: number;
   skip_count: number;
+  assignedDoctorId?: string | null;
+  assignedDoctorLabel?: string;
+  bp_systolic?: number | null;
+  bp_diastolic?: number | null;
+  temperature_c?: number | null;
+  triage_notes?: string | null;
 };
 
 type QueueInProgress = {
@@ -91,7 +100,13 @@ type QueueCompleted = {
 type Doctor = { id: string; first_name: string; last_name: string };
 type Room = { id: string; name: string };
 
-type ColumnId = "waiting" | "in_progress" | "completed" | "no_show";
+type ColumnId =
+  | "waiting"
+  | "with_nurse"
+  | "ready"
+  | "in_progress"
+  | "completed"
+  | "no_show";
 
 type ColumnConfig = {
   id: ColumnId;
@@ -104,6 +119,8 @@ type ColumnConfig = {
 
 type ParsedQueue = {
   waiting: QueueWaiting[];
+  withNurse: QueueWaiting[];
+  readyForDoctor: QueueWaiting[];
   inProgress: QueueInProgress[];
   completed: QueueCompleted[];
   noShow: QueueCompleted[];
@@ -114,10 +131,24 @@ type ParsedQueue = {
 const QUEUE_COLUMNS: ColumnConfig[] = [
   {
     id: "waiting",
-    title: "Waiting Room",
+    title: "Waiting",
     tabLabel: "Waiting",
     headerClass: "bg-primary text-primary-foreground",
     headerIcon: Users,
+  },
+  {
+    id: "with_nurse",
+    title: "With nurse",
+    tabLabel: "Nurse",
+    headerClass: "bg-teal-700 text-white",
+    headerIcon: HeartPulse,
+  },
+  {
+    id: "ready",
+    title: "Ready for doctor",
+    tabLabel: "Ready",
+    headerClass: "bg-amber-700 text-white",
+    headerIcon: Stethoscope,
   },
   {
     id: "in_progress",
@@ -148,6 +179,8 @@ function parseStaffQueue(data: StaffQueuePayload): ParsedQueue {
   const appointment = data.appointment;
   return {
     waiting: (appointment?.waiting ?? []) as QueueWaiting[],
+    withNurse: (appointment?.withNurse ?? []) as QueueWaiting[],
+    readyForDoctor: (appointment?.readyForDoctor ?? []) as QueueWaiting[],
     inProgress: (appointment?.inProgress ?? []) as QueueInProgress[],
     completed: (appointment?.completed ?? []) as QueueCompleted[],
     noShow: (appointment?.noShow ?? []) as QueueCompleted[],
@@ -157,7 +190,16 @@ function parseStaffQueue(data: StaffQueuePayload): ParsedQueue {
 }
 
 function emptyQueue(): ParsedQueue {
-  return { waiting: [], inProgress: [], completed: [], noShow: [], avg: 10, graceMinutes: 5 };
+  return {
+    waiting: [],
+    withNurse: [],
+    readyForDoctor: [],
+    inProgress: [],
+    completed: [],
+    noShow: [],
+    avg: 10,
+    graceMinutes: 5,
+  };
 }
 
 type QueueAction =
@@ -167,11 +209,38 @@ type QueueAction =
   | { type: "mark_no_show"; queueId: number }
   | { type: "mark_present"; queueId: number }
   | { type: "return_to_queue"; queueId: number }
-  | { type: "recall"; queueId: number; doctorId: string; roomId: string; doctorLabel: string; roomLabel: string };
+  | { type: "recall"; queueId: number; doctorId: string; roomId: string; doctorLabel: string; roomLabel: string }
+  | { type: "pull_for_nurse"; queueId: number }
+  | {
+      type: "complete_triage";
+      queueId: number;
+      assignedDoctorId: string;
+      doctorLabel: string;
+      bpSystolic?: number | null;
+      bpDiastolic?: number | null;
+      temperatureC?: number | null;
+      triageNotes?: string | null;
+    };
+
+function takeLoungePatient(
+  next: ParsedQueue,
+  queueId: number
+): QueueWaiting | null {
+  for (const key of ["readyForDoctor", "waiting", "withNurse"] as const) {
+    const idx = next[key].findIndex((q) => q.queueId === queueId);
+    if (idx !== -1) {
+      const [item] = next[key].splice(idx, 1);
+      return item;
+    }
+  }
+  return null;
+}
 
 function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
-  const next = {
+  const next: ParsedQueue = {
     waiting: [...prev.waiting],
+    withNurse: [...prev.withNurse],
+    readyForDoctor: [...prev.readyForDoctor],
     inProgress: [...prev.inProgress],
     completed: [...prev.completed],
     noShow: [...prev.noShow],
@@ -179,13 +248,41 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
     graceMinutes: prev.graceMinutes,
   };
 
-  if (action.type === "call_next" || action.type === "recall") {
+  if (action.type === "pull_for_nurse") {
     const idx = next.waiting.findIndex((q) => q.queueId === action.queueId);
     if (idx === -1) return prev;
     const [item] = next.waiting.splice(idx, 1);
+    next.withNurse = [item, ...next.withNurse];
+    return next;
+  }
+
+  if (action.type === "complete_triage") {
+    const idx = next.withNurse.findIndex((q) => q.queueId === action.queueId);
+    if (idx === -1) return prev;
+    const [item] = next.withNurse.splice(idx, 1);
+    next.readyForDoctor = [
+      {
+        ...item,
+        assignedDoctorId: action.assignedDoctorId,
+        assignedDoctorLabel: action.doctorLabel,
+        bp_systolic: action.bpSystolic ?? null,
+        bp_diastolic: action.bpDiastolic ?? null,
+        temperature_c: action.temperatureC ?? null,
+        triage_notes: action.triageNotes ?? null,
+        position: next.readyForDoctor.length + 1,
+        est_wait_minutes: next.avg,
+      },
+      ...next.readyForDoctor,
+    ];
+    return next;
+  }
+
+  if (action.type === "call_next" || action.type === "recall") {
+    const item = takeLoungePatient(next, action.queueId);
+    if (!item) return prev;
     next.inProgress = [
       {
-        id: item.id,
+        id: typeof item.id === "number" ? item.id : 0,
         queueId: item.queueId,
         queue_number: item.queue_number,
         name: item.name,
@@ -253,16 +350,30 @@ function applyOptimistic(prev: ParsedQueue, action: QueueAction): ParsedQueue {
   }
 
   if (action.type === "mark_no_show") {
-    const idx = next.inProgress.findIndex((q) => q.queueId === action.queueId);
-    if (idx === -1) return prev;
-    const [item] = next.inProgress.splice(idx, 1);
+    const fromProgress = next.inProgress.findIndex((q) => q.queueId === action.queueId);
+    if (fromProgress !== -1) {
+      const [item] = next.inProgress.splice(fromProgress, 1);
+      next.noShow = [
+        {
+          id: item.id,
+          queueId: item.queueId,
+          queue_number: item.queue_number,
+          name: item.name,
+          time: item.time,
+        },
+        ...next.noShow,
+      ];
+      return next;
+    }
+    const lounge = takeLoungePatient(next, action.queueId);
+    if (!lounge) return prev;
     next.noShow = [
       {
-        id: item.id,
-        queueId: item.queueId,
-        queue_number: item.queue_number,
-        name: item.name,
-        time: item.time,
+        id: typeof lounge.id === "number" ? lounge.id : 0,
+        queueId: lounge.queueId,
+        queue_number: lounge.queue_number,
+        name: lounge.name,
+        time: lounge.time,
       },
       ...next.noShow,
     ];
@@ -301,6 +412,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   const [recallModal, setRecallModal] = useState<QueueWaiting | null>(null);
   const [recallDoctorId, setRecallDoctorId] = useState("");
   const [recallRoomId, setRecallRoomId] = useState("");
+  const [triageModal, setTriageModal] = useState<QueueWaiting | null>(null);
+  const [triageDoctorId, setTriageDoctorId] = useState("");
+  const [triageBpSys, setTriageBpSys] = useState("");
+  const [triageBpDia, setTriageBpDia] = useState("");
+  const [triageTemp, setTriageTemp] = useState("");
+  const [triageNotes, setTriageNotes] = useState("");
   const [today, setToday] = useState("");
   const [queueTab, setQueueTab] = useState<ColumnId>("waiting");
   const columnIds = useMemo(
@@ -353,12 +470,16 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
 
   const queue = queueQuery.data ?? emptyQueue();
   const waiting = queue.waiting;
+  const withNurse = queue.withNurse;
+  const readyForDoctor = queue.readyForDoctor;
   const inProgress = queue.inProgress;
   const completed = queue.completed;
   const noShow = queue.noShow;
   const doctors = doctorsQuery.data ?? [];
   const rooms = roomsQuery.data ?? [];
   const history = analyticsQuery.data?.history ?? [];
+  const canTriage =
+    staff.role === "nurse" || staff.role === "admin" || staff.role === "receptionist";
   const stats = {
     served: analyticsQuery.data?.served_today ?? completed.length,
     waiting: analyticsQuery.data?.waiting_count ?? waiting.length,
@@ -484,6 +605,16 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           return queueApi.returnToQueue(action.queueId);
         case "recall":
           return queueApi.recall(action.queueId, action.doctorId, action.roomId);
+        case "pull_for_nurse":
+          return queueApi.pullForNurse(action.queueId);
+        case "complete_triage":
+          return queueApi.completeTriage(action.queueId, {
+            assignedDoctorId: action.assignedDoctorId,
+            bpSystolic: action.bpSystolic,
+            bpDiastolic: action.bpDiastolic,
+            temperatureC: action.temperatureC,
+            triageNotes: action.triageNotes,
+          });
       }
     },
     onMutate: async (action) => {
@@ -514,7 +645,11 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
                   ? "Patient returned to end of queue"
                   : action.type === "skip"
                     ? "Patient skipped"
-                    : "Updated"
+                    : action.type === "pull_for_nurse"
+                      ? "Patient with nurse"
+                      : action.type === "complete_triage"
+                        ? "Ready for doctor"
+                        : "Updated"
       );
     },
     onSettled: () => {
@@ -573,11 +708,39 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           roomLabel: rLabel,
         };
         break;
+      case "pull_for_nurse":
+        action = { type: "pull_for_nurse", queueId };
+        break;
       default:
         toast.error("Unknown action");
         return;
     }
     actionMutation.mutate(action);
+  }
+
+  function openTriage(q: QueueWaiting) {
+    setTriageModal(q);
+    setTriageDoctorId(q.assignedDoctorId || doctorId || doctors[0]?.id || "");
+    setTriageBpSys(q.bp_systolic != null ? String(q.bp_systolic) : "");
+    setTriageBpDia(q.bp_diastolic != null ? String(q.bp_diastolic) : "");
+    setTriageTemp(q.temperature_c != null ? String(q.temperature_c) : "");
+    setTriageNotes(q.triage_notes ?? "");
+  }
+
+  function submitTriage() {
+    if (!triageModal || !triageDoctorId) return;
+    const matched = doctors.find((d) => d.id === triageDoctorId);
+    actionMutation.mutate({
+      type: "complete_triage",
+      queueId: triageModal.queueId,
+      assignedDoctorId: triageDoctorId,
+      doctorLabel: matched ? doctorLabel(matched) : "Doctor",
+      bpSystolic: triageBpSys ? Number(triageBpSys) : null,
+      bpDiastolic: triageBpDia ? Number(triageBpDia) : null,
+      temperatureC: triageTemp ? Number(triageTemp) : null,
+      triageNotes: triageNotes.trim() || null,
+    });
+    setTriageModal(null);
   }
 
   async function resetDaily() {
@@ -609,16 +772,27 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     );
   }
 
-  const nextWaiting = waiting[0];
+  // Prefer ready-for-doctor (post-triage); desk may Call waiting as override
+  const nextToCall = readyForDoctor[0] ?? waiting[0] ?? null;
 
   function openRecall(q: QueueWaiting) {
     setRecallModal(q);
-    setRecallDoctorId(doctorId || doctors[0]?.id || "");
+    setRecallDoctorId(q.assignedDoctorId || doctorId || doctors[0]?.id || "");
     setRecallRoomId(roomId || rooms[0]?.id || "");
+  }
+
+  function callPatient(q: QueueWaiting) {
+    const preferred = q.assignedDoctorId && doctors.some((d) => d.id === q.assignedDoctorId)
+      ? q.assignedDoctorId
+      : doctorId;
+    if (preferred && preferred !== doctorId) setDoctorId(preferred);
+    performAction("call_next", q.queueId, preferred || undefined, roomId || undefined);
   }
 
   const columnCounts: Record<ColumnId, number> = {
     waiting: waiting.length,
+    with_nurse: withNurse.length,
+    ready: readyForDoctor.length,
     in_progress: inProgress.length,
     completed: completed.length,
     no_show: noShow.length,
@@ -627,13 +801,17 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
   function columnFooter(id: ColumnId): string {
     switch (id) {
       case "waiting":
-        return `Total waiting: ${waiting.length} patients`;
+        return `Lounge: ${waiting.length}`;
+      case "with_nurse":
+        return `With nurse: ${withNurse.length}`;
+      case "ready":
+        return `Ready: ${readyForDoctor.length}`;
       case "in_progress":
-        return `Total in progress: ${inProgress.length} patients`;
+        return `In progress: ${inProgress.length}`;
       case "completed":
-        return `Total completed: ${completed.length} patients`;
+        return `Completed: ${completed.length}`;
       case "no_show":
-        return `No show today: ${noShow.length}`;
+        return `No show: ${noShow.length}`;
     }
   }
 
@@ -648,11 +826,29 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             className="border-0 bg-transparent py-8"
             action={
               <CareqButton asChild variant="outline" size="sm">
-                <Link href="/visit" target="_blank" rel="noopener noreferrer">
+                <Link href="/checkin" target="_blank" rel="noopener noreferrer">
                   Open check-in
                 </Link>
               </CareqButton>
             }
+          />
+        ) : null;
+      case "with_nurse":
+        return withNurse.length === 0 ? (
+          <EmptyState
+            icon={HeartPulse}
+            title="No one with nurse"
+            description="Pull the next patient for vitals."
+            className="border-0 bg-transparent py-8"
+          />
+        ) : null;
+      case "ready":
+        return readyForDoctor.length === 0 ? (
+          <EmptyState
+            icon={Stethoscope}
+            title="No one ready"
+            description="Finish nurse triage to fill this list."
+            className="border-0 bg-transparent py-8"
           />
         ) : null;
       case "in_progress":
@@ -660,7 +856,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
           <EmptyState
             icon={Activity}
             title="No patients in progress"
-            description="Call the next patient when ready."
+            description="Call the next ready patient when a room is free."
             className="border-0 bg-transparent py-8"
           />
         ) : null;
@@ -689,7 +885,31 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
     switch (id) {
       case "waiting":
         return waiting.map((q) => (
-          <WaitingRow key={q.queueId} q={q} onRecall={() => openRecall(q)} />
+          <WaitingRow
+            key={q.queueId}
+            q={q}
+            canTriage={canTriage}
+            onPullNurse={() => performAction("pull_for_nurse", q.queueId)}
+            onCallOverride={() => openRecall(q)}
+          />
+        ));
+      case "with_nurse":
+        return withNurse.map((q) => (
+          <WithNurseRow
+            key={q.queueId}
+            q={q}
+            canTriage={canTriage}
+            onComplete={() => openTriage(q)}
+          />
+        ));
+      case "ready":
+        return readyForDoctor.map((q) => (
+          <ReadyRow
+            key={q.queueId}
+            q={q}
+            onCall={() => callPatient(q)}
+            canCall={Boolean(roomId || rooms[0])}
+          />
         ));
       case "in_progress":
         return inProgress.map((q) => (
@@ -761,9 +981,16 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         onDoctorChange={setDoctorId}
         onRoomChange={setRoomId}
         onCallNext={() => {
-          if (nextWaiting) performAction("call_next", nextWaiting.queueId);
+          if (nextToCall) callPatient(nextToCall);
         }}
-        canCall={Boolean(doctorId && roomId && nextWaiting)}
+        canCall={Boolean(doctorId && roomId && nextToCall)}
+        callHint={
+          readyForDoctor.length > 0
+            ? "Calls next ready (post-nurse) patient"
+            : waiting.length > 0
+              ? "No ready patients — calls waiting (desk override)"
+              : undefined
+        }
         isLive={isLive}
       />
 
@@ -846,7 +1073,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
         ))}
       </div>
 
-      <div className="hidden xl:grid xl:grid-cols-4 gap-5 mb-5">
+      <div className="hidden xl:grid xl:grid-cols-3 2xl:grid-cols-6 gap-4 mb-5">
         {QUEUE_COLUMNS.map((col) => renderQueueColumn(col))}
       </div>
 
@@ -862,6 +1089,98 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
       </div>
 
       <ConfirmDialog
+        open={!!triageModal}
+        onOpenChange={(open) => {
+          if (!open) setTriageModal(null);
+        }}
+        title="Nurse triage"
+        description={
+          triageModal
+            ? `Vitals and doctor for ${triageModal.name} (${triageModal.queue_number ?? triageModal.id})`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setTriageModal(null)}>
+              Cancel
+            </Button>
+            <CareqButton disabled={!triageDoctorId} onClick={submitTriage}>
+              Mark ready for doctor
+            </CareqButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <FormLabel htmlFor="triage-bp-sys">BP systolic</FormLabel>
+              <FormInput
+                id="triage-bp-sys"
+                type="number"
+                inputMode="numeric"
+                value={triageBpSys}
+                onChange={(e) => setTriageBpSys(e.target.value)}
+                placeholder="120"
+              />
+            </div>
+            <div>
+              <FormLabel htmlFor="triage-bp-dia">BP diastolic</FormLabel>
+              <FormInput
+                id="triage-bp-dia"
+                type="number"
+                inputMode="numeric"
+                value={triageBpDia}
+                onChange={(e) => setTriageBpDia(e.target.value)}
+                placeholder="80"
+              />
+            </div>
+          </div>
+          <div>
+            <FormLabel htmlFor="triage-temp">Temperature (°C)</FormLabel>
+            <FormInput
+              id="triage-temp"
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={triageTemp}
+              onChange={(e) => setTriageTemp(e.target.value)}
+              placeholder="36.5"
+            />
+          </div>
+          <div>
+            <FormLabel htmlFor="triage-notes">Notes</FormLabel>
+            <textarea
+              id="triage-notes"
+              value={triageNotes}
+              onChange={(e) => setTriageNotes(e.target.value)}
+              rows={3}
+              className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-body-sm resize-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring min-h-[72px]"
+              placeholder="Brief history / chief complaint"
+            />
+          </div>
+          <div>
+            <FormLabel>Available doctor</FormLabel>
+            <Select
+              value={triageDoctorId || null}
+              onValueChange={(v) => setTriageDoctorId(v ?? "")}
+              items={doctorItems}
+            >
+              <SelectTrigger className="h-11">
+                <SelectValue placeholder="Select doctor" />
+              </SelectTrigger>
+              <SelectContent>
+                {doctors.map((d) => (
+                  <SelectItem key={d.id} value={d.id}>
+                    {doctorLabel(d)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
         open={!!recallModal}
         onOpenChange={(open) => {
           if (!open) {
@@ -870,10 +1189,10 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
             setRecallRoomId("");
           }
         }}
-        title="Recall Patient"
+        title="Call to doctor"
         description={
           recallModal
-            ? `Recalling ${recallModal.name} (${recallModal.queue_number ?? recallModal.id})`
+            ? `Calling ${recallModal.name} (${recallModal.queue_number ?? recallModal.id}) — desk override skips nurse if still waiting`
             : undefined
         }
         footer={
@@ -899,7 +1218,7 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
                 }
               }}
             >
-              Recall Patient
+              Call to room
             </CareqButton>
           </>
         }
@@ -951,16 +1270,20 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
 
 function WaitingRow({
   q,
-  onRecall,
+  canTriage,
+  onPullNurse,
+  onCallOverride,
 }: {
   q: QueueWaiting;
-  onRecall: () => void;
+  canTriage: boolean;
+  onPullNurse: () => void;
+  onCallOverride: () => void;
 }) {
   const detail = [q.visitType, q.reason].filter(Boolean).join(" · ");
 
   return (
     <li className="px-3 py-2 animate-in fade-in duration-200">
-      <div className="flex items-center gap-2 min-h-[44px]">
+      <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
         <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
           {q.queue_number ?? q.id}
         </span>
@@ -977,17 +1300,111 @@ function WaitingRow({
             </span>
           ) : null}
         </div>
-        <span className="text-body-sm text-on-surface-variant shrink-0">
-          ~{q.est_wait_minutes}m
-        </span>
+        {q.est_wait_minutes != null && (
+          <span className="text-body-sm text-on-surface-variant shrink-0">
+            ~{q.est_wait_minutes}m
+          </span>
+        )}
+        {canTriage && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={onPullNurse}
+            className="shrink-0 text-label-sm cursor-pointer min-h-[36px]"
+          >
+            Pull for nurse
+          </Button>
+        )}
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={onRecall}
+          onClick={onCallOverride}
           className="shrink-0 text-label-sm cursor-pointer"
+          title="Call to doctor without nurse triage (desk override)"
         >
-          Recall
+          Call
+        </Button>
+      </div>
+    </li>
+  );
+}
+
+function WithNurseRow({
+  q,
+  canTriage,
+  onComplete,
+}: {
+  q: QueueWaiting;
+  canTriage: boolean;
+  onComplete: () => void;
+}) {
+  const detail = [q.visitType, q.reason].filter(Boolean).join(" · ");
+
+  return (
+    <li className="px-3 py-2 animate-in fade-in duration-200">
+      <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
+        <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
+          {q.queue_number ?? q.id}
+        </span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-body-md text-on-surface truncate block">
+            {q.name}
+          </span>
+          {detail ? (
+            <span className="text-label-sm text-on-surface-variant truncate block" title={detail}>
+              {detail}
+            </span>
+          ) : null}
+        </div>
+        {canTriage && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={onComplete}
+            className="shrink-0 text-label-sm cursor-pointer min-h-[36px]"
+          >
+            Vitals &amp; assign
+          </Button>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function ReadyRow({
+  q,
+  onCall,
+  canCall,
+}: {
+  q: QueueWaiting;
+  onCall: () => void;
+  canCall: boolean;
+}) {
+  return (
+    <li className="px-3 py-2 animate-in fade-in duration-200">
+      <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
+        <span className="font-mono-careq font-bold text-primary text-body-sm shrink-0 w-[4.5rem] truncate">
+          {q.queue_number ?? q.id}
+        </span>
+        <div className="flex-1 min-w-0">
+          <span className="font-semibold text-body-md text-on-surface truncate block">
+            {q.name}
+          </span>
+          {q.assignedDoctorLabel ? (
+            <span className="text-label-sm text-on-surface-variant truncate block">
+              {q.assignedDoctorLabel}
+            </span>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          disabled={!canCall}
+          onClick={onCall}
+          className="shrink-0 text-label-sm cursor-pointer min-h-[36px]"
+        >
+          Call to room
         </Button>
       </div>
     </li>

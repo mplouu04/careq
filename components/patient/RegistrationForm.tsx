@@ -29,11 +29,11 @@ import { cn } from "@/lib/utils";
 import { EmailVerifyField } from "@/components/patient/EmailVerifyField";
 import { ConsentLegalLinks } from "@/components/legal/ConsentLegalLinks";
 
-type RegStep = "personal" | "contact" | "consent";
+type RegStep = "about" | "contact";
 
 export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   const router = useRouter();
-  const [step, setStep] = useState<RegStep>("personal");
+  const [step, setStep] = useState<RegStep>("about");
   const [loading, setLoading] = useState(false);
   const [gender, setGender] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -121,16 +121,14 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   }
 
   function goNext() {
-    if (step === "personal" && validatePersonal()) setStep("contact");
-    else if (step === "contact" && validateContact()) setStep("consent");
+    if (step === "about" && validatePersonal()) setStep("contact");
   }
 
   function goBack() {
     setError(null);
     setFieldErrors({});
-    if (step === "contact") setStep("personal");
-    else if (step === "consent") setStep("contact");
-    else router.push("/visit");
+    if (step === "contact") setStep("about");
+    else router.push("/");
   }
 
   async function submitRegistration() {
@@ -140,7 +138,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
       return;
     }
     if (!validatePersonal()) {
-      setStep("personal");
+      setStep("about");
       return;
     }
     if (!validateContact()) {
@@ -212,18 +210,30 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
   }
 
   if (successPublicId) {
+    const primaryHref = redirectTo
+      ? redirectTo
+      : successVerifyToken
+        ? "/checkin?tab=walk-in"
+        : "/patient-search";
+    const primaryLabel = redirectTo?.includes("appointments")
+      ? "Continue to book"
+      : "Check in now";
     return (
       <SuccessCard
         reference="Registered"
-        message="Registration complete."
+        message="You're registered. You only need to do this once."
         primaryCta={{
-          label: "Check in now",
-          href: successVerifyToken ? "/checkin?tab=walk-in" : "/patient-search",
+          label: primaryLabel,
+          href: primaryHref,
         }}
-        secondaryCta={{
-          label: "Book appointment",
-          href: "/appointments",
-        }}
+        secondaryCta={
+          redirectTo
+            ? undefined
+            : {
+                label: "Book a visit",
+                href: "/appointments",
+              }
+        }
       />
     );
   }
@@ -232,15 +242,15 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
     <>
       <CareqCard className="overflow-hidden">
         <CareqCardHeader
-          title="Patient Information"
-          description="Complete each step to register."
+          title="Register once"
+          description="Two short steps. Returning families can skip this."
         >
           <p className="text-body-sm text-on-surface-variant mt-2">
             Been here before?{" "}
             <Link href="/patient-search" className="text-primary hover:underline font-medium">
-              Find Patient
+              Find your profile
             </Link>{" "}
-            first instead of registering again.
+            instead.
           </p>
         </CareqCardHeader>
 
@@ -248,19 +258,18 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
           <StepIndicator
             className="mb-6"
             steps={[
-              { id: "personal", label: "Personal" },
-              { id: "contact", label: "Contact" },
-              { id: "consent", label: "Consent" },
+              { id: "about", label: "About you" },
+              { id: "contact", label: "Contact & consent" },
             ]}
             currentStep={step}
           />
           {error && <FormError message={error} />}
 
           <div className="space-y-6">
-            {step === "personal" && (
+            {step === "about" && (
               <fieldset className="space-y-4">
                 <legend className="text-label-md font-semibold text-on-surface mb-2">
-                  Personal details
+                  About the patient
                 </legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -382,11 +391,11 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
             {step === "contact" && (
               <fieldset className="space-y-4">
                 <legend className="text-label-md font-semibold text-on-surface mb-2">
-                  Contact
+                  Contact & consent
                 </legend>
                 <div>
                   <FormLabel htmlFor="phone" required>
-                    Phone Number
+                    Phone number
                   </FormLabel>
                   <FormInput
                     id="phone"
@@ -450,14 +459,6 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                     </FormHelperText>
                   )}
                 </div>
-              </fieldset>
-            )}
-
-            {step === "consent" && (
-              <fieldset>
-                <legend className="text-label-md font-semibold text-on-surface mb-2">
-                  Consent
-                </legend>
                 <label className="flex items-start gap-2 text-body-sm text-foreground cursor-pointer min-h-[44px]">
                   <input
                     type="checkbox"
@@ -470,8 +471,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                   />
                   <span>
                     I understand my personal data will be used for clinic registration, appointments,
-                    queue management, and related transactional emails (verification and reminders), as
-                    described in the Privacy Notice.{" "}
+                    queue management, and related emails, as described in the Privacy Notice.{" "}
                     <span className="text-destructive">*</span>
                     <br />
                     <ConsentLegalLinks className="text-body-sm text-on-surface-variant" />
@@ -480,25 +480,24 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                 {fieldErrors.consent && (
                   <FormHelperText className="text-destructive">{fieldErrors.consent}</FormHelperText>
                 )}
-                <div className="mt-4 rounded-lg border border-outline-variant bg-surface-container-low p-3 text-body-sm text-on-surface-variant">
+                <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3 text-body-sm text-on-surface-variant">
                   <p>
                     <strong className="text-on-surface">
                       {firstName} {lastName}
                     </strong>
                   </p>
                   <p>
-                    DOB: {dob} · {phone}
+                    DOB: {dob}
                   </p>
-                  <p>{address}</p>
                 </div>
               </fieldset>
             )}
 
             <div className="flex flex-wrap gap-3 justify-end pt-2">
-              <Button type="button" variant="outline" onClick={goBack}>
-                {step === "personal" ? "Back" : "Previous"}
+              <Button type="button" variant="outline" onClick={goBack} className="min-h-11">
+                {step === "about" ? "Back" : "Previous"}
               </Button>
-              {step !== "consent" ? (
+              {step === "about" ? (
                 <CareqButton type="button" onClick={goNext}>
                   Next
                 </CareqButton>
@@ -509,7 +508,7 @@ export function RegistrationForm({ redirectTo }: { redirectTo?: string }) {
                   onClick={submitRegistration}
                   className="cursor-pointer"
                 >
-                  {loading ? "Registering..." : "Complete Registration"}
+                  {loading ? "Registering…" : "Complete registration"}
                 </CareqButton>
               )}
             </div>

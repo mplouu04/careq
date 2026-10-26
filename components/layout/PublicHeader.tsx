@@ -6,32 +6,37 @@ import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/** Trimmed patient nav — Home / Book / Track / My visits */
 const NAV_LINKS = [
-  { href: "/visit", label: "Check in" },
-  { href: "/appointments", label: "Book" },
-  { href: "/my-appointments", label: "My appointments" },
-  { href: "/status", label: "Queue status" },
+  { href: "/", label: "Home" },
+  { href: "/patient-search?intent=book", label: "Book", match: "/appointments" },
+  { href: "/status", label: "Track" },
+  { href: "/my-appointments", label: "My visits" },
 ] as const;
 
-function isNavActive(href: string, pathname: string): boolean {
-  if (href === "/visit") {
+function isNavActive(
+  href: string,
+  pathname: string,
+  match?: string
+): boolean {
+  if (href === "/") {
+    return pathname === "/";
+  }
+  if (match && pathname.startsWith(match)) return true;
+  if (href.startsWith("/patient-search")) {
     return (
-      pathname === "/visit" ||
       pathname.startsWith("/patient-search") ||
-      pathname.startsWith("/registration") ||
-      (pathname.startsWith("/checkin") && !pathname.startsWith("/appointments"))
+      pathname.startsWith("/appointments") ||
+      pathname.startsWith("/registration")
     );
-  }
-  if (href === "/appointments") {
-    return pathname.startsWith("/appointments");
-  }
-  if (href === "/my-appointments") {
-    return pathname.startsWith("/my-appointments");
   }
   if (href === "/status") {
     return pathname === "/status" || pathname.startsWith("/status/");
   }
-  return pathname === href;
+  if (href === "/my-appointments") {
+    return pathname.startsWith("/my-appointments");
+  }
+  return pathname === href || pathname.startsWith(href);
 }
 
 export function PublicHeader() {
@@ -58,10 +63,10 @@ export function PublicHeader() {
     return () => document.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  const navLinkClass = (href: string) =>
+  const navLinkClass = (active: boolean) =>
     cn(
       "text-body-sm md:text-body-md font-medium transition-colors py-2 md:py-0 md:pb-1 min-h-[44px] md:min-h-0 flex items-center",
-      isNavActive(href, pathname)
+      active
         ? "text-primary font-bold md:border-b-2 md:border-primary"
         : "text-on-surface-variant hover:text-primary"
     );
@@ -77,13 +82,14 @@ export function PublicHeader() {
             className="hidden md:flex items-center gap-md xl:gap-lg"
             aria-label="Main"
           >
-            {NAV_LINKS.map(({ href, label }) => {
-              const active = isNavActive(href, pathname);
+            {NAV_LINKS.map(({ href, label, ...rest }) => {
+              const match = "match" in rest ? rest.match : undefined;
+              const active = isNavActive(href, pathname, match);
               return (
                 <Link
                   key={href}
                   href={href}
-                  className={navLinkClass(href)}
+                  className={navLinkClass(active)}
                   aria-current={active ? "page" : undefined}
                 >
                   {label}
@@ -94,6 +100,12 @@ export function PublicHeader() {
         </div>
 
         <div className="hidden sm:flex items-center gap-md shrink-0">
+          <Link
+            href="/checkin"
+            className="inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg text-body-md font-semibold text-primary-foreground bg-primary hover:opacity-95 transition-opacity"
+          >
+            I&apos;m here
+          </Link>
           <Link
             href="/login"
             className="inline-flex items-center justify-center min-h-[44px] px-4 rounded-lg text-body-md font-medium text-primary border border-outline-variant hover:bg-surface-container-low transition-colors"
@@ -122,19 +134,26 @@ export function PublicHeader() {
           className="md:hidden border-t border-border bg-card flex flex-col"
           aria-label="Mobile"
         >
-          {NAV_LINKS.map(({ href, label }) => {
-            const active = isNavActive(href, pathname);
+          {NAV_LINKS.map(({ href, label, ...rest }) => {
+            const match = "match" in rest ? rest.match : undefined;
+            const active = isNavActive(href, pathname, match);
             return (
               <Link
                 key={href}
                 href={href}
-                className={cn("px-4 border-b border-border", navLinkClass(href))}
+                className={cn("px-4 border-b border-border", navLinkClass(active))}
                 aria-current={active ? "page" : undefined}
               >
                 {label}
               </Link>
             );
           })}
+          <Link
+            href="/checkin"
+            className="px-4 py-3 text-body-md font-semibold text-primary border-b border-border min-h-[44px] flex items-center"
+          >
+            I&apos;m here
+          </Link>
           <Link
             href="/login"
             className="px-4 py-3 text-body-md text-on-surface-variant hover:text-primary min-h-[44px] flex items-center sm:hidden"

@@ -541,8 +541,14 @@ export function QueueBoard({ screenId }: { screenId?: string }) {
                   ) : (
                     <div className="patient-details min-w-0">
                       <div className="appointment-time flex flex-wrap items-center gap-1">
-                        <span className="position-badge">{ordinal(pos)} in line</span>
-                        {display.show_wait_time && (
+                        <span className="position-badge">
+                          {q.stage === "with_nurse"
+                            ? "With nurse"
+                            : q.stage === "ready"
+                              ? "Ready for doctor"
+                              : `${ordinal(pos)} in line`}
+                        </span>
+                        {display.show_wait_time && q.stage !== "with_nurse" && (
                           <span className="est-wait-badge">Est. wait ~{estWait} min</span>
                         )}
                         {display.show_priority && pri && (
