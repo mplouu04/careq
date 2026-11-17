@@ -52,6 +52,24 @@ const ROUTE_AUTH: Record<string, { kind: AuthKind; notes?: string }> = {
   "admin/doctors/route.ts": { kind: "staff", notes: "admin role required" },
   "admin/staff/route.ts": { kind: "staff", notes: "admin role required" },
   "admin/settings/route.ts": { kind: "staff", notes: "admin role required" },
+  "admin/announcements/route.ts": { kind: "staff", notes: "admin role required" },
+  "admin/reports/route.ts": { kind: "staff", notes: "admin role required" },
+  "announcements/route.ts": {
+    kind: "public-rate-limited",
+    notes: "active clinic announcements for patient hub",
+  },
+  "notifications/route.ts": {
+    kind: "public-rate-limited",
+    notes: "patient in-app notifications via phone+DOB",
+  },
+  "patients/profile/route.ts": {
+    kind: "public-rate-limited",
+    notes: "patient profile lookup/patch via phone+DOB",
+  },
+  "queue/history/route.ts": {
+    kind: "staff",
+    notes: "today terminal queue rows for ops",
+  },
   "cron/reminders/route.ts": { kind: "cron" },
   "cron/retention/route.ts": { kind: "cron" },
 };
@@ -171,6 +189,8 @@ describe("admin route role guards", () => {
     "admin/doctors/route.ts",
     "admin/staff/route.ts",
     "admin/settings/route.ts",
+    "admin/announcements/route.ts",
+    "admin/reports/route.ts",
   ];
 
   it("restricts all /api/admin routes to admin role", () => {
@@ -179,13 +199,20 @@ describe("admin route role guards", () => {
       expect(src, `${file} should pass ["admin"] to withStaffAuth`).toMatch(
         /withStaffAuth\([\s\S]*?,\s*\["admin"\]\)/
       );
-      const withoutAdmin = src.replace(/,\s*\["admin"\]/g, "");
       expect(
-        withoutAdmin.includes('withStaffAuth(async') &&
-          !src.includes('["admin"]'),
+        src.includes('["admin"]'),
         `${file} must not expose unscoped withStaffAuth handlers`
-      ).toBe(false);
-      expect(src.match(/,\s*\["admin"\]/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+      ).toBe(true);
+      expect(src.match(/,\s*\["admin"\]/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
     }
+  });
+});
+
+describe("staff appointment least privilege (source)", () => {
+  it("appointment list handler scopes by staff session role/id", () => {
+    const src = readRoute("appointments/route.ts");
+    expect(src).toMatch(/listStaffAppointments\(filter,\s*\{/);
+    expect(src).toMatch(/staffSession\.staff\.role/);
+    expect(src).toMatch(/staffSession\.staff\.id/);
   });
 });

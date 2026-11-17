@@ -627,19 +627,44 @@ function formatTime12h(time: string): string {
   return `${h12}:${m} ${ampm}`;
 }
 
-export async function listStaffAppointments(filter: string) {
+export type StaffAppointmentViewer = {
+  role: string;
+  staffId: string;
+};
+
+/** Patient fields returned to doctors (no phone / DOB / address / email). */
+const DOCTOR_APPOINTMENT_SELECT = `checkin_id, reference_number, scheduled_time, appointment_date, status, approval_status, patient_id, doctor_id,
+       patients(first_name, last_name),
+       staff:doctor_id(first_name, last_name),
+       appointment_types(name)`;
+
+/** Ops roles may see phone for front-desk contact. */
+const OPS_APPOINTMENT_SELECT = `checkin_id, reference_number, scheduled_time, appointment_date, status, approval_status, patient_id, doctor_id,
+       patients(first_name, last_name, phone),
+       staff:doctor_id(first_name, last_name),
+       appointment_types(name)`;
+
+/**
+ * Staff appointment list with server-side least privilege:
+ * - doctor: only rows where doctor_id = self; no patient phone
+ * - admin / receptionist / nurse: clinic-wide list (ops workflows)
+ */
+export async function listStaffAppointments(
+  filter: string,
+  viewer: StaffAppointmentViewer
+) {
   const supabase = createAdminClient();
   const today = getClinicTodayYmd();
+  const isDoctor = viewer.role === "doctor";
 
   let query = supabase
     .from("checkins")
-    .select(
-      `checkin_id, reference_number, scheduled_time, appointment_date, status, approval_status, patient_id, doctor_id,
-       patients(first_name, last_name, phone),
-       staff:doctor_id(first_name, last_name),
-       appointment_types(name)`
-    )
+    .select(isDoctor ? DOCTOR_APPOINTMENT_SELECT : OPS_APPOINTMENT_SELECT)
     .eq("type_id", CHECKIN_TYPE.APPOINTMENT);
+
+  if (isDoctor) {
+    query = query.eq("doctor_id", viewer.staffId);
+  }
 
   if (filter === "no_show") {
     query = query.eq("status", "no_show").order("appointment_date", { ascending: false }).limit(100);
@@ -656,7 +681,45 @@ export async function listStaffAppointments(filter: string) {
   }
 
   const { data, error } = await query;
-  return { appointments: data ?? [], error };
+  if (error) {
+    return { appointments: [] as unknown[], error };
+  }
+
+  const appointments = isDoctor
+    ? (data ?? []).map(sanitizeDoctorAppointmentRow)
+    : (data ?? []);
+
+  return { appointments, error: null };
+}
+
+/** Defense in depth: strip any accidental sensitive patient fields for doctor viewers. */
+export function sanitizeDoctorAppointmentRow(row: Record<string, unknown>) {
+  const patientsRaw = row.patients;
+  const patient = (Array.isArray(patientsRaw) ? patientsRaw[0] : patientsRaw) as
+    | Record<string, unknown>
+    | null
+    | undefined;
+
+  const safePatient = patient
+    ? {
+        first_name: patient.first_name ?? null,
+        last_name: patient.last_name ?? null,
+      }
+    : null;
+
+  return {
+    checkin_id: row.checkin_id,
+    reference_number: row.reference_number,
+    scheduled_time: row.scheduled_time,
+    appointment_date: row.appointment_date,
+    status: row.status,
+    approval_status: row.approval_status,
+    patient_id: row.patient_id,
+    doctor_id: row.doctor_id,
+    patients: safePatient,
+    staff: row.staff,
+    appointment_types: row.appointment_types,
+  };
 }
 
 /** Allowed staff appointment status transitions (current → action → next). */

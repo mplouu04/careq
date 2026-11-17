@@ -42,7 +42,14 @@ test.describe("Public pages smoke", () => {
 
   test("queue status lookup page loads", async ({ page }) => {
     await page.goto("/status");
-    await expect(page.getByRole("button", { name: /check status|status/i })).toBeVisible();
+    // Capstone copy: track-line lookup (not legacy "Check status")
+    await expect(page.getByRole("heading", { name: /track my line/i })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByLabel(/your code/i)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /see my place in line/i })
+    ).toBeVisible();
   });
 
   test("appointments booking page loads", async ({ page }) => {

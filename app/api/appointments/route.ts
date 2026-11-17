@@ -37,7 +37,18 @@ const AppointmentLookupSchema = z.union([
 
 const staffListHandler = withStaffAuth(async (request: Request) => {
   const filter = new URL(request.url).searchParams.get("filter") ?? "upcoming";
-  const { appointments, error } = await listStaffAppointments(filter);
+  const staffSession = (request as Request & {
+    staffSession?: { userId: string; staff: { id: string; role: string } };
+  }).staffSession;
+
+  if (!staffSession?.staff) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { appointments, error } = await listStaffAppointments(filter, {
+    role: staffSession.staff.role,
+    staffId: staffSession.staff.id,
+  });
   if (error) {
     captureException(error, { route: "/api/appointments", filter });
     return NextResponse.json({ error: "Failed to load appointments" }, { status: 500 });

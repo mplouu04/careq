@@ -430,8 +430,10 @@ describe("queue.service callNextPatient", () => {
   });
 
   it("returns 409 when patient is already called", async () => {
+    // callOrRecallPatient tries ready_for_doctor then waiting, then status lookup
     mockFrom
-      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
       .mockReturnValueOnce(chain({ data: { status: "in_progress" }, error: null }));
 
     const { callNextPatient } = await import("../lib/services/queue.service");
@@ -448,7 +450,8 @@ describe("queue.service callNextPatient", () => {
 
   it("returns 409 when queue entry is not waiting", async () => {
     mockFrom
-      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
       .mockReturnValueOnce(chain({ data: { status: "completed" }, error: null }));
 
     const { callNextPatient } = await import("../lib/services/queue.service");
@@ -473,7 +476,8 @@ describe("queue.service recallPatient", () => {
 
   it("returns 409 when recall target is already called", async () => {
     mockFrom
-      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
       .mockReturnValueOnce(chain({ data: { status: "called" }, error: null }));
 
     const { recallPatient } = await import("../lib/services/queue.service");
@@ -490,7 +494,8 @@ describe("queue.service recallPatient", () => {
 
   it("returns 409 when recall target is not waiting", async () => {
     mockFrom
-      .mockReturnValueOnce(chain({ data: null, error: { message: "stale" } }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
+      .mockReturnValueOnce(chain({ data: null, error: null }))
       .mockReturnValueOnce(chain({ data: { status: "cancelled" }, error: null }));
 
     const { recallPatient } = await import("../lib/services/queue.service");
@@ -540,7 +545,8 @@ describe("queue.service markNoShow", () => {
     const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
 
     expect(result).toEqual({
-      error: "Only waiting, called, or in-progress patients can be marked no-show",
+      error:
+        "Only waiting, nurse, ready, called, or in-progress patients can be marked no-show",
       status: 409,
     });
   });
@@ -554,7 +560,8 @@ describe("queue.service markNoShow", () => {
     const result = await markNoShow({ queueId: 1, userId: "user-1", ip: "127.0.0.1" });
 
     expect(result).toEqual({
-      error: "Only waiting, called, or in-progress patients can be marked no-show",
+      error:
+        "Only waiting, nurse, ready, called, or in-progress patients can be marked no-show",
       status: 400,
     });
   });

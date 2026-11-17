@@ -3,14 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { withRateLimit } from "@/lib/api/with-auth";
 import { getAvgServiceTime } from "@/lib/services/queue-metrics";
 import { maskPatientName } from "@/lib/services/patient.service";
-import { format } from "date-fns";
 import { getClinicDayEndIso, getClinicDayStartIso, getClinicTodayYmd } from "@/lib/datetime";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { requireStaff } from "@/lib/auth";
 import { captureException } from "@/lib/observability";
-import { isCalledLikeStatus } from "@/lib/queue-status";
 import { getRoomNameMap, resolveRoomName } from "@/lib/rooms-map";
-import { getNoShowGraceMinutes } from "@/lib/clinic-settings";
+import { listStaffQueue } from "@/lib/services/queue-read.service";
 
 export const dynamic = "force-dynamic";
 
@@ -204,164 +202,24 @@ async function publicQueueRefHandler(request: Request) {
 }
 
 async function staffQueueHandler() {
-  const today = getClinicTodayYmd();
-  const dayStart = getClinicDayStartIso(today);
-  const dayEnd = getClinicDayEndIso(today);
-  const supabase = createAdminClient();
-
   const auth = await requireStaff();
   if ("error" in auth) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  // Round-trip 1: rooms, queue join, avg service time, and grace setting
-  const [roomMap, queueRes, avgServiceTime, graceMinutes] = await Promise.all([
-    getRoomNameMap(supabase),
-    supabase
-      .from("queue")
-      .select(
-        `id, queue_number, status, priority, called_at, present_at, room_id, skip_count, created_at, waiting_since,
-         bp_systolic, bp_diastolic, temperature_c, triage_notes, assigned_doctor_id,
-         checkins!inner(
-           checkin_id, reference_number, reason, type_id, doctor_id,
-           patients(first_name, last_name),
-           appointment_types(name),
-           staff:doctor_id(first_name, last_name)
-         )`
-      )
-      .eq("clinic_date", today)
-      .order("skip_count", { ascending: true })
-      .order("waiting_since", { ascending: true })
-      .order("id", { ascending: true }),
-    getAvgServiceTime(dayStart, dayEnd, supabase),
-    getNoShowGraceMinutes(),
-  ]);
+  // Identity/role from verified session only — never from query/body.
+  const { appointment, error } = await listStaffQueue({
+    role: auth.session.staff.role,
+    staffId: auth.session.staff.id,
+  });
 
-  if (queueRes.error) {
-    captureException(queueRes.error, { route: "/api/queue" });
+  if (error) {
+    captureException(error, { route: "/api/queue" });
     return NextResponse.json({ error: "Failed to load queue" }, { status: 500 });
-  }
-
-  const rows = queueRes.data ?? [];
-
-  let waitingPosition = 0;
-  let readyPosition = 0;
-  const waiting = [];
-  const withNurse = [];
-  const readyForDoctor = [];
-  const inProgress = [];
-  const completed = [];
-  const noShow = [];
-
-  for (const row of rows) {
-    const checkinRaw = Array.isArray(row.checkins) ? row.checkins[0] : row.checkins;
-    const patientRaw = checkinRaw?.patients;
-    const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
-    const apptTypeRaw = checkinRaw?.appointment_types;
-    const apptType = (Array.isArray(apptTypeRaw) ? apptTypeRaw[0] : apptTypeRaw) as
-      | { name: string }
-      | null
-      | undefined;
-    const doctorRaw = checkinRaw?.staff;
-    const doctor = (Array.isArray(doctorRaw) ? doctorRaw[0] : doctorRaw) as
-      | { first_name: string; last_name: string }
-      | null
-      | undefined;
-
-    const name = patient ? `${patient.first_name} ${patient.last_name}` : "";
-    const visitType = apptType?.name ?? "";
-    const reason = (checkinRaw?.reason as string | null | undefined) ?? "";
-    const assignedDoctorId =
-      (row.assigned_doctor_id as string | null | undefined) ??
-      (checkinRaw?.doctor_id as string | null | undefined) ??
-      null;
-    const assignedDoctorLabel = doctor
-      ? `Dr. ${doctor.first_name} ${doctor.last_name}`
-      : "";
-
-    const baseLounge = {
-      id: row.queue_number,
-      queueId: row.id,
-      queue_number: row.queue_number,
-      name,
-      time: row.created_at ? format(new Date(row.created_at), "hh:mm a") : "",
-      priority: row.priority,
-      visitType,
-      reason,
-      skip_count: row.skip_count ?? 0,
-      assignedDoctorId,
-      assignedDoctorLabel,
-      bp_systolic: row.bp_systolic ?? null,
-      bp_diastolic: row.bp_diastolic ?? null,
-      temperature_c: row.temperature_c ?? null,
-      triage_notes: row.triage_notes ?? null,
-    };
-
-    if (row.status === "waiting") {
-      waitingPosition++;
-      waiting.push({
-        ...baseLounge,
-        position: waitingPosition,
-        est_wait_minutes: waitingPosition * avgServiceTime,
-      });
-    } else if (row.status === "with_nurse") {
-      withNurse.push(baseLounge);
-    } else if (row.status === "ready_for_doctor") {
-      readyPosition++;
-      readyForDoctor.push({
-        ...baseLounge,
-        position: readyPosition,
-        est_wait_minutes: readyPosition * avgServiceTime,
-      });
-    } else if (isCalledLikeStatus(row.status)) {
-      inProgress.push({
-        id: row.queue_number,
-        queueId: row.id,
-        queue_number: row.queue_number,
-        name,
-        time: row.called_at ? format(new Date(row.called_at), "hh:mm a") : "",
-        doctor: doctor ? `Dr. ${doctor.first_name} ${doctor.last_name}` : "",
-        room: resolveRoomName(row.room_id, roomMap),
-        status: row.status,
-        called_at: row.called_at,
-        present_at: row.present_at ?? null,
-      });
-    } else if (row.status === "no_show") {
-      noShow.push({
-        id: row.queue_number,
-        queueId: row.id,
-        queue_number: row.queue_number,
-        name,
-        time: row.created_at
-          ? format(new Date(row.created_at), "hh:mm a")
-          : "",
-      });
-    } else if (row.status === "completed") {
-      completed.push({
-        id: row.queue_number,
-        queueId: row.id,
-        name,
-        time: row.created_at
-          ? format(new Date(row.created_at), "hh:mm a")
-          : "",
-      });
-    }
   }
 
   return NextResponse.json({
     success: true,
-    appointment: {
-      waiting,
-      withNurse,
-      readyForDoctor,
-      inProgress,
-      completed,
-      noShow,
-      avg_service_time: avgServiceTime,
-      no_show_grace_minutes: graceMinutes,
-    },
+    appointment,
   });
 }

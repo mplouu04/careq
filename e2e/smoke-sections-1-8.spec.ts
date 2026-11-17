@@ -95,16 +95,24 @@ test.describe("Smoke §4 — Check-In", () => {
 
 test.describe("Smoke §5 — Queue Status", () => {
   test("5.1 status lookup page with queue param support", async ({ page }) => {
+    // Bare lookup form (capstone copy)
+    await page.goto("/status");
+    await expect(page.getByRole("heading", { name: /track my line/i })).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByLabel(/your code/i)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /see my place in line/i })
+    ).toBeVisible();
+
+    // ?queue= auto-navigates to /status/<code> (patient deep-link workflow)
     await page.goto("/status?queue=APPT-1");
-    await expect(page.getByRole("button", { name: /check status|status/i })).toBeVisible();
-    const input = page.locator('input[name="queue"], input[placeholder*="queue" i]').first();
-    if (await input.isVisible()) {
-      await expect(input).toHaveValue(/APPT/i);
-    }
+    await page.waitForURL(/\/status\/APPT-1/i, { timeout: 15000 });
+    expect(page.url()).toMatch(/\/status\/APPT-1/i);
   });
 
   test("5.6 invalid queue number shows not found", async ({ page }) => {
-    await page.route(/\/api\/queue/, async (route) => {
+    await page.route(/\/api\/queue\?ref=/, async (route) => {
       await route.fulfill({
         status: 404,
         contentType: "application/json",
@@ -112,7 +120,10 @@ test.describe("Smoke §5 — Queue Status", () => {
       });
     });
     await page.goto("/status/INVALID-99999");
-    await expect(page.getByText(/queue entry not found/i)).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/couldn.?t find that code/i)).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(page.getByRole("link", { name: /try another code/i })).toBeVisible();
   });
 });
 

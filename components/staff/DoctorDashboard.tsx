@@ -26,15 +26,17 @@ type QueueSlice = {
   queue_number?: string;
   status?: string;
   assignedDoctorId?: string | null;
+  room?: string;
+  time?: string;
 };
 
 export function DoctorDashboard({ staff }: { staff: StaffProfile }) {
   const today = getClinicTodayYmd();
-  const doctorId = staff.id;
 
   const appointmentsQuery = useQuery({
-    queryKey: [...queryKeys.admin.all, "doctor-appts", doctorId, today],
+    queryKey: [...queryKeys.admin.all, "doctor-appts", staff.id, today],
     queryFn: async () => {
+      // Server already scopes appointments to this doctor (no phone).
       const d = await adminApi.appointments("upcoming");
       return (d.appointments ?? []) as Appointment[];
     },
@@ -42,30 +44,27 @@ export function DoctorDashboard({ staff }: { staff: StaffProfile }) {
   });
 
   const queueQuery = useQuery({
-    queryKey: queryKeys.queue.staff(),
+    queryKey: [...queryKeys.queue.staff(), "doctor", staff.id],
     queryFn: () => queueDataApi.staff(),
     refetchInterval: 15_000,
   });
 
+  // Appointments API is doctor-scoped; keep today-only panel filter (not auth).
   const myAppointments = useMemo(() => {
     const rows = appointmentsQuery.data ?? [];
-    return rows.filter((a) => {
-      const apptDate = a.appointment_date?.slice(0, 10);
-      if (apptDate !== today) return false;
-      return a.doctor_id === doctorId;
-    });
-  }, [appointmentsQuery.data, doctorId, today]);
+    return rows.filter((a) => a.appointment_date?.slice(0, 10) === today);
+  }, [appointmentsQuery.data, today]);
 
+  // Queue API is doctor-scoped server-side — do not use client filter as auth.
   const myQueue = useMemo(() => {
     const appt = queueQuery.data?.appointment;
     if (!appt) return [];
-    const buckets: QueueSlice[] = [
+    return [
       ...((appt.withNurse as QueueSlice[]) ?? []),
       ...((appt.readyForDoctor as QueueSlice[]) ?? []),
       ...((appt.inProgress as QueueSlice[]) ?? []),
     ];
-    return buckets.filter((q) => q.assignedDoctorId === doctorId);
-  }, [queueQuery.data, doctorId]);
+  }, [queueQuery.data]);
 
   return (
     <div className="space-y-6">
@@ -83,7 +82,11 @@ export function DoctorDashboard({ staff }: { staff: StaffProfile }) {
           <Calendar className="h-5 w-5 text-primary" aria-hidden />
           Today&apos;s appointments
         </h2>
-        {myAppointments.length === 0 ? (
+        {appointmentsQuery.isLoading ? (
+          <p className="text-body-sm text-on-surface-variant">Loading appointments…</p>
+        ) : appointmentsQuery.isError ? (
+          <p className="text-body-sm text-destructive">Could not load appointments.</p>
+        ) : myAppointments.length === 0 ? (
           <EmptyState
             icon={Calendar}
             title="No appointments today"
@@ -119,7 +122,11 @@ export function DoctorDashboard({ staff }: { staff: StaffProfile }) {
           <Stethoscope className="h-5 w-5 text-primary" aria-hidden />
           Queue — your patients
         </h2>
-        {myQueue.length === 0 ? (
+        {queueQuery.isLoading ? (
+          <p className="text-body-sm text-on-surface-variant">Loading queue…</p>
+        ) : queueQuery.isError ? (
+          <p className="text-body-sm text-destructive">Could not load queue.</p>
+        ) : myQueue.length === 0 ? (
           <EmptyState
             icon={Stethoscope}
             title="No patients assigned"
@@ -129,8 +136,18 @@ export function DoctorDashboard({ staff }: { staff: StaffProfile }) {
           <ul className="space-y-2">
             {myQueue.map((q) => (
               <li key={String(q.queueId ?? q.id)}>
-                <CareqCard className="p-4 flex justify-between">
-                  <span className="font-mono font-semibold">{q.queue_number ?? q.id}</span>
+                <CareqCard className="p-4 flex justify-between gap-4">
+                  <div>
+                    <span className="font-mono font-semibold">
+                      {q.queue_number ?? q.id}
+                    </span>
+                    {q.status ? (
+                      <p className="text-body-sm text-on-surface-variant capitalize mt-1">
+                        {String(q.status).replace(/_/g, " ")}
+                        {q.room ? ` · ${q.room}` : ""}
+                      </p>
+                    ) : null}
+                  </div>
                   <span className="text-body-sm">{q.name ?? "Patient"}</span>
                 </CareqCard>
               </li>
