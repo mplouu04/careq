@@ -68,13 +68,17 @@ test.describe("Staff queue workflow (live)", () => {
 test.describe("Public booking and check-in UI (always)", () => {
   test("appointment booking wizard exposes doctor and type steps", async ({ page }) => {
     await page.goto("/appointments");
-    await expect(page.getByRole("heading", { name: /book an appointment/i })).toBeVisible();
-    await expect(page.getByText(/select|doctor|appointment/i).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /book a visit/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /select a doctor and visit type/i })
+    ).toBeVisible();
+    await expect(page.getByText(/visit type/i).first()).toBeVisible();
   });
 
   test("check-in page supports appointment and walk-in tabs", async ({ page }) => {
     await page.goto("/checkin");
-    await expect(page.getByText(/appointment|walk-in/i).first()).toBeVisible();
+    await expect(page.getByRole("tab", { name: /i have a booking/i })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /walk-in today/i })).toBeVisible();
   });
 
   test("my-appointments lookup form validates empty submit", async ({ page }) => {

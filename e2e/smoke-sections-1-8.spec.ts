@@ -9,24 +9,27 @@ const LIVE_AUTH =
 
 test.describe("Smoke §1 — Registration", () => {
   test("1.1 visit fork shows returning and first-visit options", async ({ page }) => {
+    // /visit redirects to Patient Hub — returning vs first-time entry lives there.
     await page.goto("/visit");
-    await expect(page.getByRole("link", { name: /been here before/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /first visit/i })).toBeVisible();
+    await page.waitForURL(/\/$/);
+    await expect(page.getByRole("link", { name: /book a visit/i }).first()).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /i.?m here\s*[—-]\s*check in/i })
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /register once/i })).toBeVisible();
   });
 
   test("1.2 first visit link opens registration wizard", async ({ page }) => {
-    await page.goto("/visit");
+    await page.goto("/");
     await page.waitForLoadState("networkidle");
-    const registrationLink = page.getByRole("link", {
-      name: /first visit.*quick registration/i,
-    });
+    const registrationLink = page.getByRole("link", { name: /register once/i });
     await registrationLink.scrollIntoViewIfNeeded();
     await Promise.all([
       page.waitForURL(/\/registration/, { timeout: 15000 }),
       registrationLink.click(),
     ]);
     await expect(page.getByRole("button", { name: /next/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /visit/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /back/i })).toBeVisible();
   });
 
   test("1.3 empty required fields block advance", async ({ page }) => {
@@ -42,10 +45,15 @@ test.describe("Smoke §1 — Registration", () => {
     await page.getByLabel(/date of birth/i).fill("1990-01-01");
     await page.getByLabel(/gender/i).selectOption({ index: 1 });
     await page.getByRole("button", { name: /next/i }).click();
+    await expect(page.getByRole("button", { name: /complete registration/i })).toBeVisible();
     await page.getByLabel(/phone/i).fill("0912345678");
     await page.getByLabel(/^address/i).fill("123 Test Area St");
-    await page.getByRole("button", { name: /next/i }).click();
-    await expect(page.getByText(/11-digit mobile number starting with 09/i)).toBeVisible();
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /complete registration/i }).click();
+    // Schema error (not the always-visible helper hint)
+    await expect(
+      page.getByText(/enter an 11-digit mobile number starting with 09/i)
+    ).toBeVisible();
   });
 });
 
@@ -66,8 +74,11 @@ test.describe("Smoke §2 — Patient Search", () => {
 test.describe("Smoke §3 — Appointment Booking", () => {
   test("3.1 booking form loads for guest", async ({ page }) => {
     await page.goto("/appointments");
-    await expect(page.getByRole("heading", { name: /book an appointment/i })).toBeVisible();
-    await expect(page.getByLabel(/doctor/i).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /book a visit/i })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /select a doctor and visit type/i })
+    ).toBeVisible();
+    await expect(page.getByText(/visit type/i).first()).toBeVisible();
   });
 
   test("3.3 calendar limits booking to 30 days ahead", async ({ page }) => {
@@ -83,13 +94,15 @@ test.describe("Smoke §3 — Appointment Booking", () => {
 test.describe("Smoke §4 — Check-In", () => {
   test("4.1 appointment and walk-in tabs", async ({ page }) => {
     await page.goto("/checkin");
-    await expect(page.getByRole("tab", { name: /^appointment$/i })).toBeVisible();
-    await expect(page.getByRole("tab", { name: /walk-in/i })).toBeVisible();
+    await expect(
+      page.getByRole("tab", { name: /i have a booking/i })
+    ).toBeVisible();
+    await expect(page.getByRole("tab", { name: /walk-in today/i })).toBeVisible();
   });
 
   test("4.2 walk-in tab disabled without verifyToken", async ({ page }) => {
     await page.goto("/checkin");
-    await expect(page.getByRole("tab", { name: /walk-in/i })).toBeDisabled();
+    await expect(page.getByRole("tab", { name: /walk-in today/i })).toBeDisabled();
   });
 });
 

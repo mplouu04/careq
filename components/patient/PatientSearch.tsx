@@ -269,7 +269,11 @@ export function PatientSearch() {
   return (
     <>
       <CareqCard className="overflow-hidden w-full">
-        <form onSubmit={handleVerify} className="px-5 sm:px-6 py-5 space-y-4">
+        <form
+          onSubmit={handleVerify}
+          noValidate
+          className="px-5 sm:px-6 py-5 space-y-4"
+        >
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>

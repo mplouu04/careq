@@ -11,8 +11,11 @@ test.describe("Public pages smoke", () => {
   });
 
   test("visit fork page shows registration options", async ({ page }) => {
+    // Legacy /visit redirects to Patient Hub with first-time registration entry.
     await page.goto("/visit");
-    await expect(page.getByRole("link", { name: /first visit|registration/i })).toBeVisible();
+    await page.waitForURL(/\/$/);
+    await expect(page.getByRole("link", { name: /register once/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /book a visit/i })).toBeVisible();
   });
 
   test("registration page loads wizard", async ({ page }) => {
@@ -54,7 +57,7 @@ test.describe("Public pages smoke", () => {
 
   test("appointments booking page loads", async ({ page }) => {
     await page.goto("/appointments");
-    await expect(page.getByRole("heading", { name: /book an appointment/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /book a visit/i })).toBeVisible();
   });
 
   test("queue display board loads", async ({ page }) => {
