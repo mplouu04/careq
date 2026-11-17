@@ -154,6 +154,33 @@ export const PatientSearchSchema = z.object({
   dob: z.string().optional(),
 });
 
+export const PatientProfileLookupSchema = z.object({
+  action: z.literal("lookup"),
+  phone: z.string().min(1),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export const PatientProfilePatchSchema = z.object({
+  action: z.literal("patch"),
+  phone: z.string().min(1),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  email: PatientEmailSchema.optional(),
+  address: PatientAddressSchema.optional(),
+});
+
+export const PatientNotificationsLookupSchema = z.object({
+  action: z.literal("lookup"),
+  phone: z.string().min(1),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+
+export const PatientNotificationReadSchema = z.object({
+  action: z.literal("mark_read"),
+  phone: z.string().min(1),
+  dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  notificationId: z.coerce.number().int().positive(),
+});
+
 export const PatientVerifySchema = z.object({
   dob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be YYYY-MM-DD"),
   phoneLast7: z

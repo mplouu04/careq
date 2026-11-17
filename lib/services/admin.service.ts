@@ -11,7 +11,7 @@ export async function listStaff() {
   const supabase = createAdminClient();
   const { data } = await supabase
     .from("staff")
-    .select("id, first_name, last_name, email, role, is_active, created_at")
+    .select("id, first_name, last_name, email, role, specialization, is_active, created_at")
     .order("last_name");
   return data ?? [];
 }
@@ -22,6 +22,7 @@ export async function registerStaff(params: {
   email: string;
   password: string;
   role: string;
+  specialization?: string | null;
   requestingUserId: string;
   ip: string;
 }) {
@@ -63,12 +64,18 @@ export async function registerStaff(params: {
     return { error: authError.message, status: 500 as const };
   }
 
+  const specialization =
+    params.specialization != null && role === "doctor"
+      ? sanitize(String(params.specialization), 100) || null
+      : null;
+
   const { error: staffError } = await supabase.from("staff").upsert({
     id: authUser.user.id,
     first_name: params.firstName.trim(),
     last_name: params.lastName.trim(),
     email: emailNorm,
     role,
+    specialization,
     is_active: true,
   });
 
@@ -105,6 +112,7 @@ export async function updateStaff(params: {
   lastName: string;
   email: string;
   role: string;
+  specialization?: string | null;
   requestingUserId: string;
   ip: string;
 }) {
@@ -134,6 +142,13 @@ export async function updateStaff(params: {
     return { error: "Email already in use by another staff member", status: 409 as const };
   }
 
+  const specialization =
+    params.specialization !== undefined
+      ? role === "doctor"
+        ? sanitize(String(params.specialization ?? ""), 100) || null
+        : null
+      : undefined;
+
   const { error } = await supabase
     .from("staff")
     .update({
@@ -141,6 +156,7 @@ export async function updateStaff(params: {
       last_name: lastName,
       email: emailRaw,
       role,
+      ...(specialization !== undefined ? { specialization } : {}),
     })
     .eq("id", params.id);
 

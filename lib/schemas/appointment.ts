@@ -18,7 +18,16 @@ export const CancelAppointmentSchema = z.object({
 export const StaffUpdateAppointmentSchema = z.object({
   action: z.literal("staff_update"),
   checkinId: z.coerce.number().int().positive(),
-  status: z.enum(["confirm", "cancel", "no_show"]),
+  status: z.enum(["confirm", "cancel", "no_show", "approve", "reject"]),
+});
+
+export const RescheduleAppointmentSchema = z.object({
+  action: z.literal("reschedule"),
+  reference: z.string().min(1),
+  phone: z.string().min(1),
+  newDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  newTime: z.string().min(1),
+  doctorId: z.string().uuid().optional(),
 });
 
 const guestFields = {

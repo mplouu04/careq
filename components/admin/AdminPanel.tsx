@@ -41,6 +41,7 @@ type StaffRow = {
   last_name: string;
   email: string;
   role: string;
+  specialization?: string | null;
   is_active: boolean;
 };
 
@@ -49,6 +50,7 @@ type ApptType = {
   name: string;
   duration: number;
   description: string | null;
+  fee?: number | null;
   is_active: boolean;
 };
 
@@ -69,9 +71,23 @@ type Appointment = {
   appointment_date: string;
   scheduled_time: string;
   status: string;
+  approval_status?: string;
   patients?: { first_name: string; last_name: string } | null;
   staff?: { first_name: string; last_name: string } | null;
   appointment_types?: { name: string } | null;
+};
+
+type AnnouncementRow = {
+  id: number;
+  title: string;
+  body: string;
+  is_active: boolean;
+};
+
+type ReportPayload = {
+  patients_registered: number;
+  appointments: Record<string, number>;
+  queue_completed_today: number;
 };
 
 type RoomRow = {
@@ -116,10 +132,13 @@ export function AdminPanel() {
   const [editLastName, setEditLastName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [editRole, setEditRole] = useState("");
+  const [editSpecialization, setEditSpecialization] = useState("");
+  const [reportRange, setReportRange] = useState<"daily" | "monthly">("daily");
   const [editType, setEditType] = useState<ApptType | null>(null);
   const [editTypeName, setEditTypeName] = useState("");
   const [editTypeDuration, setEditTypeDuration] = useState("");
   const [editTypeDesc, setEditTypeDesc] = useState("");
+  const [editTypeFee, setEditTypeFee] = useState("");
   const [graceMinutes, setGraceMinutes] = useState(5);
   const [screenRoomDraft, setScreenRoomDraft] = useState<Record<string, number[]>>({});
 
@@ -169,6 +188,26 @@ export function AdminPanel() {
         is_active: r.is_active ?? true,
       })) as RoomRow[];
     },
+  });
+
+  const announcementsQuery = useQuery({
+    queryKey: [...queryKeys.admin.all, "announcements"],
+    queryFn: async () => {
+      const d = await api.get<{ announcements: AnnouncementRow[] }>("/api/admin/announcements");
+      return d.announcements ?? [];
+    },
+    enabled: activeTab === "announcements",
+  });
+
+  const reportsQuery = useQuery({
+    queryKey: [...queryKeys.admin.all, "reports", reportRange],
+    queryFn: async () => {
+      const d = await api.get<ReportPayload & { success: boolean }>(
+        `/api/admin/reports?range=${reportRange}`
+      );
+      return d;
+    },
+    enabled: activeTab === "reports",
   });
 
   const doctorsQuery = useQuery({
@@ -459,6 +498,10 @@ export function AdminPanel() {
         firstName: fd.get("firstName"),
         lastName: fd.get("lastName"),
         role: fd.get("role"),
+        specialization:
+          fd.get("role") === "doctor"
+            ? String(fd.get("specialization") ?? "").trim() || null
+            : null,
       });
       toast.success("Staff account created");
       (e.target as HTMLFormElement).reset();
@@ -479,6 +522,8 @@ export function AdminPanel() {
         lastName: editLastName,
         email: editEmail,
         role: editRole,
+        specialization:
+          editRole === "doctor" ? editSpecialization.trim() || null : null,
       });
       toast.success("Staff updated");
       setEditStaff(null);
@@ -533,6 +578,7 @@ export function AdminPanel() {
         name: editTypeName,
         duration,
         description: editTypeDesc || null,
+        ...(editTypeFee.trim() ? { fee: Number(editTypeFee) } : {}),
       });
       toast.success("Updated");
       setEditType(null);
@@ -776,6 +822,7 @@ export function AdminPanel() {
                                 setEditLastName(s.last_name);
                                 setEditEmail(s.email);
                                 setEditRole(s.role);
+                                setEditSpecialization(s.specialization ?? "");
                               }}
                             >
                               Edit
@@ -833,6 +880,10 @@ export function AdminPanel() {
                       <option value="admin">Admin</option>
                     </AdminSelect>
                   </div>
+                  <div>
+                    <AdminLabel>Specialization (doctors)</AdminLabel>
+                    <AdminInput name="specialization" placeholder="e.g. Cardiology" />
+                  </div>
                   <div className="flex items-end">
                     <AdminButton type="submit" className="w-full">
                       Create Staff Account
@@ -851,6 +902,7 @@ export function AdminPanel() {
                   <AdminTableHead>
                     <AdminTh>Name</AdminTh>
                     <AdminTh>Duration</AdminTh>
+                    <AdminTh>Fee</AdminTh>
                     <AdminTh>Description</AdminTh>
                     <AdminTh>Active</AdminTh>
                     <AdminTh>Actions</AdminTh>
@@ -860,6 +912,9 @@ export function AdminPanel() {
                       <AdminTr key={t.id}>
                         <AdminTd className="font-medium">{t.name}</AdminTd>
                         <AdminTd>{t.duration} min</AdminTd>
+                        <AdminTd>
+                          {t.fee != null ? `₱${Number(t.fee).toFixed(2)}` : "—"}
+                        </AdminTd>
                         <AdminTd className="text-[#6B7280]">
                           {t.description ?? "—"}
                         </AdminTd>
@@ -876,6 +931,7 @@ export function AdminPanel() {
                                 setEditTypeName(t.name);
                                 setEditTypeDuration(String(t.duration));
                                 setEditTypeDesc(t.description ?? "");
+                                setEditTypeFee(t.fee != null ? String(t.fee) : "");
                               }}
                             >
                               Edit
@@ -1134,6 +1190,8 @@ export function AdminPanel() {
                       | undefined;
                     const apptYmd = a.appointment_date?.slice(0, 10) ?? "";
                     const clinicToday = getClinicTodayYmd();
+                    const approval = a.approval_status ?? "approved";
+                    const canApprove = approval === "pending";
                     const canConfirm = a.status === "pending";
                     const canNoShow =
                       a.status === "checked_in" ||
@@ -1164,6 +1222,23 @@ export function AdminPanel() {
                         </AdminTd>
                         <AdminTd>
                           <div className="flex flex-wrap gap-1">
+                            {canApprove && (
+                              <>
+                                <AdminButton
+                                  size="sm"
+                                  onClick={() => updateAppt(a.checkin_id, "approve")}
+                                >
+                                  Approve
+                                </AdminButton>
+                                <AdminButton
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => updateAppt(a.checkin_id, "reject")}
+                                >
+                                  Reject
+                                </AdminButton>
+                              </>
+                            )}
                             {canConfirm && (
                               <AdminButton
                                 size="sm"
@@ -1348,6 +1423,110 @@ export function AdminPanel() {
             </AdminCard>
           )}
 
+          {activeTab === "announcements" && (
+            <AdminCard>
+              <AdminCardTitle>Clinic announcements</AdminCardTitle>
+              <form
+                className="mb-4 grid gap-3 max-w-xl"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const fd = new FormData(e.currentTarget);
+                  try {
+                    await api.post("/api/admin/announcements", {
+                      action: "add",
+                      title: fd.get("title"),
+                      body: fd.get("body"),
+                    });
+                    toast.success("Announcement published");
+                    (e.target as HTMLFormElement).reset();
+                    void queryClient.invalidateQueries({
+                      queryKey: [...queryKeys.admin.all, "announcements"],
+                    });
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Failed");
+                  }
+                }}
+              >
+                <AdminInput name="title" placeholder="Title" required />
+                <AdminInput name="body" placeholder="Message" required />
+                <AdminButton type="submit">Publish</AdminButton>
+              </form>
+              <AdminTable>
+                <AdminTableHead>
+                  <AdminTh>Title</AdminTh>
+                  <AdminTh>Active</AdminTh>
+                  <AdminTh>Actions</AdminTh>
+                </AdminTableHead>
+                <AdminTableBody>
+                  {(announcementsQuery.data ?? []).map((row) => (
+                    <AdminTr key={row.id}>
+                      <AdminTd className="font-medium">{row.title}</AdminTd>
+                      <AdminTd>
+                        <AdminStatusBadge active={row.is_active} />
+                      </AdminTd>
+                      <AdminTd>
+                        <AdminButton
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await api.post("/api/admin/announcements", {
+                                action: "update",
+                                id: row.id,
+                                title: row.title,
+                                body: row.body,
+                                is_active: !row.is_active,
+                              });
+                              void queryClient.invalidateQueries({
+                                queryKey: [...queryKeys.admin.all, "announcements"],
+                              });
+                            } catch (err) {
+                              toast.error(err instanceof Error ? err.message : "Failed");
+                            }
+                          }}
+                        >
+                          {row.is_active ? "Deactivate" : "Activate"}
+                        </AdminButton>
+                      </AdminTd>
+                    </AdminTr>
+                  ))}
+                </AdminTableBody>
+              </AdminTable>
+            </AdminCard>
+          )}
+
+          {activeTab === "reports" && (
+            <AdminCard>
+              <div className="mb-4 flex gap-2">
+                {(["daily", "monthly"] as const).map((r) => (
+                  <AdminFilterPill key={r} active={reportRange === r} onClick={() => setReportRange(r)}>
+                    {r === "daily" ? "Today" : "This month"}
+                  </AdminFilterPill>
+                ))}
+              </div>
+              {reportsQuery.data && (
+                <dl className="grid gap-3 sm:grid-cols-2 text-sm">
+                  <div className="rounded-lg border border-[#E5E7EB] p-4">
+                    <dt className="text-[#6B7280]">New patients</dt>
+                    <dd className="text-2xl font-semibold">{reportsQuery.data.patients_registered}</dd>
+                  </div>
+                  <div className="rounded-lg border border-[#E5E7EB] p-4">
+                    <dt className="text-[#6B7280]">Queue completed today</dt>
+                    <dd className="text-2xl font-semibold">
+                      {reportsQuery.data.queue_completed_today}
+                    </dd>
+                  </div>
+                  {Object.entries(reportsQuery.data.appointments ?? {}).map(([k, v]) => (
+                    <div key={k} className="rounded-lg border border-[#E5E7EB] p-4">
+                      <dt className="text-[#6B7280] capitalize">Appointments — {k.replace("_", " ")}</dt>
+                      <dd className="text-2xl font-semibold">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </AdminCard>
+          )}
+
           {activeTab === "data" && (
             <AdminDangerCard>
               <AdminCardTitle className="text-[#DC2626]">Data Cleanup</AdminCardTitle>
@@ -1400,6 +1579,16 @@ export function AdminPanel() {
             <option value="admin">Admin</option>
           </AdminSelect>
         </div>
+        {editRole === "doctor" && (
+          <div>
+            <AdminLabel>Specialization</AdminLabel>
+            <AdminInput
+              value={editSpecialization}
+              onChange={(e) => setEditSpecialization(e.target.value)}
+              placeholder="e.g. Pediatrics"
+            />
+          </div>
+        )}
       </ConfirmDialog>
 
       <ConfirmDialog
@@ -1433,6 +1622,16 @@ export function AdminPanel() {
           <div>
             <AdminLabel>Description</AdminLabel>
             <AdminInput value={editTypeDesc} onChange={(e) => setEditTypeDesc(e.target.value)} />
+          </div>
+          <div>
+            <AdminLabel>Fee (optional)</AdminLabel>
+            <AdminInput
+              type="number"
+              min={0}
+              step="0.01"
+              value={editTypeFee}
+              onChange={(e) => setEditTypeFee(e.target.value)}
+            />
           </div>
         </div>
       </ConfirmDialog>

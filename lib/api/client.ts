@@ -38,6 +38,7 @@ export type DoctorRow = {
   id: string;
   first_name: string;
   last_name: string;
+  specialization?: string | null;
   is_active?: boolean;
 };
 
@@ -46,6 +47,7 @@ export type AppointmentTypeRow = {
   name: string;
   duration: number;
   description?: string | null;
+  fee?: number | null;
   is_active?: boolean;
 };
 
@@ -335,5 +337,54 @@ export const appointmentApi = {
     api.delete<{ success: boolean }>(
       `/api/appointments/${encodeURIComponent(reference)}`,
       { phone }
+    ),
+
+  reschedule: (body: {
+    reference: string;
+    phone: string;
+    newDate: string;
+    newTime: string;
+    doctorId?: string;
+  }) =>
+    api.post<{ success: boolean; reference?: string }>("/api/appointments", {
+      action: "reschedule",
+      ...body,
+    }),
+};
+
+export const patientProfileApi = {
+  lookup: (phone: string, dob: string) =>
+    api.post<{ success: boolean; profile: unknown }>("/api/patients/profile", {
+      action: "lookup",
+      phone,
+      dob,
+    }),
+  patch: (body: { phone: string; dob: string; email?: string; address?: string }) =>
+    api.post<{ success: boolean; profile: unknown }>("/api/patients/profile", {
+      action: "patch",
+      ...body,
+    }),
+};
+
+export const patientNotificationsApi = {
+  lookup: (phone: string, dob: string) =>
+    api.post<{ success: boolean; notifications: unknown[] }>("/api/notifications", {
+      action: "lookup",
+      phone,
+      dob,
+    }),
+  markRead: (phone: string, dob: string, notificationId: number) =>
+    api.post<{ success: boolean }>("/api/notifications", {
+      action: "mark_read",
+      phone,
+      dob,
+      notificationId,
+    }),
+};
+
+export const publicAnnouncementsApi = {
+  list: () =>
+    api.get<{ success: boolean; announcements: { id: number; title: string; body: string }[] }>(
+      "/api/announcements"
     ),
 };

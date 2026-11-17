@@ -10,7 +10,7 @@ export const GET = withRateLimit(
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from("staff")
-      .select("id, first_name, last_name, is_active")
+      .select("id, first_name, last_name, specialization, is_active")
       .eq("role", "doctor")
       .order("is_active", { ascending: false })
       .order("last_name");

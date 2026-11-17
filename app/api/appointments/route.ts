@@ -8,6 +8,7 @@ import {
   CancelAppointmentSchema,
   PatientLookupSchema,
   ReferencePhoneLookupSchema,
+  RescheduleAppointmentSchema,
   StaffUpdateAppointmentSchema,
 } from "@/lib/schemas/appointment";
 import { z } from "zod";
@@ -17,6 +18,7 @@ import {
   listStaffAppointments,
   lookupAppointmentByReference,
   lookupPatientAppointments,
+  rescheduleAppointment,
   staffUpdateAppointment,
 } from "@/lib/services/appointment.service";
 import { isValidRef, normalizeAppointmentReference, sanitize } from "@/lib/utils";
@@ -116,6 +118,27 @@ export async function POST(request: Request) {
     )(request);
   }
 
+  const rescheduleParsed = RescheduleAppointmentSchema.safeParse(raw);
+  if (rescheduleParsed.success) {
+    return withRateLimit(
+      "patient_reschedule",
+      async () => {
+        const result = await rescheduleAppointment(rescheduleParsed.data);
+        if ("error" in result && !("success" in result)) {
+          return NextResponse.json(
+            {
+              error: result.error,
+              ...(result.code ? { code: result.code } : {}),
+            },
+            { status: result.status }
+          );
+        }
+        return NextResponse.json({ success: true, reference: result.reference });
+      },
+      { max: 10, windowSeconds: 60, failClosed: true }
+    )(request);
+  }
+
   const staffParsed = StaffUpdateAppointmentSchema.safeParse(raw);
   if (staffParsed.success) {
     return staffUpdateHandler(staffParsed.data)(request);
@@ -157,7 +180,7 @@ export async function POST(request: Request) {
 
 function staffUpdateHandler(body: {
   checkinId: number;
-  status: "confirm" | "cancel" | "no_show";
+  status: "confirm" | "cancel" | "no_show" | "approve" | "reject";
 }) {
   return withStaffAuth(
     async (request: Request) => {
@@ -172,7 +195,10 @@ function staffUpdateHandler(body: {
       if (!("success" in result)) {
         return NextResponse.json({ error: result.error }, { status: result.status });
       }
-      return NextResponse.json({ success: true, status: result.status });
+      return NextResponse.json({
+        success: true,
+        ...("status" in result ? { status: result.status } : {}),
+      });
     },
     ["admin"]
   );

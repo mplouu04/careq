@@ -10,6 +10,7 @@ export const RegisterStaffSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   role: staffRoleEnum,
+  specialization: z.string().max(100).optional().nullable(),
 });
 
 export const UpdateStaffSchema = z.object({
@@ -19,7 +20,26 @@ export const UpdateStaffSchema = z.object({
   lastName: z.string().min(1).max(100),
   email: z.string().email(),
   role: staffRoleEnum,
+  specialization: z.string().max(100).optional().nullable(),
 });
+
+export const AnnouncementUpsertSchema = z.object({
+  action: z.enum(["add", "update"]),
+  id: z.coerce.number().int().positive().optional(),
+  title: z.string().min(1).max(200),
+  body: z.string().min(1).max(2000),
+  is_active: z.boolean().optional(),
+});
+
+export const AnnouncementDeleteSchema = z.object({
+  action: z.literal("delete"),
+  id: z.coerce.number().int().positive(),
+});
+
+export const AnnouncementActionSchema = z.union([
+  AnnouncementUpsertSchema,
+  AnnouncementDeleteSchema,
+]);
 
 export const ToggleStaffActiveSchema = z.object({
   action: z.literal("toggle_active"),

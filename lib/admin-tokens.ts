@@ -29,5 +29,7 @@ export const ADMIN_TABS = [
   { value: "appointments", label: "Appointments" },
   { value: "rooms", label: "Rooms" },
   { value: "hours", label: "Clinic Hours" },
+  { value: "announcements", label: "Announcements" },
+  { value: "reports", label: "Reports" },
   { value: "data", label: "Data", danger: true },
 ] as const;

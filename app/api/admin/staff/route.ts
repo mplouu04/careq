@@ -34,6 +34,7 @@ export const POST = withStaffAuth(async (request: Request) => {
         email: body.email,
         password: body.password,
         role: body.role,
+        specialization: body.specialization,
         requestingUserId,
         ip,
       });
@@ -50,6 +51,7 @@ export const POST = withStaffAuth(async (request: Request) => {
         lastName: body.lastName,
         email: body.email,
         role: body.role,
+        specialization: body.specialization,
         requestingUserId,
         ip,
       });

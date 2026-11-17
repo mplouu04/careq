@@ -462,3 +462,95 @@ export async function registerPatient(body: RegisterPatientInput) {
     verifyToken,
   };
 }
+
+export async function resolvePatientIdsByPhoneDob(phone: string, dob: string) {
+  const supabase = createAdminClient();
+  const phoneDigits = phone.replace(/\D/g, "");
+  const last7 = phoneDigits.slice(-7);
+
+  let patientsQuery = supabase
+    .from("patients")
+    .select("id, public_id, first_name, last_name, phone, phone_normalized")
+    .eq("date_of_birth", dob);
+
+  if (phoneDigits.length === 11) {
+    patientsQuery = patientsQuery.or(
+      `phone_normalized.eq.${phoneDigits},phone.eq.${phoneDigits}`
+    );
+  } else if (last7.length === 7) {
+    patientsQuery = patientsQuery.or(
+      `phone_last7.eq.${last7},phone_normalized.like.%${last7},phone.like.%${last7}`
+    );
+  }
+
+  const { data: patients, error } = await patientsQuery.limit(20);
+  if (error) {
+    console.error("[resolvePatientIdsByPhoneDob] failed", error);
+    return { ids: [] as number[], profile: null };
+  }
+
+  const matched = (patients ?? []).filter((p) => patientPhonesMatch(p, phone));
+  if (!matched.length) {
+    return { ids: [], profile: null };
+  }
+
+  const ids = matched.map((p) => p.id);
+  const primaryId = ids[0];
+  const { data: profileRow } = await supabase
+    .from("patients")
+    .select("id, public_id, first_name, last_name, date_of_birth, phone, email, address, gender")
+    .eq("id", primaryId)
+    .maybeSingle();
+
+  return {
+    ids,
+    profile: profileRow
+      ? {
+          publicId: profileRow.public_id,
+          firstName: profileRow.first_name,
+          lastName: profileRow.last_name,
+          dob: profileRow.date_of_birth,
+          phone: profileRow.phone,
+          email: profileRow.email ?? "",
+          address: profileRow.address ?? "",
+          gender: profileRow.gender ?? "",
+        }
+      : null,
+  };
+}
+
+export async function patchPatientProfile(params: {
+  phone: string;
+  dob: string;
+  email?: string;
+  address?: string;
+}) {
+  const { ids, profile } = await resolvePatientIdsByPhoneDob(params.phone, params.dob);
+  if (!ids.length || !profile) {
+    return { error: "Patient not found", status: 404 as const };
+  }
+
+  const patch: { email?: string; address?: string } = {};
+  if (params.email !== undefined) {
+    const emailNorm = params.email.trim().toLowerCase();
+    if (emailNorm && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailNorm)) {
+      return { error: "Invalid email", status: 400 as const };
+    }
+    patch.email = emailNorm || profile.email;
+  }
+  if (params.address !== undefined) {
+    patch.address = params.address.trim().slice(0, 500);
+  }
+  if (!Object.keys(patch).length) {
+    return { error: "No fields to update", status: 400 as const };
+  }
+
+  const supabase = createAdminClient();
+  const { error } = await supabase.from("patients").update(patch).in("id", ids);
+  if (error) {
+    return { error: "Update failed", status: 500 as const };
+  }
+
+  const { profile: refreshed } = await resolvePatientIdsByPhoneDob(params.phone, params.dob);
+  return { success: true as const, profile: refreshed };
+}

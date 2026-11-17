@@ -41,7 +41,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("appointment_types")
-    .select("id, name, duration, description, is_active")
+    .select("id, name, duration, description, fee, is_active")
     .order("name");
 
   if (!wantAll) {
@@ -254,6 +254,10 @@ export async function POST(request: Request) {
         duration: Number(body.duration),
 
         description: sanitize(body.description, 500) || null,
+
+        ...(body.fee !== undefined && body.fee !== null && body.fee !== ""
+          ? { fee: Number(body.fee) }
+          : {}),
 
       })
 

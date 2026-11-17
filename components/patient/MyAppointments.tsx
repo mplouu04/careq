@@ -34,6 +34,7 @@ type Appointment = {
   type: string;
   reason: string;
   status: string;
+  approvalStatus?: string;
 };
 
 type LookupResult = {
@@ -86,6 +87,12 @@ function parseDobInput(value: string): string | null {
 
 const TERMINAL_STATUSES = ["cancelled", "completed", "no_show"];
 
+const APPROVAL_LABELS: Record<string, string> = {
+  pending: "Awaiting approval",
+  approved: "Approved",
+  rejected: "Not approved",
+};
+
 function lookupQueryKey(lookup: ActiveLookup) {
   if (lookup.method === "phone") {
     return queryKeys.appointments.byPhone(lookup.phone, lookup.dob);
@@ -102,6 +109,9 @@ export function MyAppointments() {
   const [activeLookup, setActiveLookup] = useState<ActiveLookup | null>(null);
   const [cancelRef, setCancelRef] = useState<string | null>(null);
   const [cancelPhone, setCancelPhone] = useState("");
+  const [rescheduleRef, setRescheduleRef] = useState<string | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
 
   const queryKey = useMemo(
     () => (activeLookup ? lookupQueryKey(activeLookup) : ["appointments", "idle"]),
@@ -269,6 +279,57 @@ export function MyAppointments() {
       void queryClient.invalidateQueries({ queryKey });
     },
   });
+
+  const rescheduleMutation = useMutation({
+    mutationFn: async ({
+      ref,
+      phoneForReschedule,
+      newDate,
+      newTime,
+    }: {
+      ref: string;
+      phoneForReschedule: string;
+      newDate: string;
+      newTime: string;
+    }) =>
+      appointmentApi.reschedule({
+        reference: ref,
+        phone: phoneForReschedule,
+        newDate,
+        newTime,
+      }),
+    onSuccess: () => {
+      toast.success("Reschedule requested. Awaiting clinic approval.");
+      setRescheduleRef(null);
+      setRescheduleDate("");
+      setRescheduleTime("");
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Reschedule failed"),
+  });
+
+  function confirmReschedule() {
+    if (!rescheduleRef || !rescheduleDate || !rescheduleTime) {
+      toast.error("Enter a new date and time.");
+      return;
+    }
+    const phoneForReschedule =
+      activeLookup?.method === "phone"
+        ? activeLookup.phone
+        : activeLookup?.method === "reference"
+          ? activeLookup.phone
+          : phone.trim();
+    if (!phoneForReschedule) {
+      toast.error("Phone required to verify reschedule.");
+      return;
+    }
+    rescheduleMutation.mutate({
+      ref: rescheduleRef,
+      phoneForReschedule,
+      newDate: rescheduleDate,
+      newTime: rescheduleTime,
+    });
+  }
 
   function confirmCancel(ref: string) {
     const phoneForCancel =
@@ -439,21 +500,49 @@ export function MyAppointments() {
                         <p className="text-body-sm text-on-surface-variant">Reason: {a.reason}</p>
                       )}
                     </div>
-                    <StatusBadge
-                      status={STATUS_VARIANT[a.status] ?? "pending"}
-                      label={STATUS_LABELS[a.status] ?? a.status}
-                    />
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                      <StatusBadge
+                        status={STATUS_VARIANT[a.status] ?? "pending"}
+                        label={STATUS_LABELS[a.status] ?? a.status}
+                      />
+                      {a.approvalStatus && (
+                        <span
+                          className={cn(
+                            "text-label-sm font-medium rounded-md px-2 py-0.5",
+                            a.approvalStatus === "pending" && "bg-amber-50 text-amber-800",
+                            a.approvalStatus === "approved" && "bg-green-50 text-green-800",
+                            a.approvalStatus === "rejected" && "bg-red-50 text-red-700"
+                          )}
+                        >
+                          {APPROVAL_LABELS[a.approvalStatus] ?? a.approvalStatus}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {!TERMINAL_STATUSES.includes(a.status) && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                      onClick={() => openCancelDialog(a.reference)}
-                      disabled={cancelMutation.isPending}
-                    >
-                      Cancel Appointment
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setRescheduleRef(a.reference);
+                          setRescheduleDate("");
+                          setRescheduleTime("");
+                        }}
+                        disabled={rescheduleMutation.isPending}
+                      >
+                        Reschedule
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => openCancelDialog(a.reference)}
+                        disabled={cancelMutation.isPending}
+                      >
+                        Cancel Appointment
+                      </Button>
+                    </div>
                   )}
                 </CareqCard>
               ))}
@@ -513,6 +602,54 @@ export function MyAppointments() {
             </p>
           </div>
         )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={!!rescheduleRef}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRescheduleRef(null);
+            setRescheduleDate("");
+            setRescheduleTime("");
+          }
+        }}
+        title="Reschedule appointment"
+        description={
+          rescheduleRef
+            ? `Choose a new date and time for ${rescheduleRef}.`
+            : undefined
+        }
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setRescheduleRef(null)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmReschedule} disabled={rescheduleMutation.isPending}>
+              Save new time
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4 min-w-0">
+          <div>
+            <FormLabel htmlFor="reschedule-date">New date</FormLabel>
+            <FormInput
+              id="reschedule-date"
+              type="date"
+              value={rescheduleDate}
+              onChange={(e) => setRescheduleDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <FormLabel htmlFor="reschedule-time">New time</FormLabel>
+            <FormInput
+              id="reschedule-time"
+              type="time"
+              value={rescheduleTime}
+              onChange={(e) => setRescheduleTime(e.target.value)}
+            />
+          </div>
+        </div>
       </ConfirmDialog>
     </div>
   );

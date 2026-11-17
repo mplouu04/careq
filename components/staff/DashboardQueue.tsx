@@ -42,6 +42,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { QueueCommandBar } from "@/components/staff/QueueCommandBar";
+import { QueueHistoryPanel } from "@/components/staff/QueueHistoryPanel";
 import { useQueueSubscription } from "@/lib/hooks/useQueueSubscription";
 import { useRovingTabs } from "@/lib/hooks/useRovingTabs";
 import {
@@ -967,9 +968,12 @@ export function DashboardQueue({ staff }: { staff: StaffProfile }) {
 
   return (
     <div aria-busy={queueQuery.isFetching}>
-      <div className="mb-4">
-        <h2 className="text-headline-md text-on-surface">Today&apos;s queue</h2>
-        <p className="text-body-sm text-on-surface-variant">{today}</p>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 className="text-headline-md text-on-surface">Today&apos;s queue</h2>
+          <p className="text-body-sm text-on-surface-variant">{today}</p>
+        </div>
+        <QueueHistoryPanel staff={staff} />
       </div>
 
       <QueueCommandBar

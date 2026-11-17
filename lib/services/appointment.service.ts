@@ -6,6 +6,7 @@ import { getClinicTodayYmd, getClinicDayStartIso, addClinicDays } from "@/lib/da
 import { CheckinError, nextAppointmentReference } from "@/lib/counters";
 import { logAudit } from "@/lib/audit";
 import { resolveExistingPatient } from "@/lib/services/patient.service";
+import { createNotification } from "@/lib/services/notification.service";
 import { format } from "date-fns";
 import { isValidEmail, normalizeAppointmentReference } from "@/lib/utils";
 
@@ -60,7 +61,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
   const { data, error: checkinsError } = await supabase
     .from("checkins")
     .select(
-      `checkin_id, reference_number, scheduled_time, appointment_date, status, reason,
+      `checkin_id, reference_number, scheduled_time, appointment_date, status, approval_status, reason,
        appointment_types(name),
        staff:doctor_id(first_name, last_name)`
     )
@@ -101,6 +102,7 @@ export async function lookupPatientAppointments(phone: string, dob: string) {
       type: apptType?.name ?? "",
       reason: a.reason ?? "",
       status: a.status,
+      approvalStatus: (a as { approval_status?: string }).approval_status ?? "approved",
     };
   });
 
@@ -119,7 +121,7 @@ export async function lookupAppointmentByReference(reference: string, phone: str
   const { data: checkin, error } = await supabase
     .from("checkins")
     .select(
-      `checkin_id, reference_number, scheduled_time, appointment_date, status, reason, patient_id,
+      `checkin_id, reference_number, scheduled_time, appointment_date, status, approval_status, reason, patient_id,
        appointment_types(name),
        staff:doctor_id(first_name, last_name),
        patients(first_name, last_name, public_id, phone, phone_normalized)`
@@ -177,6 +179,7 @@ export async function lookupAppointmentByReference(reference: string, phone: str
         type: apptType?.name ?? "",
         reason: checkin.reason ?? "",
         status: checkin.status,
+        approvalStatus: (checkin as { approval_status?: string }).approval_status ?? "approved",
       },
     ],
     publicId: patient?.public_id ?? null,
@@ -483,6 +486,20 @@ export async function bookAppointment(body: {
   });
 
   if ("checkin_id" in checkin) {
+    const supabaseAfter = createAdminClient();
+    await supabaseAfter
+      .from("checkins")
+      .update({ approval_status: "pending" })
+      .eq("checkin_id", checkin.checkin_id);
+
+    void createNotification({
+      patientId: Number(patientId),
+      title: "Appointment requested",
+      body: `Your appointment ${checkin.reference_number} was received and is awaiting clinic approval.`,
+      category: "appointment_confirmation",
+      referenceNumber: checkin.reference_number,
+    });
+
     return {
       success: true as const,
       appointmentID: checkin.reference_number,
@@ -617,7 +634,7 @@ export async function listStaffAppointments(filter: string) {
   let query = supabase
     .from("checkins")
     .select(
-      `checkin_id, reference_number, scheduled_time, appointment_date, status,
+      `checkin_id, reference_number, scheduled_time, appointment_date, status, approval_status, patient_id, doctor_id,
        patients(first_name, last_name, phone),
        staff:doctor_id(first_name, last_name),
        appointment_types(name)`
@@ -652,12 +669,273 @@ const STAFF_APPOINTMENT_TRANSITIONS: Record<
   no_show: { from: ["pending", "checked_in"], to: "no_show" },
 };
 
+export async function approveAppointment(
+  checkinId: number,
+  userId: string,
+  ip: string
+) {
+  const supabase = createAdminClient();
+  const { data: row } = await supabase
+    .from("checkins")
+    .select("checkin_id, patient_id, reference_number, approval_status")
+    .eq("checkin_id", checkinId)
+    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+    .maybeSingle();
+
+  if (!row) {
+    return { error: "Appointment not found", status: 404 as const };
+  }
+  if (row.approval_status !== "pending") {
+    return { error: "Appointment is not pending approval", status: 409 as const };
+  }
+
+  const { data, error } = await supabase
+    .from("checkins")
+    .update({ approval_status: "approved" })
+    .eq("checkin_id", checkinId)
+    .eq("approval_status", "pending")
+    .select("checkin_id");
+
+  if (error || !data?.length) {
+    return { error: "Update failed", status: 500 as const };
+  }
+
+  if (row.patient_id != null) {
+    void createNotification({
+      patientId: row.patient_id,
+      title: "Appointment approved",
+      body: `Your appointment ${row.reference_number} has been approved by the clinic.`,
+      category: "appointment_approval",
+      referenceNumber: row.reference_number,
+    });
+  }
+
+  void logAudit({
+    userId,
+    action: "appt_approve",
+    tableName: "checkins",
+    recordId: checkinId,
+    ipAddress: ip,
+  });
+
+  return { success: true as const };
+}
+
+export async function rejectAppointment(
+  checkinId: number,
+  userId: string,
+  ip: string,
+  cancelBooking = true
+) {
+  const supabase = createAdminClient();
+  const { data: row } = await supabase
+    .from("checkins")
+    .select("checkin_id, patient_id, reference_number, approval_status, status")
+    .eq("checkin_id", checkinId)
+    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+    .maybeSingle();
+
+  if (!row) {
+    return { error: "Appointment not found", status: 404 as const };
+  }
+  if (row.approval_status !== "pending") {
+    return { error: "Appointment is not pending approval", status: 409 as const };
+  }
+
+  const patch: { approval_status: string; status?: string } = {
+    approval_status: "rejected",
+  };
+  if (cancelBooking && !["cancelled", "completed", "no_show"].includes(row.status ?? "")) {
+    patch.status = "cancelled";
+  }
+
+  const { data, error } = await supabase
+    .from("checkins")
+    .update(patch)
+    .eq("checkin_id", checkinId)
+    .eq("approval_status", "pending")
+    .select("checkin_id");
+
+  if (error || !data?.length) {
+    return { error: "Update failed", status: 500 as const };
+  }
+
+  if (row.patient_id != null) {
+    void createNotification({
+      patientId: row.patient_id,
+      title: "Appointment not approved",
+      body: `Your appointment ${row.reference_number} was not approved. Contact the clinic to reschedule.`,
+      category: "appointment_cancellation",
+      referenceNumber: row.reference_number,
+    });
+  }
+
+  void logAudit({
+    userId,
+    action: "appt_reject",
+    tableName: "checkins",
+    recordId: checkinId,
+    ipAddress: ip,
+  });
+
+  return { success: true as const };
+}
+
+export async function rescheduleAppointment(params: {
+  reference: string;
+  phone: string;
+  newDate: string;
+  newTime: string;
+  doctorId?: string;
+}) {
+  const supabase = createAdminClient();
+  const ref = normalizeAppointmentReference(params.reference);
+  const phoneInput = params.phone.trim();
+
+  const { data: checkin } = await supabase
+    .from("checkins")
+    .select(
+      `checkin_id, reference_number, status, approval_status, patient_id, doctor_id, type_id,
+       appointment_types(duration, max_concurrent),
+       patients(phone, phone_normalized)`
+    )
+    .eq("reference_number", ref)
+    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+    .maybeSingle();
+
+  if (!checkin) {
+    return { error: "Appointment not found", status: 404 as const };
+  }
+
+  const terminal = ["cancelled", "completed", "no_show"];
+  if (terminal.includes(checkin.status ?? "")) {
+    return { error: "This appointment cannot be rescheduled.", status: 409 as const };
+  }
+
+  const patientRaw = checkin.patients as unknown;
+  const patient = (Array.isArray(patientRaw) ? patientRaw[0] : patientRaw) as {
+    phone: string;
+    phone_normalized: string | null;
+  };
+  if (!patientPhonesMatch(patient, phoneInput)) {
+    return { error: "Phone number does not match.", status: 403 as const };
+  }
+
+  const approval = (checkin as { approval_status?: string }).approval_status ?? "approved";
+  if (approval === "rejected") {
+    return { error: "This appointment was rejected and cannot be rescheduled.", status: 409 as const };
+  }
+
+  const doctorId = params.doctorId ?? (checkin.doctor_id as string);
+  const appointmentDate = params.newDate;
+  const today = getClinicTodayYmd();
+  if (appointmentDate < today) {
+    return { error: "Appointment date cannot be in the past.", status: 400 as const };
+  }
+  const maxDate = addClinicDays(today, MAX_ADVANCE_BOOKING_DAYS);
+  if (appointmentDate > maxDate) {
+    return {
+      error: `Appointments can only be booked up to ${MAX_ADVANCE_BOOKING_DAYS} days in advance.`,
+      status: 400 as const,
+    };
+  }
+
+  const timeParts = params.newTime.trim().replace(/[^0-9:]/g, "").split(":");
+  const timeNorm =
+    timeParts.length >= 2
+      ? `${timeParts[0].padStart(2, "0")}:${timeParts[1].padStart(2, "0")}`
+      : params.newTime.trim();
+
+  const typeRaw = checkin.appointment_types as unknown;
+  const apptType = (Array.isArray(typeRaw) ? typeRaw[0] : typeRaw) as
+    | { duration: number; max_concurrent: number }
+    | null
+    | undefined;
+  const durationMinutes = apptType?.duration ?? 30;
+
+  const appTypeId = String((checkin as { type_id?: number }).type_id ?? "");
+
+  const availableSlots = await getDoctorAvailableSlots(
+    doctorId,
+    appointmentDate,
+    durationMinutes,
+    appTypeId
+  );
+  if (!availableSlots.includes(timeNorm)) {
+    return {
+      error: "This time slot is not available. Please choose another.",
+      status: 409 as const,
+      code: "slot_unavailable" as const,
+    };
+  }
+
+  const { data: conflicting } = await supabase
+    .from("checkins")
+    .select("checkin_id")
+    .eq("patient_id", checkin.patient_id)
+    .eq("doctor_id", doctorId)
+    .eq("type_id", CHECKIN_TYPE.APPOINTMENT)
+    .gte("appointment_date", `${appointmentDate}T00:00:00`)
+    .lte("appointment_date", `${appointmentDate}T23:59:59`)
+    .eq("scheduled_time", timeNorm)
+    .not("status", "in", '("cancelled","no_show")')
+    .neq("checkin_id", checkin.checkin_id)
+    .maybeSingle();
+  if (conflicting) {
+    return {
+      error: "You already have an active appointment at this date and time.",
+      status: 409 as const,
+      code: "duplicate_appointment",
+    };
+  }
+
+  const appointmentDateIso = `${appointmentDate}T${timeNorm}:00`;
+  const { data: updated, error } = await supabase
+    .from("checkins")
+    .update({
+      doctor_id: doctorId,
+      appointment_date: appointmentDateIso,
+      scheduled_time: timeNorm,
+      approval_status: "pending",
+    })
+    .eq("checkin_id", checkin.checkin_id)
+    .not("status", "in", '("cancelled","completed","no_show")')
+    .select("checkin_id, reference_number")
+    .maybeSingle();
+
+  if (error) {
+    return { error: "Failed to reschedule", status: 500 as const };
+  }
+  if (!updated) {
+    return { error: "This appointment cannot be rescheduled.", status: 409 as const };
+  }
+
+  if (checkin.patient_id != null) {
+    void createNotification({
+      patientId: checkin.patient_id,
+      title: "Appointment rescheduled",
+      body: `Your appointment ${updated.reference_number} was moved to ${appointmentDate} at ${timeNorm}. Awaiting clinic approval.`,
+      category: "appointment_confirmation",
+      referenceNumber: updated.reference_number,
+    });
+  }
+
+  return { success: true as const, reference: updated.reference_number };
+}
+
 export async function staffUpdateAppointment(params: {
   checkinId: number;
-  status: "confirm" | "cancel" | "no_show";
+  status: "confirm" | "cancel" | "no_show" | "approve" | "reject";
   userId: string;
   ip: string;
 }) {
+  if (params.status === "approve") {
+    return approveAppointment(params.checkinId, params.userId, params.ip);
+  }
+  if (params.status === "reject") {
+    return rejectAppointment(params.checkinId, params.userId, params.ip);
+  }
+
   const transition = STAFF_APPOINTMENT_TRANSITIONS[params.status];
   if (!transition) {
     return { error: "Invalid status action", status: 400 as const };
