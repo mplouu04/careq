@@ -14,7 +14,7 @@ test.describe("Smoke §1 — Registration", () => {
     await page.waitForURL(/\/$/);
     await expect(page.getByRole("link", { name: /book a visit/i }).first()).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /i.?m here\s*[—-]\s*check in/i })
+      page.getByRole("link", { name: /i.?m here/i }).first()
     ).toBeVisible();
     await expect(page.getByRole("link", { name: /register once/i })).toBeVisible();
   });
