@@ -319,10 +319,26 @@ export function CheckinForm() {
           Walk-in today
         </button>
       </div>
-      {!verifyToken && (
-        <p id="walkin-tab-hint" className="sr-only">
-          Walk-in check-in requires identity verification first.
-        </p>
+      {!verifyToken && activeTab !== "walk-in" && (
+        <div id="walkin-tab-hint" className="px-6 pt-4">
+          <FormWarning>
+            Walk-in today needs a quick identity check first.{" "}
+            <Link
+              href="/patient-search?intent=checkin"
+              className="text-primary hover:underline font-medium"
+            >
+              Verify with phone & date of birth
+            </Link>{" "}
+            or{" "}
+            <Link
+              href="/registration?intent=checkin"
+              className="text-primary hover:underline font-medium"
+            >
+              register once
+            </Link>{" "}
+            first.
+          </FormWarning>
+        </div>
       )}
 
       <div className="px-6 py-5">
