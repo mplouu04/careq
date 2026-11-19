@@ -9,6 +9,7 @@ import { requireStaff } from "@/lib/auth";
 import { captureException } from "@/lib/observability";
 import { getRoomNameMap, resolveRoomName } from "@/lib/rooms-map";
 import { listStaffQueue } from "@/lib/services/queue-read.service";
+import { isUpcomingBookedCheckin } from "@/lib/queue-status";
 
 export const dynamic = "force-dynamic";
 
@@ -96,7 +97,7 @@ async function publicQueueRefHandler(request: Request) {
       .maybeSingle(),
     supabase
       .from("checkins")
-      .select("checkin_id")
+      .select("checkin_id, status, approval_status, appointment_date, scheduled_time")
       .eq("reference_number", ref)
       .maybeSingle(),
     getRoomNameMap(supabase),
@@ -136,6 +137,31 @@ async function publicQueueRefHandler(request: Request) {
   }
 
   if (!entry) {
+    // Valid appointment reference with no queue entry yet (future date, or not checked in today).
+    // Return only the visit date/time, never patient or doctor details.
+    const booked = byRefRes.data as
+      | {
+          status: string;
+          approval_status?: string | null;
+          appointment_date?: string | null;
+          scheduled_time?: string | null;
+        }
+      | null;
+    if (booked?.approval_status === "rejected") {
+      return NextResponse.json({ success: true, not_approved: true });
+    }
+    if (booked && isUpcomingBookedCheckin(booked, today)) {
+      const visitDate = (booked.appointment_date ?? "").slice(0, 10);
+      return NextResponse.json({
+        success: true,
+        scheduled: {
+          appointment_date: visitDate,
+          scheduled_time: booked.scheduled_time ?? null,
+          is_today: visitDate === today,
+          awaiting_approval: booked.approval_status === "pending",
+        },
+      });
+    }
     return NextResponse.json(
       { success: false, error: "Queue entry not found" },
       { status: 404 }

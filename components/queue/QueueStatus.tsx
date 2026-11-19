@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   XCircle,
   Megaphone,
@@ -18,7 +19,7 @@ import { useRealtimePoll } from "@/lib/hooks/useRealtimePoll";
 import { normalizeQueueRef } from "@/lib/queue-ref";
 import { isCalledLikeStatus } from "@/lib/queue-status";
 import { EnablePushAlerts } from "@/components/queue/EnablePushAlerts";
-import { queueDataApi } from "@/lib/api/client";
+import { queueDataApi, type ScheduledVisit } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
 
 type QueueEntry = {
@@ -161,6 +162,69 @@ function fireMissedNotification(queueNumber: string) {
   );
 }
 
+function formatScheduledDate(ymd: string): string {
+  return new Date(`${ymd}T12:00:00`).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** "09:00:00" → "9:00 AM" */
+function formatScheduledTime(t: string | null): string {
+  const match = t?.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  const hour = Number(match[1]);
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const hour12 = hour % 12 === 0 ? 12 : hour % 12;
+  return `${hour12}:${match[2]} ${suffix}`;
+}
+
+function ScheduledVisitCard({
+  refNumber,
+  scheduled,
+}: {
+  refNumber: string;
+  scheduled: ScheduledVisit;
+}) {
+  const timeLabel = formatScheduledTime(scheduled.scheduled_time);
+  return (
+    <div className="max-w-md mx-auto">
+      <CareqCard className="p-6 text-center">
+        <CalendarDays className="w-10 h-10 text-primary mx-auto mb-3" />
+        <p className="text-headline-sm text-on-surface mb-1">Your visit is booked</p>
+        <p className="text-body-md text-on-surface-variant mb-4 font-mono-careq">{refNumber}</p>
+        <p className="text-body-lg text-on-surface font-medium">
+          {formatScheduledDate(scheduled.appointment_date)}
+          {timeLabel ? ` · ${timeLabel}` : ""}
+        </p>
+        {scheduled.awaiting_approval && (
+          <p className="text-body-sm text-amber-800 mt-2">Waiting for clinic approval.</p>
+        )}
+        <p className="text-body-sm text-on-surface-variant mt-3">
+          {scheduled.is_today
+            ? "Check in when you arrive to get your queue number. Your live status will show here."
+            : "Come back on the day of your visit and check in to get your queue number. Your live status will show here after check-in."}
+        </p>
+        {scheduled.is_today && (
+          <CareqButton asChild className="cursor-pointer min-h-12 mt-4">
+            <Link href="/checkin">I&apos;m here — check in</Link>
+          </CareqButton>
+        )}
+        <div>
+          <Link
+            href="/status"
+            className="inline-flex items-center justify-center min-h-[44px] text-primary hover:underline text-body-md mt-2"
+          >
+            Track another code
+          </Link>
+        </div>
+      </CareqCard>
+    </div>
+  );
+}
+
 export function QueueStatus({ refNumber }: { refNumber: string }) {
   const queryClient = useQueryClient();
   const [alertsEnabled, setAlertsEnabled] = useState(false);
@@ -183,6 +247,8 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
   const room = data?.kind === "ok" ? data.room : "";
   const doctor = data?.kind === "ok" ? data.doctor : "";
   const notFound = data?.kind === "not_found";
+  const scheduled = data?.kind === "scheduled" ? data.scheduled : null;
+  const notApproved = data?.kind === "not_approved";
   const rateLimited = data?.kind === "rate_limited";
   const loadError = isError;
 
@@ -301,6 +367,31 @@ export function QueueStatus({ refNumber }: { refNumber: string }) {
             className="inline-flex items-center justify-center min-h-[44px] text-primary hover:underline text-body-md"
           >
             Try another code
+          </Link>
+        </CareqCard>
+      </div>
+    );
+  }
+
+  if (scheduled) {
+    return <ScheduledVisitCard refNumber={refNumber} scheduled={scheduled} />;
+  }
+
+  if (notApproved) {
+    return (
+      <div className="max-w-md mx-auto">
+        <CareqCard className="p-6 text-center">
+          <XCircle className="w-10 h-10 text-destructive mx-auto mb-3" />
+          <p className="text-headline-sm text-on-surface mb-1">Appointment not approved</p>
+          <p className="text-body-md text-on-surface-variant mb-4 font-mono-careq">{refNumber}</p>
+          <p className="text-body-sm text-on-surface-variant">
+            The clinic could not approve this booking. Contact the clinic to reschedule.
+          </p>
+          <Link
+            href="/status"
+            className="inline-flex items-center justify-center min-h-[44px] text-primary hover:underline text-body-md mt-4"
+          >
+            Track another code
           </Link>
         </CareqCard>
       </div>

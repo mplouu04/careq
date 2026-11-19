@@ -87,6 +87,31 @@ function parseDobInput(value: string): string | null {
 
 const TERMINAL_STATUSES = ["cancelled", "completed", "no_show"];
 
+/**
+ * Patient-facing badge. Before check-in, approval decides the wording:
+ * approved → "Confirmed" (not "Pending"), awaiting → "Awaiting approval", rejected → "Not approved".
+ */
+function appointmentDisplay(a: { status: string; approvalStatus?: string }): {
+  label: string;
+  variant: QueueStatusVariant;
+  showApproval: boolean;
+} {
+  if (a.approvalStatus === "rejected") {
+    return { label: "Not approved", variant: "cancelled", showApproval: false };
+  }
+  if (a.status === "pending" && a.approvalStatus === "approved") {
+    return { label: "Confirmed", variant: "confirmed", showApproval: false };
+  }
+  if (a.status === "pending" && a.approvalStatus === "pending") {
+    return { label: "Awaiting approval", variant: "waiting", showApproval: false };
+  }
+  return {
+    label: STATUS_LABELS[a.status] ?? a.status,
+    variant: STATUS_VARIANT[a.status] ?? "pending",
+    showApproval: !TERMINAL_STATUSES.includes(a.status),
+  };
+}
+
 const APPROVAL_LABELS: Record<string, string> = {
   pending: "Awaiting approval",
   approved: "Approved",
@@ -502,10 +527,10 @@ export function MyAppointments() {
                     </div>
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <StatusBadge
-                        status={STATUS_VARIANT[a.status] ?? "pending"}
-                        label={STATUS_LABELS[a.status] ?? a.status}
+                        status={appointmentDisplay(a).variant}
+                        label={appointmentDisplay(a).label}
                       />
-                      {a.approvalStatus && (
+                      {appointmentDisplay(a).showApproval && a.approvalStatus && (
                         <span
                           className={cn(
                             "text-label-sm font-medium rounded-md px-2 py-0.5",

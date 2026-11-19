@@ -296,11 +296,11 @@ export function AppointmentBooking() {
           <Check className="h-8 w-8 text-primary" strokeWidth={2.5} aria-hidden />
         </div>
         <h2 className="text-headline-md text-on-surface mb-3">
-          You&apos;re booked
+          Booking submitted
         </h2>
         <p className="text-body-md text-on-surface-variant mb-6">
-          Save this code. Email reminders are on when we have your email. After check-in,
-          you can allow queue alerts on the status screen.
+          The clinic still needs to approve this booking. It shows as Confirmed in My visits once
+          approved. Save this code. Email reminders are on when we have your email.
         </p>
         <div className="inline-block rounded-xl border-2 border-dashed border-primary bg-primary/10 px-6 py-3 mb-6">
           <span className="font-mono text-headline-sm font-bold tracking-wider text-primary">

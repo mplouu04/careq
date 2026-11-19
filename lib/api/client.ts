@@ -142,6 +142,14 @@ export const catalogApi = {
   },
 };
 
+/** Booked appointment looked up by APT reference, before the patient has a queue entry. */
+export type ScheduledVisit = {
+  appointment_date: string; // YYYY-MM-DD (clinic timezone)
+  scheduled_time: string | null; // HH:MM[:SS]
+  is_today: boolean;
+  awaiting_approval: boolean;
+};
+
 export const queueDataApi = {
   staff: () => api.get<StaffQueuePayload>("/api/queue"),
 
@@ -166,6 +174,15 @@ export const queueDataApi = {
     }
     if (!res.ok || !data.success) {
       throw new Error((data.error as string) ?? `HTTP ${res.status}`);
+    }
+    if (data.not_approved) {
+      return { kind: "not_approved" as const };
+    }
+    if (data.scheduled) {
+      return {
+        kind: "scheduled" as const,
+        scheduled: data.scheduled as ScheduledVisit,
+      };
     }
     return {
       kind: "ok" as const,
